@@ -42,9 +42,9 @@ machine); the agent adds non-gating advisory — and is contractually forbidden 
 The skills follow the [agentskills.io](https://agentskills.io) standard and carry the `agent-skills` topic:
 
 ```bash
-gh skill install ready-agent-1/ra1          # GitHub CLI
-npx skills add ready-agent-1/ra1            # skills.sh
-gemini skills install ready-agent-1/ra1     # Gemini CLI
+gh skill install tjboudreaux/ready-agent-1          # GitHub CLI
+npx skills add tjboudreaux/ready-agent-1            # skills.sh
+gemini skills install tjboudreaux/ready-agent-1     # Gemini CLI
 # or add the plugin in Claude Code
 ```
 
@@ -77,7 +77,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ready-agent-1/ra1/ci@v1
+      - uses: tjboudreaux/ready-agent-1/ci@v1
         with: { min-level: "3", formats: "markdown,junit,sarif,github" }
         env: { GH_TOKEN: "${{ github.token }}" }
 ```

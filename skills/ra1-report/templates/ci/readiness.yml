@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ready-agent-1/ra1/ci@v1
+      - uses: tjboudreaux/ready-agent-1/ci@v1
         with:
           min-level: "3"
           formats: "markdown,junit,sarif,github"
