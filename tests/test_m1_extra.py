@@ -126,11 +126,9 @@ class TestCliBranches(unittest.TestCase):
             code = cli.main(argv)
         return code, buf.getvalue()
 
-    def test_fix_without_module_returns_2(self):
-        import sys
-        code = cli.main(["fix", "--project", str(self.repo)])  # no fix module in M1
+    def test_fix_without_report_returns_2(self):
+        code = cli.main(["fix", "--project", str(self.repo)])  # no report generated yet
         self.assertEqual(code, 2)
-        del sys
 
     def test_markdown_renders(self):
         code, out = self._run(["report", "--project", str(self.repo), "--no-github", "--format", "markdown"])

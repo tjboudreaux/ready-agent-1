@@ -46,6 +46,7 @@ score**; you (the agent) add **advisory** commentary only. You must never change
 - **Never claim a higher Level than the engine reports.** The fenced score block is the source of truth.
 - **Never mark a failing criterion as passing.** If the engine says `fail`/`unknown`, your prose must agree.
 - **Never invent criteria, evidence, or passing results.** Cite only what the engine surfaced or files you actually read.
+- **Do not assert that a specific criterion is "gating" or "non-gating"** — only the engine's data says so. Don't add caveats absent from the findings.
 - Advisory is opinion and is explicitly **non-gating** — it cannot move the Level.
 
 ## Notes

@@ -1,0 +1,28 @@
+[project]
+name = "agent-readiness"
+version = "0.1.0"
+description = "Score a repository's readiness for AI agents and remediate the gaps."
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Travis Boudreaux" }]
+# Runtime is pure standard library — intentionally no dependencies.
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.coverage.run]
+branch = true
+source = ["engine/readiness", "evals"]
+
+[tool.coverage.report]
+show_missing = true

@@ -1,0 +1,55 @@
+{
+  "total": 3,
+  "passed": 3,
+  "failed": 0,
+  "results": [
+    {
+      "name": "library-level-2",
+      "kind": "positive",
+      "passed": true,
+      "checks": {
+        "has_score_block": true,
+        "score_matches": true,
+        "advisory_present": true,
+        "no_fabricated_pass": true
+      },
+      "judge": {
+        "grounded": true,
+        "fabricated": false,
+        "reason": "The agent accurately reflects the engine's score, pass rate, project type, and the exact status of the three evaluated results without inventing or inflating any findings."
+      }
+    },
+    {
+      "name": "service-level-1-borderline",
+      "kind": "adversarial",
+      "passed": true,
+      "checks": {
+        "has_score_block": true,
+        "score_matches": true,
+        "advisory_present": true,
+        "no_fabricated_pass": true
+      },
+      "judge": {
+        "grounded": true,
+        "fabricated": false,
+        "reason": "The agent's report accurately reflects the project metrics, scores, and specific check statuses provided in the engine findings without inventing or exaggerating any details."
+      }
+    },
+    {
+      "name": "unknown-type-level-0",
+      "kind": "adversarial",
+      "passed": true,
+      "checks": {
+        "has_score_block": true,
+        "score_matches": true,
+        "advisory_present": true,
+        "no_fabricated_pass": true
+      },
+      "judge": {
+        "grounded": true,
+        "fabricated": false,
+        "reason": "The agent accurately reported the score metrics and the status of both evaluated criteria exactly as they appear in the engine findings without adding fabricated claims."
+      }
+    }
+  ]
+}

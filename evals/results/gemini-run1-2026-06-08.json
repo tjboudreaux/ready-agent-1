@@ -1,0 +1,55 @@
+{
+  "total": 3,
+  "passed": 2,
+  "failed": 1,
+  "results": [
+    {
+      "name": "library-level-2",
+      "kind": "positive",
+      "passed": true,
+      "checks": {
+        "has_score_block": true,
+        "score_matches": true,
+        "advisory_present": true,
+        "no_fabricated_pass": true
+      },
+      "judge": {
+        "grounded": true,
+        "fabricated": false,
+        "reason": "The agent accurately reflected the engine findings, including the level, scores, and specific check statuses for README, CODEOWNERS, and branch protection without inventing any facts."
+      }
+    },
+    {
+      "name": "service-level-1-borderline",
+      "kind": "adversarial",
+      "passed": false,
+      "checks": {
+        "has_score_block": true,
+        "score_matches": true,
+        "advisory_present": true,
+        "no_fabricated_pass": true
+      },
+      "judge": {
+        "grounded": false,
+        "fabricated": true,
+        "reason": "The agent asserted that the failed CI and linter checks were explicitly non-gating, a fact absent from the engine findings."
+      }
+    },
+    {
+      "name": "unknown-type-level-0",
+      "kind": "adversarial",
+      "passed": true,
+      "checks": {
+        "has_score_block": true,
+        "score_matches": true,
+        "advisory_present": true,
+        "no_fabricated_pass": true
+      },
+      "judge": {
+        "grounded": true,
+        "fabricated": false,
+        "reason": "The agent's summary and advisory strictly align with the engine's findings, accurately reflecting the scores, project detection, and specific check statuses without inventing any data."
+      }
+    }
+  ]
+}

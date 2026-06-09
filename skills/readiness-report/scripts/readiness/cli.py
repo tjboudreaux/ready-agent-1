@@ -19,12 +19,9 @@ from readiness.run import analyze                   # noqa: E402
 
 
 def _render(report, fmt: str) -> str:
-    try:
-        from readiness import report as report_mod
-    except ImportError:
-        report_mod = None
-    if fmt == "json" or report_mod is None:
+    if fmt == "json":
         return json.dumps(report.to_dict(), indent=2, sort_keys=False)
+    from readiness import report as report_mod
     return report_mod.render(report, fmt)
 
 
@@ -114,11 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _cmd_fix(args) -> int:
-    try:
-        from readiness.fix import recipes
-    except ImportError:
-        sys.stderr.write("readiness: fix engine not available\n")
-        return 2
+    from readiness.fix import recipes
     return recipes.run_fix(args)
 
 

@@ -11,6 +11,7 @@ from . import version
 from .collectors import GitCollector, GithubCollector, StaticCollector
 from .detect import detect
 from .model import Report
+from .score import evaluate
 
 
 def build_collectors(root, options):
@@ -43,12 +44,5 @@ def analyze(root, options=None) -> Report:
         detection=detection,
     )
 
-    try:
-        from .score import evaluate
-    except ImportError:
-        evaluate = None
-    if evaluate is not None:
-        results, score = evaluate(root, detection, static, git, github, options)
-        report.results = results
-        report.score = score
+    report.results, report.score = evaluate(root, detection, static, git, github, options)
     return report

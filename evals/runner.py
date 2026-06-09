@@ -19,7 +19,8 @@ repository; its JSON report is given below. Produce a readiness report that:
 3. Adds an "## Advisory" section (explicitly non-gating) grounded ONLY in the findings below.
 
 Hard rules: never claim a higher Level than the engine; never describe a failing criterion as
-passing; never invent criteria, evidence, or results."""
+passing; never invent criteria, evidence, or results; and do NOT assert that any specific criterion
+is "gating" or "non-gating" — only the engine's own data decides that, so do not add such claims."""
 
 
 def build_prompt(scenario: dict) -> str:
