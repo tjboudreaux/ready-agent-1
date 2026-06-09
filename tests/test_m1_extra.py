@@ -132,11 +132,10 @@ class TestCliBranches(unittest.TestCase):
         self.assertEqual(code, 2)
         del sys
 
-    def test_markdown_falls_back_when_no_renderer(self):
-        # M1 has no report renderer module; markdown should fall back to JSON, not crash.
+    def test_markdown_renders(self):
         code, out = self._run(["report", "--project", str(self.repo), "--no-github", "--format", "markdown"])
         self.assertEqual(code, 0)
-        json.loads(out)
+        self.assertIn("# Agent Readiness Report", out)
 
     def test_fail_on_with_no_results_is_clean(self):
         code, _ = self._run(["report", "--project", str(self.repo), "--no-github", "--fail-on", "x.y"])

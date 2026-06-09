@@ -80,6 +80,7 @@ def _base(crit):
         id=crit["id"], title=crit["title"], pillar=crit["pillar"], level=crit["level"],
         scope=crit.get("scope", "repository"), gating=crit.get("gating", True),
         fixable=bool((crit.get("fix") or {}).get("autofixable")),
+        fix_kind=(crit.get("fix") or {}).get("kind", ""),
     )
 
 

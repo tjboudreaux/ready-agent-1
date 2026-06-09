@@ -110,6 +110,7 @@ class CriterionResult:
     evidence: list = field(default_factory=list)   # list[Evidence]
     app_path: str = "."
     fixable: bool = False
+    fix_kind: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -124,6 +125,7 @@ class CriterionResult:
             "evidence": [e.to_dict() for e in self.evidence],
             "app_path": self.app_path,
             "fixable": self.fixable,
+            "fix_kind": self.fix_kind,
         }
 
 
