@@ -14,9 +14,9 @@ _SYMBOL = {
     "unknown": "?", "waived": "⊘",
 }
 _EFFORT = {
-    "scaffold": "Quick wins (auto-scaffold via readiness-fix)",
+    "scaffold": "Quick wins (auto-scaffold via sheldon-fix)",
     "github_setting": "GitHub settings (apply via gh, confirm first)",
-    "propose": "Needs authoring (draft via readiness-fix, review before use)",
+    "propose": "Needs authoring (draft via sheldon-fix, review before use)",
     "": "Manual remediation",
 }
 
@@ -92,7 +92,7 @@ def render_markdown(report) -> str:
     else:
         lines.append("")
         lines.append("_Advisory commentary, soft-criteria judgement, and Δ-vs-last-run are added "
-                     "by the readiness-report skill; the score above is deterministic._")
+                     "by the sheldon-report skill; the score above is deterministic._")
 
     return "\n".join(lines) + "\n"
 

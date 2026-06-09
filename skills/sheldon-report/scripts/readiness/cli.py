@@ -77,13 +77,13 @@ def _gate(report, args) -> int:
     if getattr(args, "min_level", None):
         level = report.score.level if report.score else 0
         if level < args.min_level:
-            sys.stderr.write(f"readiness: level {level} < required {args.min_level}\n")
+            sys.stderr.write(f"sheldon: level {level} < required {args.min_level}\n")
             return 1
     if getattr(args, "fail_on", None) and report.results:
         failing = {r.id for r in report.results if r.status.value == "fail"}
         hit = sorted(failing & set(args.fail_on))
         if hit:
-            sys.stderr.write(f"readiness: failing required criteria: {', '.join(hit)}\n")
+            sys.stderr.write(f"sheldon: failing required criteria: {', '.join(hit)}\n")
             return 1
     return 0
 

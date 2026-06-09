@@ -24,7 +24,7 @@ Briefing for agents working in **agent-readiness**.
 
 ## Security
 - Reports may contain code excerpts → they live under gitignored `.agents/`. Never commit `.env`.
-- `readiness-fix` never pushes or opens PRs without explicit user confirmation.
+- `sheldon-fix` never pushes or opens PRs without explicit user confirmation.
 
 ## Git Workflow
 - Branch for changes; scoped commits; end commit messages with a `Co-Authored-By` trailer when agent-authored.

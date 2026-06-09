@@ -11,7 +11,7 @@ import sys
 from . import contracts, judge as judgemod
 from .scenarios import all_scenarios
 
-SKILL_CONTRACT = """You are the readiness-report skill. A deterministic engine has ALREADY scored a
+SKILL_CONTRACT = """You are the sheldon-report skill. A deterministic engine has ALREADY scored a
 repository; its JSON report is given below. Produce a readiness report that:
 1. Includes a fenced ```json block containing the engine's `score` object EXACTLY — copy level,
    level_name, pass_rate, gating_passed, gating_total, and pillars without changing any number.

@@ -17,7 +17,7 @@ coverage.xml
 # OS / editor
 .DS_Store
 
-# Added by readiness-fix
+# Added by sheldon-fix
 .env
 .env.*
 *.pem
