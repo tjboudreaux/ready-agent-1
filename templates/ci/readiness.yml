@@ -1,0 +1,23 @@
+name: Agent Readiness
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write   # upload SARIF to code scanning
+  pull-requests: write
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: tjboudreaux/agent-readiness/ci@v1
+        with:
+          min-level: "3"
+          formats: "markdown,junit,sarif,github"
+        env:
+          GH_TOKEN: ${{ github.token }}

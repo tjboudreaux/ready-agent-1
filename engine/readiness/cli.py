@@ -104,6 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_fix = sub.add_parser("fix", help="Apply safe remediation scaffolds")
     p_fix.add_argument("--project", default=".")
     p_fix.add_argument("--apply", action="store_true", help="Write changes (default is dry-run)")
+    p_fix.add_argument("--force", action="store_true", help="Apply even if the worktree is dirty")
     p_fix.add_argument("--report", default=None, help="Path to a latest.json report")
     p_fix.set_defaults(func=_cmd_fix)
 
