@@ -25,13 +25,13 @@
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
     <mask id="sunmask">
-      <rect x="470" y="80" width="260" height="270" fill="#fff"/>
-      <rect x="470" y="214" width="260" height="4" fill="#000"/>
-      <rect x="470" y="225" width="260" height="5" fill="#000"/>
-      <rect x="470" y="238" width="260" height="6" fill="#000"/>
-      <rect x="470" y="255" width="260" height="8" fill="#000"/>
-      <rect x="470" y="276" width="260" height="9" fill="#000"/>
-      <rect x="470" y="301" width="260" height="11" fill="#000"/>
+      <rect x="490" y="178" width="220" height="216" fill="#fff"/>
+      <rect x="490" y="232" width="220" height="4" fill="#000"/>
+      <rect x="490" y="244" width="220" height="5" fill="#000"/>
+      <rect x="490" y="259" width="220" height="6" fill="#000"/>
+      <rect x="490" y="278" width="220" height="8" fill="#000"/>
+      <rect x="490" y="302" width="220" height="10" fill="#000"/>
+      <rect x="490" y="332" width="220" height="12" fill="#000"/>
     </mask>
     <pattern id="scan" width="3" height="3" patternUnits="userSpaceOnUse">
       <rect width="3" height="1" fill="#EAF6FF" opacity="0.05"/>
@@ -41,8 +41,8 @@
   <!-- void -->
   <rect width="1200" height="400" fill="url(#sky)"/>
 
-  <!-- synth sun -->
-  <circle cx="600" cy="210" r="125" fill="url(#sun)" mask="url(#sunmask)" filter="url(#softglow)"/>
+  <!-- synth sun (on the horizon, below the wordmark) -->
+  <circle cx="600" cy="285" r="105" fill="url(#sun)" mask="url(#sunmask)" filter="url(#softglow)"/>
 
   <!-- horizon -->
   <rect x="0" y="249" width="1200" height="2" fill="#2DE2E6" filter="url(#glow)" opacity="0.9"/>
@@ -77,8 +77,8 @@
   <!-- subtitle -->
   <text x="600" y="78" text-anchor="middle" font-family="Share Tech Mono, JetBrains Mono, monospace" font-size="21" letter-spacing="5" fill="#2DE2E6">IS YOUR CODEBASE READY FOR THE AGENTS?</text>
 
-  <!-- wordmark -->
-  <text x="600" y="188" text-anchor="middle" font-family="Orbitron, Eurostile, 'Arial Black', sans-serif" font-size="76" font-weight="800" letter-spacing="7" fill="url(#neon)" filter="url(#glow)">READY AGENT 1</text>
+  <!-- wordmark (dark outline so it reads on any background) -->
+  <text x="600" y="158" text-anchor="middle" font-family="Orbitron, Eurostile, 'Arial Black', sans-serif" font-size="76" font-weight="800" letter-spacing="7" fill="url(#neon)" stroke="#0B0A1E" stroke-width="3" paint-order="stroke" stroke-linejoin="round" filter="url(#glow)">READY AGENT 1</text>
 
   <!-- level select -->
   <text x="884" y="318" text-anchor="middle" font-family="Share Tech Mono, JetBrains Mono, monospace" font-size="13" letter-spacing="4" fill="#EAF6FF" opacity="0.8">— LEVEL SELECT —</text>
