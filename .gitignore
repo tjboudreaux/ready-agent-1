@@ -16,3 +16,8 @@ coverage.xml
 
 # OS / editor
 .DS_Store
+
+# Added by readiness-fix
+.env
+.env.*
+*.pem

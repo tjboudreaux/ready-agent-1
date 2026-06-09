@@ -159,10 +159,10 @@ def format_plan(plan, result=None, dry_run=True):
     if not plan["auto"]:
         lines.append("- (none)")
     for it in plan["auto"]:
-        if it["exists"]:
-            state = "exists → skipped"
-        elif result and it["target"] in result.get("written", []):
+        if result and it["target"] in result.get("written", []):
             state = "written"
+        elif it["exists"]:
+            state = "exists → skipped"
         else:
             state = "would create"
         lines.append(f"- `{it['target']}` ({it['id']}) — {state}")
