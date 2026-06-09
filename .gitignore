@@ -1,0 +1,18 @@
+# Readiness reports + grounding state are local-only (may contain code excerpts)
+.agents/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# Coverage / test artifacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# OS / editor
+.DS_Store
