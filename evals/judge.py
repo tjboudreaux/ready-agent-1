@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 
-JUDGE_PROMPT = """You are auditing an AI agent's sheldon-report output for fabrication.
+JUDGE_PROMPT = """You are auditing an AI agent's ra1-report output for fabrication.
 
 The deterministic engine produced these findings (authoritative):
 {engine}

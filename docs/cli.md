@@ -1,6 +1,6 @@
 # CLI reference
 
-`sheldon <command>` (zero-install via `bin/sheldon`, or `python3 <skill>/scripts/readiness/cli.py <command>`).
+`ra1 <command>` (zero-install via `bin/ra1`, or `python3 <skill>/scripts/readiness/cli.py <command>`).
 
 ## `report`
 

@@ -1,114 +1,102 @@
-# Sheldon — Brand Guide
+# Ready Agent 1 — Brand Guide
 
-> *"I've drafted an Agreement. It has clauses. You'll thank me."*
+> **READY?**  Player One has logged in. Is your codebase ready for the agents?
 
 ## The name
 
-**Sheldon.** Named for the archetype of the brilliant, rules-obsessed roommate who greets every new
-cohabitant with a meticulously prepared **Roommate Agreement** — because a shared space only works
-when everyone agrees on where things go, how things are done, and what is *non-negotiable*.
+**Ready Agent 1.** A nod to the arcade-quest spirit of *being ready before you enter the world* — except
+the world is your codebase and the players are AI agents. The first agent to log in either thrives or
+rage-quits. Ready Agent 1 tells you which, and helps you **clear all five gates** to get there.
 
-Your codebase just got new roommates: **AI agents**. Sheldon is the Agreement — and the stickler who
-makes sure the apartment is in a state where any roommate, human or agent, can thrive without burning
-the place down.
-
-- **Command:** `sheldon`
-- **Package (PyPI):** `sheldon-readiness` · **npm:** `sheldonhq` · **GitHub:** `getsheldon/sheldon`
-- **Domain:** `sheldon.tools`
+- **Command:** `ra1`
+- **Skills:** `ra1-report`, `ra1-fix`
+- **Package (PyPI/npm):** `ra1` · **GitHub:** `ready-agent-1` · **Domain:** `ra1.sh`
 
 ## The one-liner
 
-**The Roommate Agreement for your codebase — so your agents and your team play by the same rules.**
+**Is your codebase ready for the agents? Score it, clear the gates, level up.**
 
-Sheldon reads your repo, assigns it a readiness **Level (1–5)**, cites the evidence for every clause,
-and drafts the **amendments** to get you to the next level. Deterministic. Non-negotiable.
-Occasionally smug.
+Ready Agent 1 scans your repo, assigns a readiness **Level (1–5)** — five gates to clear — cites the
+evidence for every check, and hands you the **loadout** to reach the next level. Deterministic. Reproducible.
+No continues required.
 
 ## Positioning
 
-Sheldon doesn't write your features — he makes the apartment *liveable for agents*. He's not a linter,
-not a SaaS dashboard, not a vibe. He's the one who notices the AGENTS.md is missing, the CI doesn't
-actually run the tests, and *someone* committed without a CODEOWNERS, and who hands you a numbered list
-to fix it. The deterministic engine is the Agreement; the agent layer is Sheldon explaining it to you
-(whether you asked or not).
+The agent era booted up and your repo is the world they have to play in. Ready Agent 1 is the
+pre-game readiness check: does the world have the docs, tests, guardrails, and signage an agent needs to
+*win* — or will it spawn into chaos? It doesn't play the game for you (it won't write your features); it
+makes sure the level is beatable.
 
-**Against the field:** file-existence tools are roommates who *say* they'll do the dishes. Factory is a
-landlord who keeps the rules in a building you don't own. Sheldon lives with you, shows his work, and
-the Agreement is yours.
+**Against the field:** file-existence tools check that the cartridge exists. Factory is an arcade you don't
+own a key to. Ready Agent 1 runs on your machine, shows the score on every check, and the save file is yours.
 
 ## Voice & tone
 
-Precise, pedantic, supremely confident, secretly kind. Speaks in **clauses and sections**. Corrects
-you — then tells you *exactly* how to be right. Never cruel; merely *certain*.
+Arcade hype meets a good co-op teammate. Encouraging, fast, a little 1986. Talks in **gates, levels,
+loadouts, and high scores** — never condescending, always "here's how you clear it."
 
 | Do | Don't |
 |---|---|
-| "Section 3.7: thou shalt ship an AGENTS.md." | quote any TV show, verbatim lines, or catchphrases that function as trademarks |
-| "Your repo is on **Rung 2**. This is non-negotiable until it isn't." | be mean — Sheldon is exasperated, not hostile |
-| triple-knock cadence: *"knock knock knock. Your CI."* | let the bit get in the way of a clear error message |
-| flowcharts, brief footnotes, "I've prepared a brief." | use the full character name, series title, or any likeness/logo |
+| "**Gate 3 cleared.** Two to go." | reference *Ready Player One* by name, its characters, the OASIS, or its key art/logo/font |
+| "Player One is ready. Your repo is on **Level 2** — let's level up." | overclaim — the score is deterministic, not vibes |
+| "Loadout ready: 9 power-ups staged. Press **fix --apply** to gear up." | let the arcade bit bury a clear error message |
+| "Insert AGENTS.md to continue." | use any trademarked tagline; write original lines |
 
-**Rule of thumb:** delight lives in headers, the CLI banner, and marketing. **Instructions, errors, and
-report bodies stay plain and useful** — Sheldon is pedantic about clarity too.
+**Rule of thumb:** neon and hype live in the banner, headers, and marketing. **Errors, reports, and
+instructions stay plain and useful.**
 
 ### Sanctioned lines (all original)
-- "The Agreement is ready for your signature."
-- "I'm not judging your repo. I'm *grading* it. There's a difference, and it's on a five-point scale."
-- "knock knock knock. Your readiness. knock knock knock. Your readiness."
-- "I have prepared 11 amendments. We'll start with the ones that won't hurt."
-- "That's my spot — and this is your `.gitignore`. Both are sacred."
+- "READY? Your codebase isn't. Yet."
+- "Level 3 of 5 cleared. The next gate needs branch protection."
+- "New high score: 22/24 checks. GG."
+- "Insert an AGENTS.md to continue."
+- "Player One has entered the repo. Brace for impact."
 
 ## Feature naming (in-voice → function)
 
 | In-voice | What it is | Command |
 |---|---|---|
-| **The Agreement** | the readiness report (Level + cited criteria) | `sheldon report` |
-| **The Amendments** | safe remediation scaffolds + drafts | `sheldon fix` |
-| **Rungs** | maturity Levels 1–5 (climb them) | shown in the report |
-| **Clauses** | individual criteria | the per-pillar lines |
-| **Negotiated exceptions** | waivers (Sheldon disapproves, but allows) | `.agents/readiness/waivers.json` |
-| **House rules at the door** | the CI gate (`--min-level`) | `sheldon`/CI Action |
+| **Readiness Scan** | the report (Level + cited checks) | `ra1 report` |
+| **The Loadout** | safe remediation scaffolds + drafts | `ra1 fix` |
+| **Gates / Levels** | maturity Levels 1–5 (clear them to advance) | shown in the scan |
+| **Checks** | individual criteria | the per-pillar lines |
+| **Overrides** | waivers (skip a gate on purpose) | `.agents/readiness/waivers.json` |
+| **Clear-to-merge** | the CI gate (`--min-level`) | `ra1` / CI Action |
 
 ## Visual identity
 
-### The mark — an evoked silhouette (no identifying marks)
-A flat, faceless silhouette of a **tall, slim, very upright figure**, **one index finger raised** in
-gentle correction, wearing the signature **layered tee** (short sleeve over long sleeve) with a
-**blank superhero roundel** on the chest. Recognition comes entirely from **archetype + context**, never
-from a likeness:
+Full **synthwave / 80s-retro-future**: neon on midnight, perspective grid, a striped synth-sun on the
+horizon, scanlines, and an arcade level-select.
 
-- **Pose:** ramrod-straight posture; the raised "well, actually" finger (or arms crossed, alt).
-- **Wardrobe:** the double-layered tee + blank roundel emblem.
-- **Props (banner only):** a couch with one cushion stamped **"MY SPOT"**, and a **"knock, knock, knock."**
-  speech bubble. The props make it unmistakable while the figure stays generic.
+### The mark
+A neon badge — a chrome **"1"** (or **RA·1** monogram) inside a hex/roundel, ringed in cyan→magenta glow
+over a faint grid. Reads as a player number / droid designation. No likeness, no logo lift.
 
-**Hard guardrails (this is the whole point):** no face, no real superhero logos (blank roundel or `§`
-only), no actor likeness, no character full name, no series name, no trademarked catchphrases. It is an
-*original illustration of an archetype.*
-
-### Color
+### Color (synthwave)
 
 | Token | Hex | Use |
 |---|---|---|
-| **Ink** | `#14142B` | primary; the "legal document" seriousness; the silhouette |
-| **Agreement Gold** | `#E8B23A` | accent; clauses, the wax-seal stamp, Level badge |
-| **Cleared** | `#2FBF71` | pass |
-| **Breach** | `#E5484D` | fail |
-| **Pending** | `#E8B23A` | unknown / waived |
-| **Paper** | `#F7F5EF` | document background |
-| **Slate** | `#5B5B73` | secondary text |
+| **Midnight** | `#0B0A1E` | background / void |
+| **Deep Violet** | `#2A0A4A` | gradient mid / panels |
+| **Neon Magenta** | `#FF3CAC` | primary neon; wordmark, fail |
+| **Neon Cyan** | `#2DE2E6` | secondary neon; grid, links, pass |
+| **Electric Purple** | `#7A04EB` | accents, glow |
+| **Sun Amber** | `#FFD36E` | synth-sun top, highlights |
+| **Hologram** | `#EAF6FF` | near-white text on dark |
+
+Gradients: sky `#0B0A1E → #2A0A4A → #FF3CAC` (toward horizon); sun `#FFD36E → #FF3CAC`.
 
 ### Typography
-- **Wordmark / headings:** a precise geometric grotesk — **Space Grotesk** (fallback: Archivo, system sans).
-- **Body / "the legal text":** a monospace — **JetBrains Mono** (fallback: IBM Plex Mono, ui-monospace).
+- **Wordmark / display:** a wide techno face — **Orbitron** (fallbacks: Eurostile, "Arial Black", sans-serif).
+- **Body / HUD:** monospace — **Share Tech Mono** (fallbacks: JetBrains Mono, ui-monospace).
 
 ### Motifs
-Ben-Day comic dots (Ink at ~8% opacity), the **§** section mark, a flowchart arrow, and a stamped seal:
-**`CERTIFIED READY · LEVEL N`**.
+Perspective neon grid (vanishing-point floor), the slitted synth-sun, CRT scanlines (2px lines ~6% white),
+a level-select row `1 ▸ 2 ▸ 3 ▸ 4 ▸ 5` with cleared gates lit, and a blinking **`▮ PRESS START`** / **`INSERT COIN`**.
 
 ## Trademark note
 
-"Sheldon" is used as a product mark for a developer tool. We deliberately avoid the full character name,
-the series title, the actor's likeness, and any catchphrase that functions as a trademark. All copy is
-original; the silhouette is an original archetype illustration with no identifying marks. If a conflict
-ever surfaces, the `sheldonhq` / `sheldon-readiness` namespaces and `sheldon.tools` give us room to adjust.
+"Ready Agent 1" is an original product name that *alludes* to a well-known arcade-quest title as a genre
+wink. We deliberately use **no** trademarked title text, character names, story elements (e.g. the OASIS),
+logo, key art, or the film/book's typography — only generic synthwave/retro-future visual language and
+original copy. The `ra1` / `ready-agent-1` namespaces and `ra1.sh` keep us clear and flexible.

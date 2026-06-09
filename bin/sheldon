@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# Sheldon launcher — zero-install. Runs the bundled pure-stdlib engine CLI.
-#   sheldon report --project .
-#   sheldon fix --project . --apply
-exec python3 "$(cd "$(dirname "$0")/.." && pwd)/engine/readiness/cli.py" "$@"

@@ -1,4 +1,4 @@
-"""Evals for the sheldon-report / sheldon-fix agent contracts.
+"""Evals for the ra1-report / ra1-fix agent contracts.
 
 - ``contracts``: deterministic invariants the agent output MUST satisfy (score immutability, etc.).
 - ``judge``:     LLM-as-judge for prose fabrication/grounding (pluggable model_fn).

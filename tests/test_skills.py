@@ -21,7 +21,7 @@ def parse_frontmatter(text: str) -> dict:
 
 class TestSkillManifests(unittest.TestCase):
     def test_skills_are_agentskills_compliant_and_self_contained(self):
-        for name in ("sheldon-report", "sheldon-fix"):
+        for name in ("ra1-report", "ra1-fix"):
             d = REPO / "skills" / name
             with self.subTest(skill=name):
                 self.assertTrue((d / "SKILL.md").exists())  # gh skill discovers skills/*/SKILL.md

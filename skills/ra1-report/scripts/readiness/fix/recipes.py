@@ -133,7 +133,7 @@ def _apply_gitignore(path: Path, write=True):
         return False
     if write:
         sep = "" if (not existing or existing.endswith("\n")) else "\n"
-        path.write_text(existing + sep + "\n# Added by sheldon-fix\n" + "\n".join(additions) + "\n", encoding="utf-8")
+        path.write_text(existing + sep + "\n# Added by ra1-fix\n" + "\n".join(additions) + "\n", encoding="utf-8")
     return True
 
 
@@ -154,7 +154,7 @@ def _git_status_runner(root, args):  # pragma: no cover - subprocess boundary
 
 
 def format_plan(plan, result=None, dry_run=True):
-    lines = [f"# sheldon-fix plan{' (dry run — no files written)' if dry_run else ''}", ""]
+    lines = [f"# ra1-fix plan{' (dry run — no files written)' if dry_run else ''}", ""]
     lines.append("## Auto-apply (safe config scaffolds)")
     if not plan["auto"]:
         lines.append("- (none)")
@@ -181,14 +181,14 @@ def run_fix(args) -> int:
     root = Path(args.project)
     report = load_report(args, root)
     if report is None:
-        sys.stderr.write("sheldon fix: no report found; run `readiness report` first.\n")
+        sys.stderr.write("ra1 fix: no report found; run `ra1 report` first.\n")
         return 2
     plan = build_plan(root, report)
     if not getattr(args, "apply", False):
         print(format_plan(plan, dry_run=True))
         return 0
     if worktree_dirty(root) and not getattr(args, "force", False):
-        sys.stderr.write("sheldon fix: working tree has uncommitted changes; commit/stash or use --force.\n")
+        sys.stderr.write("ra1 fix: working tree has uncommitted changes; commit/stash or use --force.\n")
         return 1
     result = apply_plan(root, plan, write=True)
     print(format_plan(plan, result=result, dry_run=False))

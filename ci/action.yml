@@ -1,5 +1,5 @@
-name: "Agent Readiness"
-description: "Run the agent-readiness engine, publish a report, and gate on a minimum level."
+name: "Ready Agent 1"
+description: "Run the Ready Agent 1 engine, publish a readiness report, and gate on a minimum level."
 branding:
   icon: "check-circle"
   color: "green"

@@ -1,4 +1,4 @@
-"""Deterministic contract checks on a sheldon-report agent's output.
+"""Deterministic contract checks on a ra1-report agent's output.
 
 The agent is required to embed the engine's `score` object verbatim in a fenced ```json block.
 These checks guard the machine-readable score; prose fabrication is handled by the LLM judge.

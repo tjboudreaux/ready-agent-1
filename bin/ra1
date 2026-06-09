@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Ready Agent 1 launcher — zero-install. Runs the bundled pure-stdlib engine CLI.
+#   ra1 report --project .
+#   ra1 fix --project . --apply
+exec python3 "$(cd "$(dirname "$0")/.." && pwd)/engine/readiness/cli.py" "$@"

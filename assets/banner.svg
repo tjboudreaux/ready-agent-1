@@ -1,94 +1,105 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" role="img" aria-label="Sheldon — the roommate agreement for your codebase">
-  <title>Sheldon</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" role="img" aria-label="Ready Agent 1 — is your codebase ready for the agents?">
+  <title>Ready Agent 1</title>
   <defs>
-    <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
-      <circle cx="2" cy="2" r="1.6" fill="#14142B" opacity="0.05"/>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B0A1E"/>
+      <stop offset="0.55" stop-color="#240A47"/>
+      <stop offset="1" stop-color="#4A0E6B"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFD36E"/>
+      <stop offset="0.55" stop-color="#FF6AC1"/>
+      <stop offset="1" stop-color="#FF3CAC"/>
+    </linearGradient>
+    <linearGradient id="neon" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2DE2E6"/>
+      <stop offset="0.5" stop-color="#FF6AC1"/>
+      <stop offset="1" stop-color="#FF3CAC"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softglow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <mask id="sunmask">
+      <rect x="470" y="80" width="260" height="270" fill="#fff"/>
+      <rect x="470" y="214" width="260" height="4" fill="#000"/>
+      <rect x="470" y="225" width="260" height="5" fill="#000"/>
+      <rect x="470" y="238" width="260" height="6" fill="#000"/>
+      <rect x="470" y="255" width="260" height="8" fill="#000"/>
+      <rect x="470" y="276" width="260" height="9" fill="#000"/>
+      <rect x="470" y="301" width="260" height="11" fill="#000"/>
+    </mask>
+    <pattern id="scan" width="3" height="3" patternUnits="userSpaceOnUse">
+      <rect width="3" height="1" fill="#EAF6FF" opacity="0.05"/>
     </pattern>
   </defs>
 
-  <!-- paper + comic-dot texture -->
-  <rect width="1200" height="400" fill="#F7F5EF"/>
-  <rect width="1200" height="400" fill="url(#dots)"/>
+  <!-- void -->
+  <rect width="1200" height="400" fill="url(#sky)"/>
 
-  <!-- wax-seal: CERTIFIED READY -->
-  <g transform="translate(1148,56)">
-    <circle r="44" fill="#E8B23A"/>
-    <circle r="44" fill="none" stroke="#14142B" stroke-width="2" stroke-dasharray="2 5" opacity="0.5"/>
-    <text text-anchor="middle" font-family="JetBrains Mono, monospace" fill="#14142B">
-      <tspan x="0" y="-10" font-size="8" letter-spacing="1">CERTIFIED</tspan>
-      <tspan x="0" y="9" font-size="19" font-weight="800">READY</tspan>
-      <tspan x="0" y="24" font-size="8" letter-spacing="1">§ LEVEL</tspan>
-    </text>
+  <!-- synth sun -->
+  <circle cx="600" cy="210" r="125" fill="url(#sun)" mask="url(#sunmask)" filter="url(#softglow)"/>
+
+  <!-- horizon -->
+  <rect x="0" y="249" width="1200" height="2" fill="#2DE2E6" filter="url(#glow)" opacity="0.9"/>
+
+  <!-- neon grid floor -->
+  <g stroke="#2DE2E6" stroke-width="1.4" opacity="0.55">
+    <line x1="600" y1="251" x2="-220" y2="400"/>
+    <line x1="600" y1="251" x2="-20" y2="400"/>
+    <line x1="600" y1="251" x2="180" y2="400"/>
+    <line x1="600" y1="251" x2="340" y2="400"/>
+    <line x1="600" y1="251" x2="470" y2="400"/>
+    <line x1="600" y1="251" x2="600" y2="400"/>
+    <line x1="600" y1="251" x2="730" y2="400"/>
+    <line x1="600" y1="251" x2="860" y2="400"/>
+    <line x1="600" y1="251" x2="1020" y2="400"/>
+    <line x1="600" y1="251" x2="1220" y2="400"/>
+    <line x1="600" y1="251" x2="1420" y2="400"/>
+  </g>
+  <g stroke="#2DE2E6" stroke-width="1.4">
+    <line x1="0" y1="258" x2="1200" y2="258" opacity="0.25"/>
+    <line x1="0" y1="270" x2="1200" y2="270" opacity="0.35"/>
+    <line x1="0" y1="288" x2="1200" y2="288" opacity="0.45"/>
+    <line x1="0" y1="312" x2="1200" y2="312" opacity="0.55"/>
+    <line x1="0" y1="344" x2="1200" y2="344" opacity="0.7"/>
+    <line x1="0" y1="384" x2="1200" y2="384" opacity="0.85"/>
   </g>
 
-  <!-- "his spot" couch -->
-  <g>
-    <rect x="86" y="252" width="392" height="58" rx="14" fill="#BDB9AE"/>
-    <rect x="86" y="300" width="392" height="74" rx="14" fill="#C9C5BA"/>
-    <rect x="98" y="300" width="120" height="40" rx="8" fill="#C9C5BA" stroke="#AEA99D" stroke-width="2"/>
-    <rect x="346" y="300" width="120" height="40" rx="8" fill="#C9C5BA" stroke="#AEA99D" stroke-width="2"/>
-    <!-- MY SPOT cushion -->
-    <rect x="222" y="300" width="120" height="40" rx="8" fill="#F7F5EF" stroke="#E8B23A" stroke-width="3"/>
-    <text x="282" y="325" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="16" font-weight="800" fill="#E8B23A" letter-spacing="2">MY SPOT</text>
-  </g>
+  <!-- HUD corners -->
+  <text x="40" y="56" font-family="Share Tech Mono, JetBrains Mono, monospace" font-size="18" fill="#2DE2E6" opacity="0.85">▮ INSERT COIN</text>
+  <text x="1160" y="56" text-anchor="end" font-family="Share Tech Mono, JetBrains Mono, monospace" font-size="18" fill="#FFD36E" opacity="0.9">HI-SCORE  L3/5</text>
 
-  <!-- evoked silhouette (arms crossed, layered tee), standing on the spot -->
-  <g transform="translate(154,64)">
-    <g fill="#14142B">
-      <circle cx="128" cy="70" r="25"/>
-      <rect x="103" y="50" width="50" height="16" rx="8"/>
-      <rect x="120" y="90" width="16" height="14"/>
-      <path d="M94 104 Q128 96 162 104 L156 182 Q128 191 100 182 Z"/>
-      <path d="M94 104 q-16 2 -19 22 q12 6 24 2 Z"/>
-      <path d="M162 104 q16 2 19 22 q-12 6 -24 2 Z"/>
-      <rect x="86" y="120" width="84" height="17" rx="8.5" transform="rotate(-13 128 128)"/>
-      <rect x="86" y="134" width="84" height="17" rx="8.5" transform="rotate(11 128 142)"/>
-      <rect x="109" y="186" width="16" height="48" rx="5"/>
-      <rect x="131" y="186" width="16" height="48" rx="5"/>
-    </g>
-    <g fill="none" stroke="#F7F5EF" stroke-width="3">
-      <circle cx="128" cy="110" r="7"/>
-      <path d="M80 124 q14 5 26 1"/>
-      <path d="M176 124 q-14 5 -26 1"/>
-    </g>
-  </g>
+  <!-- subtitle -->
+  <text x="600" y="78" text-anchor="middle" font-family="Share Tech Mono, JetBrains Mono, monospace" font-size="21" letter-spacing="5" fill="#2DE2E6">IS YOUR CODEBASE READY FOR THE AGENTS?</text>
 
-  <!-- speech bubble -->
-  <g>
-    <path d="M300 78 h188 a12 12 0 0 1 12 12 v34 a12 12 0 0 1 -12 12 h-150 l-24 22 l4 -22 h-18 a12 12 0 0 1 -12 -12 v-34 a12 12 0 0 1 12 -12 Z" fill="#14142B"/>
-    <text x="394" y="112" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="17" fill="#F7F5EF">knock, knock, knock.</text>
-  </g>
+  <!-- wordmark -->
+  <text x="600" y="188" text-anchor="middle" font-family="Orbitron, Eurostile, 'Arial Black', sans-serif" font-size="76" font-weight="800" letter-spacing="7" fill="url(#neon)" filter="url(#glow)">READY AGENT 1</text>
 
-  <!-- wordmark + positioning -->
-  <text x="540" y="176" font-family="Space Grotesk, Archivo, Arial, sans-serif" font-size="108" font-weight="800" letter-spacing="4" fill="#14142B">SHELDON</text>
-  <text x="562" y="222" font-family="Space Grotesk, Archivo, Arial, sans-serif" font-size="30" fill="#14142B">The Roommate Agreement for your codebase.</text>
-  <text x="562" y="256" font-family="JetBrains Mono, monospace" font-size="17" fill="#5B5B73">score readiness · cite every clause · draft the amendments</text>
-
-  <!-- the rungs -->
-  <g font-family="JetBrains Mono, monospace" font-size="18" font-weight="800" text-anchor="middle">
-    <g>
-      <rect x="562" y="288" width="60" height="40" rx="8" fill="#F7F5EF" stroke="#AEA99D" stroke-width="2"/>
-      <text x="592" y="314" fill="#5B5B73">L1</text>
+  <!-- level select -->
+  <text x="884" y="318" text-anchor="middle" font-family="Share Tech Mono, JetBrains Mono, monospace" font-size="13" letter-spacing="4" fill="#EAF6FF" opacity="0.8">— LEVEL SELECT —</text>
+  <g font-family="Orbitron, Eurostile, 'Arial Black', sans-serif" font-size="22" font-weight="800" text-anchor="middle">
+    <g filter="url(#glow)">
+      <circle cx="772" cy="348" r="17" fill="#FF3CAC"/>
+      <circle cx="828" cy="348" r="17" fill="#FF3CAC"/>
+      <circle cx="884" cy="348" r="17" fill="#FF3CAC"/>
     </g>
-    <g>
-      <rect x="632" y="288" width="60" height="40" rx="8" fill="#F7F5EF" stroke="#AEA99D" stroke-width="2"/>
-      <text x="662" y="314" fill="#5B5B73">L2</text>
-    </g>
-    <g>
-      <rect x="702" y="288" width="60" height="40" rx="8" fill="#E8B23A"/>
-      <text x="732" y="314" fill="#14142B">L3</text>
-    </g>
-    <g>
-      <rect x="772" y="288" width="60" height="40" rx="8" fill="#F7F5EF" stroke="#AEA99D" stroke-width="2"/>
-      <text x="802" y="314" fill="#5B5B73">L4</text>
-    </g>
-    <g>
-      <rect x="842" y="288" width="60" height="40" rx="8" fill="#F7F5EF" stroke="#AEA99D" stroke-width="2"/>
-      <text x="872" y="314" fill="#5B5B73">L5</text>
-    </g>
-    <text x="930" y="314" text-anchor="start" font-size="15" font-weight="400" fill="#5B5B73">← you are here</text>
+    <circle cx="940" cy="348" r="17" fill="none" stroke="#2DE2E6" stroke-width="2" opacity="0.7"/>
+    <circle cx="996" cy="348" r="17" fill="none" stroke="#2DE2E6" stroke-width="2" opacity="0.7"/>
+    <text x="772" y="356" fill="#0B0A1E">1</text>
+    <text x="828" y="356" fill="#0B0A1E">2</text>
+    <text x="884" y="356" fill="#0B0A1E">3</text>
+    <text x="940" y="356" fill="#2DE2E6">4</text>
+    <text x="996" y="356" fill="#2DE2E6">5</text>
   </g>
 
   <!-- footer -->
-  <text x="600" y="390" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="14" fill="#5B5B73">deterministic · cited · non-negotiable</text>
+  <text x="600" y="390" text-anchor="middle" font-family="Share Tech Mono, JetBrains Mono, monospace" font-size="14" fill="#EAF6FF" opacity="0.7">deterministic · cited · clear-to-merge</text>
+
+  <!-- scanlines -->
+  <rect width="1200" height="400" fill="url(#scan)"/>
 </svg>

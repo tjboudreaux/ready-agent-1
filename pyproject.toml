@@ -10,7 +10,7 @@ authors = [{ name = "Travis Boudreaux" }]
 dependencies = []
 
 [project.scripts]
-sheldon = "readiness.cli:main"
+ra1 = "readiness.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "engine" }

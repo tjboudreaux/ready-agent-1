@@ -1,4 +1,4 @@
-name: Agent Readiness
+name: Ready Agent 1
 
 on:
   pull_request:
@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: tjboudreaux/agent-readiness/ci@v1
+      - uses: ready-agent-1/ra1/ci@v1
         with:
           min-level: "3"
           formats: "markdown,junit,sarif,github"

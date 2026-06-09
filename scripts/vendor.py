@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "engine"))
 
 from readiness import version  # noqa: E402
 
-SKILLS = ["sheldon-report", "sheldon-fix"]
+SKILLS = ["ra1-report", "ra1-fix"]
 _SKIP_PARTS = {"__pycache__"}
 
 

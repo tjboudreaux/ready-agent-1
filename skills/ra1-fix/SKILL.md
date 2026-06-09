@@ -1,8 +1,8 @@
 ---
-name: sheldon-fix
-description: Sheldon drafts the Amendments — remediate agent-readiness gaps by applying safe configuration scaffolds, drafting documentation for review, and listing GitHub settings to change. Use when the user asks to fix readiness, remediate readiness findings, raise the readiness level, apply readiness fixes, or scaffold missing config (linters, CI, CODEOWNERS, issue/PR templates, dependabot, devcontainer, .env.example). Applies changes to a local branch only and never pushes without confirmation.
+name: ra1-fix
+description: Ready Agent 1 gears up your repo (the Loadout) — remediate agent-readiness gaps by applying safe configuration scaffolds, drafting documentation for review, and listing GitHub settings to change. Use when the user asks to fix readiness, remediate readiness findings, raise the readiness level, apply readiness fixes, or scaffold missing config (linters, CI, CODEOWNERS, issue/PR templates, dependabot, devcontainer, .env.example). Applies changes to a local branch only and never pushes without confirmation.
 license: MIT
-compatibility: Python 3.11+; git for branch/commit; run sheldon-report first
+compatibility: Python 3.11+; git for branch/commit; run ra1-report first
 metadata:
   version: 0.1.0
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
@@ -15,7 +15,7 @@ scaffolds; you handle git and author any prose. Three buckets, three different s
 
 ## Steps
 
-1. **Ensure a report exists.** If `.agents/readiness/latest.json` is missing, run the sheldon-report
+1. **Ensure a report exists.** If `.agents/readiness/latest.json` is missing, run the ra1-report
    skill first.
 
 2. **Dry-run the plan** to see what would change:
@@ -45,7 +45,7 @@ scaffolds; you handle git and author any prose. Three buckets, three different s
    ```
    End the commit message with the required `Co-Authored-By` trailer.
 
-7. **Re-run sheldon-report** to show the level delta.
+7. **Re-run ra1-report** to show the level delta.
 
 ## Contract (do not violate)
 

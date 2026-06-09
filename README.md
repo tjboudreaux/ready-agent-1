@@ -1,75 +1,74 @@
 <p align="center">
-  <img src="assets/banner.png" alt="Sheldon — the Roommate Agreement for your codebase" width="100%">
+  <img src="assets/banner.png" alt="Ready Agent 1 — is your codebase ready for the agents?" width="100%">
 </p>
 
-# Sheldon
+# Ready Agent 1
 
-**The Roommate Agreement for your codebase — so your agents and your team play by the same rules.**
+**Is your codebase ready for the agents? Score it, clear the gates, level up.**
 
-Your codebase just got new roommates: AI agents. Without an agreement, chaos. Sheldon reads your repo,
-assigns it a readiness **Level (1–5)**, cites the evidence for every clause, and drafts the **amendments**
-to get you to the next level. Deterministic. Non-negotiable. Occasionally smug.
+The agent era booted up and your repo is the world they have to play in. Ready Agent 1 scans your repo,
+assigns a readiness **Level (1–5)** — five gates to clear — cites the evidence for every check, and hands
+you the **loadout** to reach the next level. Deterministic. Reproducible. No continues required.
 
-> *knock knock knock. Your readiness. knock knock knock. Your readiness.*
+> **READY?**  Player One has logged in. Brace for impact.
 
-## What Sheldon actually does
+## What Ready Agent 1 does
 
 Two agent skills over one pure-stdlib Python engine:
 
-- **`sheldon-report`** — produces a reproducible Level score across 7 pillars (Style & Validation, Build
-  System, Testing, Documentation, Dev Environment, Security & Governance, Task Discovery). Every verdict
+- **`ra1-report`** — the Readiness Scan: a reproducible Level score across 7 pillars (Style & Validation,
+  Build System, Testing, Documentation, Dev Environment, Security & Governance, Task Discovery). Every check
   cites the file, commit, or GitHub setting that justifies it.
-- **`sheldon-fix`** — drafts the Amendments: writes the safe config scaffolds that are simply *missing*,
-  proposes documentation for your review, and lists the GitHub settings to change — all on a local branch,
-  never pushed.
+- **`ra1-fix`** — the Loadout: writes the safe config scaffolds that are simply *missing*, proposes
+  documentation for your review, and lists the GitHub settings to change — all on a local branch, never pushed.
 
-Sheldon doesn't write your features. He makes the apartment liveable for agents.
+Ready Agent 1 doesn't play the game for you (it won't write your features). It makes sure the level is beatable.
 
-## Why Sheldon and not the others
+## Why Ready Agent 1, not the others
 
-| | file-existence tools | Factory (SaaS) | **Sheldon** |
+| | file-existence tools | Factory (SaaS) | **Ready Agent 1** |
 |---|---|---|---|
 | Verification | `ls` heuristics | grounded LLM (opaque) | real: semantic config parse + git + **GitHub API** |
-| The score | — | server-side | **deterministic & reproducible**, every clause cited |
-| The LLM's role | optional | authoritative | **advisory only** — it explains the Agreement, never rewrites it |
+| The score | — | server-side | **deterministic & reproducible**, every check cited |
+| The LLM's role | optional | authoritative | **advisory only** — it coaches; it can't change the score |
 | Remediation | none | PR | **safe scaffolds + drafts**, local branch, never pushes |
-| Where it lives | npm | upload your code | **local & open** — the Agreement is yours |
+| Where it runs | npm | upload your code | **local & open** — the save file is yours |
 
 The split *is* the point: a pure-stdlib engine owns the deterministic score (identical in CI and on your
-machine); Sheldon (the agent) adds non-gating advisory — and is contractually forbidden from inflating it.
+machine); the agent adds non-gating advisory — and is contractually forbidden from inflating it.
 
-## Move in
+## Insert coin
 
 The skills follow the [agentskills.io](https://agentskills.io) standard and carry the `agent-skills` topic:
 
 ```bash
-gh skill install getsheldon/sheldon          # GitHub CLI
-npx skills add getsheldon/sheldon            # skills.sh
-gemini skills install getsheldon/sheldon     # Gemini CLI
+gh skill install ready-agent-1/ra1          # GitHub CLI
+npx skills add ready-agent-1/ra1            # skills.sh
+gemini skills install ready-agent-1/ra1     # Gemini CLI
 # or add the plugin in Claude Code
 ```
 
-No runtime dependencies — **Python 3.11+** (and an authenticated `gh` unlocks the GitHub clauses).
+No runtime dependencies — **Python 3.11+** (an authenticated `gh` unlocks the GitHub-side checks).
 
-## Review the Agreement
+## Play
 
 ```bash
-sheldon report --project .                    # the Agreement (Level + cited clauses)
-sheldon report --project . --format markdown,json --out .agents/readiness
-sheldon fix --project .                       # dry-run: what the Amendments would change
-sheldon fix --project . --apply               # write safe scaffolds to a local branch
+ra1 report --project .                    # readiness scan (Level + cited checks)
+ra1 report --project . --format markdown,json --out .agents/readiness
+ra1 fix --project .                       # dry-run: what the loadout would change
+ra1 fix --project . --apply               # write safe scaffolds to a local branch
 ```
 
 (Or, through an agent: *"run a readiness report on this repo."*)
 
-## The Rungs
+## The Gates
 
-Levels **1 Functional → 2 Documented → 3 Standardized → 4 Optimized → 5 Autonomous**. A rung is yours when
-≥80% of its clauses pass *and* every rung below it is satisfied. Clauses that don't apply to your project
-are `skipped` (visibly, with a reason); when Sheldon can't determine the project type he says `unknown`
-rather than waving it through. *(Sheldon scores his own repo at Level 3. He is working on Level 4. He has a flowchart.)*
+Levels **1 Functional → 2 Documented → 3 Standardized → 4 Optimized → 5 Autonomous**. A gate clears when
+≥80% of its checks pass *and* every gate below it is cleared. Checks that don't apply to your project are
+`skipped` (visibly, with a reason); when the project type can't be determined they're `unknown` rather than
+waved through. *(Ready Agent 1 clears Gate 3 on its own repo. Working on Gate 4.)*
 
-## House rules at the door (CI)
+## Clear-to-merge (CI)
 
 ```yaml
 # .github/workflows/readiness.yml
@@ -78,19 +77,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: getsheldon/sheldon/ci@v1
+      - uses: ready-agent-1/ra1/ci@v1
         with: { min-level: "3", formats: "markdown,junit,sarif,github" }
         env: { GH_TOKEN: "${{ github.token }}" }
 ```
 
 SARIF → Security tab, JUnit → test UIs, Markdown → the step summary, and a non-zero exit below your minimum
-level. The Agreement is enforced at the door.
+level. Clear the gate to merge.
 
 ## Reference
 
-- [Brand guide](BRAND.md) · [Getting started](docs/getting-started.md) · [CLI](docs/cli.md) · [Extending the clauses](docs/extending.md) · [Contributing](CONTRIBUTING.md)
+- [Brand guide](BRAND.md) · [Getting started](docs/getting-started.md) · [CLI](docs/cli.md) · [Extending the checks](docs/extending.md) · [Contributing](CONTRIBUTING.md)
 
 ## License
 
-MIT — see [LICENSE](LICENSE). *Sheldon* is a product name; this project uses no character likeness, series
-name, or trademarked catchphrase — only an original archetype and original copy.
+MIT — see [LICENSE](LICENSE). *Ready Agent 1* is an original product name that winks at a well-known
+arcade-quest title; it uses no trademarked title text, characters, story elements, logo, key art, or
+typography — only generic synthwave visual language and original copy.

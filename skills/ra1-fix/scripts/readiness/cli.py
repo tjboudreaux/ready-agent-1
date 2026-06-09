@@ -17,22 +17,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from readiness import version                       # noqa: E402
 from readiness.run import analyze                   # noqa: E402
 
-_FIGURE = ["  ▄█▄  ", " ▐███▌ ", " ▜▆█▆▛ ", "  ███  ", "  ▌ ▐  "]
+_SUN = ["  ▟█████▙ ", " ▐███████▌", "  ╲╲╲┃╱╱╱ "]
 
 
 def render_banner(color: bool = True) -> str:
-    bold = "\033[1;33m" if color else ""
+    mag = "\033[1;35m" if color else ""   # neon magenta
+    cyan = "\033[36m" if color else ""    # neon cyan
     dim = "\033[2m" if color else ""
     off = "\033[0m" if color else ""
     rows = [
-        "",
-        f"{bold}S H E L D O N{off}",
-        "The Roommate Agreement for your codebase.",
-        "",
-        f"{dim}§ knock knock knock.  Your readiness.{off}",
+        f"{mag}R E A D Y   A G E N T   1{off}",
+        f"{cyan}is your codebase ready for the agents?{off}",
+        f"{dim}▮ insert coin · clear the gates · level up{off}",
     ]
-    out = [f"  {_FIGURE[i]}   {rows[i]}" for i in range(5)]
-    out += ["", f"{dim}  deterministic · cited · non-negotiable{off}"]
+    out = [f"  {_SUN[i]}   {rows[i]}" for i in range(3)]
+    out += ["", f"{dim}  deterministic · cited · clear-to-merge{off}"]
     return "\n".join(out)
 
 
@@ -77,13 +76,13 @@ def _gate(report, args) -> int:
     if getattr(args, "min_level", None):
         level = report.score.level if report.score else 0
         if level < args.min_level:
-            sys.stderr.write(f"sheldon: level {level} < required {args.min_level}\n")
+            sys.stderr.write(f"ra1: level {level} < required {args.min_level}\n")
             return 1
     if getattr(args, "fail_on", None) and report.results:
         failing = {r.id for r in report.results if r.status.value == "fail"}
         hit = sorted(failing & set(args.fail_on))
         if hit:
-            sys.stderr.write(f"sheldon: failing required criteria: {', '.join(hit)}\n")
+            sys.stderr.write(f"ra1: failing required criteria: {', '.join(hit)}\n")
             return 1
     return 0
 
@@ -106,14 +105,14 @@ def cmd_formats(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="sheldon",
-        description="Sheldon — the Roommate Agreement for your codebase. Score agent-readiness, "
-                    "cite every clause, draft the amendments.",
-        epilog="The Agreement is non-negotiable (until it is). Start with `sheldon report`.",
+        prog="ra1",
+        description="Ready Agent 1 — is your codebase ready for the agents? Score readiness, "
+                    "cite every check, clear the gates.",
+        epilog="READY? Clear all five gates. Start with `ra1 report`.",
     )
     sub = parser.add_subparsers(dest="command")
 
-    p_report = sub.add_parser("report", help="Review the Agreement — score the repo's readiness")
+    p_report = sub.add_parser("report", help="Readiness scan — score the repo (clear the gates)")
     p_report.add_argument("--project", default=".", help="Path to the repo (default: cwd)")
     p_report.add_argument("--format", default="json", help="Comma list: json,markdown,github,junit,sarif")
     p_report.add_argument("--out", default=None, help="Directory to write report artifacts")
@@ -126,7 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_detect.add_argument("--project", default=".")
     p_detect.set_defaults(func=cmd_detect)
 
-    p_fix = sub.add_parser("fix", help="Draft the Amendments — apply safe remediation scaffolds")
+    p_fix = sub.add_parser("fix", help="The Loadout — apply safe remediation scaffolds")
     p_fix.add_argument("--project", default=".")
     p_fix.add_argument("--apply", action="store_true", help="Write changes (default is dry-run)")
     p_fix.add_argument("--force", action="store_true", help="Apply even if the worktree is dirty")
@@ -135,7 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("version", help="Print version stamps").set_defaults(func=cmd_version)
     sub.add_parser("formats", help="List supported report formats").set_defaults(func=cmd_formats)
-    sub.add_parser("banner", help="Print the Sheldon banner").set_defaults(func=cmd_banner)
+    sub.add_parser("banner", help="Print the Ready Agent 1 banner").set_defaults(func=cmd_banner)
     return parser
 
 
