@@ -39,7 +39,7 @@ python3 scripts/vendor.py --check    # CI runs this; must report "in sync"
 - `engine/readiness/criteria/registry.json` — criteria metadata (logic lives in `checks/`, never in JSON).
 - `skills/` — the two agentskills.io skills (self-contained; engine vendored in).
 - `evals/` — agent-contract evals (deterministic contracts + LLM-as-judge).
-- `templates/` — scaffolds written by `readiness-fix`.
+- `templates/` — scaffolds written by `sheldon-fix`.
 - `ci/action.yml` — the composite GitHub Action.
 
 ## Adding or changing a criterion

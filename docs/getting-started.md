@@ -9,26 +9,25 @@
 ## Generate a report
 
 ```bash
-python3 skills/readiness-report/scripts/readiness/cli.py report \
-  --project /path/to/repo --format markdown,json --out /path/to/repo/.agents/readiness
+sheldon report --project /path/to/repo --format markdown,json --out /path/to/repo/.agents/readiness
 ```
 
 This writes `report.md`, `report.json`, and `latest.json` under `.agents/readiness/` (gitignored —
 reports may contain code excerpts) and prints the Markdown. The JSON `score` block is the
 authoritative, reproducible result.
 
-Through an agent, just ask: *"generate an agent readiness report for this repo"* — the
-`readiness-report` skill runs the engine and adds advisory commentary, without changing the score.
+Through an agent, just ask: *"run a readiness report on this repo"* — the
+`sheldon-report` skill runs the engine and adds advisory commentary, without changing the score.
 
 ## Remediate
 
 ```bash
 # Dry run — shows three buckets: auto-apply scaffolds, propose drafts, GitHub settings
-python3 skills/readiness-fix/scripts/readiness/cli.py fix --project /path/to/repo
+sheldon fix --project /path/to/repo
 
 # Apply the safe config scaffolds (idempotent; refuses on a dirty worktree)
-git -C /path/to/repo checkout -b readiness/fixes
-python3 skills/readiness-fix/scripts/readiness/cli.py fix --project /path/to/repo --apply
+git -C /path/to/repo checkout -b sheldon/amendments
+sheldon fix --project /path/to/repo --apply
 ```
 
 The engine only writes missing config files. Documentation (README, AGENTS.md, runbooks) and tests

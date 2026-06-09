@@ -1,6 +1,6 @@
 # CLI reference
 
-`python3 <engine-or-skill>/cli.py <command>` — pure stdlib, no install.
+`sheldon <command>` (zero-install via `bin/sheldon`, or `python3 <skill>/scripts/readiness/cli.py <command>`).
 
 ## `report`
 

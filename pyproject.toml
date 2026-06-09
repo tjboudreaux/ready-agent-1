@@ -9,6 +9,16 @@ authors = [{ name = "Travis Boudreaux" }]
 # Runtime is pure standard library — intentionally no dependencies.
 dependencies = []
 
+[project.scripts]
+sheldon = "readiness.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "engine" }
+packages = ["readiness", "readiness.checks", "readiness.collectors", "readiness.fix"]
+
+[tool.setuptools.package-data]
+readiness = ["criteria/*.json"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

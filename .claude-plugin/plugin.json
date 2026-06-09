@@ -1,7 +1,7 @@
 {
-  "name": "agent-readiness",
+  "name": "sheldon",
   "version": "0.1.0",
-  "description": "Agent Readiness skills: score a repository's readiness for AI agents (deterministic, cited, Level 1–5) and remediate the gaps with safe scaffolds.",
+  "description": "Sheldon — the Roommate Agreement for your codebase. Score a repository's agent-readiness (deterministic, cited, Level 1–5) and draft the amendments to raise it.",
   "author": { "name": "Travis Boudreaux" },
   "homepage": "https://github.com/tjboudreaux/agent-readiness",
   "repository": "https://github.com/tjboudreaux/agent-readiness",

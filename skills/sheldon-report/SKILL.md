@@ -1,6 +1,6 @@
 ---
-name: readiness-report
-description: Generate an Agent Readiness report for a repository — a deterministic, cited score (Level 1–5 across Style & Validation, Build System, Testing, Documentation, Dev Environment, Security, and Task Discovery) plus advisory guidance. Use when the user asks to assess agent readiness, score a repo, check whether a codebase is ready for AI agents, generate a readiness report, or find out a repo's readiness level. Runs a local pure-stdlib engine; the score is reproducible and the agent only adds non-gating advisory.
+name: sheldon-report
+description: Sheldon reviews the Roommate Agreement — a deterministic, cited agent-readiness score (Level 1–5 across Style & Validation, Build System, Testing, Documentation, Dev Environment, Security, and Task Discovery) plus advisory guidance. Use when the user asks to assess agent readiness, score a repo, check whether a codebase is ready for AI agents, run Sheldon, generate a readiness report, or find out a repo's readiness level. Runs a local pure-stdlib engine; the score is reproducible and the agent only adds non-gating advisory.
 license: MIT
 compatibility: Python 3.11+; optional authenticated gh CLI for GitHub (T2) checks
 metadata:
@@ -54,4 +54,4 @@ score**; you (the agent) add **advisory** commentary only. You must never change
 - If the engine reports `project_type: unknown`, surface that honestly — type-dependent criteria are
   `unknown`, not silently skipped. Suggest the user pin the type via `.agents/readiness/config.json`.
 - T2 (GitHub) criteria are `skipped` when `gh` is unavailable; recommend authenticating `gh` for a fuller score.
-- To raise the score, hand off to the **readiness-fix** skill.
+- To raise the score, hand off to the **sheldon-fix** skill (it drafts the Amendments).

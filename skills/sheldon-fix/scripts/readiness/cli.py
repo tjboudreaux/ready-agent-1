@@ -17,6 +17,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from readiness import version                       # noqa: E402
 from readiness.run import analyze                   # noqa: E402
 
+_FIGURE = ["  ▄█▄  ", " ▐███▌ ", " ▜▆█▆▛ ", "  ███  ", "  ▌ ▐  "]
+
+
+def render_banner(color: bool = True) -> str:
+    bold = "\033[1;33m" if color else ""
+    dim = "\033[2m" if color else ""
+    off = "\033[0m" if color else ""
+    rows = [
+        "",
+        f"{bold}S H E L D O N{off}",
+        "The Roommate Agreement for your codebase.",
+        "",
+        f"{dim}§ knock knock knock.  Your readiness.{off}",
+    ]
+    out = [f"  {_FIGURE[i]}   {rows[i]}" for i in range(5)]
+    out += ["", f"{dim}  deterministic · cited · non-negotiable{off}"]
+    return "\n".join(out)
+
+
+def cmd_banner(args) -> int:
+    print(render_banner(sys.stdout.isatty()))
+    return 0
+
 
 def _render(report, fmt: str) -> str:
     if fmt == "json":
@@ -82,10 +105,15 @@ def cmd_formats(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="readiness", description="Agent readiness analyzer")
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser = argparse.ArgumentParser(
+        prog="sheldon",
+        description="Sheldon — the Roommate Agreement for your codebase. Score agent-readiness, "
+                    "cite every clause, draft the amendments.",
+        epilog="The Agreement is non-negotiable (until it is). Start with `sheldon report`.",
+    )
+    sub = parser.add_subparsers(dest="command")
 
-    p_report = sub.add_parser("report", help="Analyze a repo and emit a readiness report")
+    p_report = sub.add_parser("report", help="Review the Agreement — score the repo's readiness")
     p_report.add_argument("--project", default=".", help="Path to the repo (default: cwd)")
     p_report.add_argument("--format", default="json", help="Comma list: json,markdown,github,junit,sarif")
     p_report.add_argument("--out", default=None, help="Directory to write report artifacts")
@@ -98,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_detect.add_argument("--project", default=".")
     p_detect.set_defaults(func=cmd_detect)
 
-    p_fix = sub.add_parser("fix", help="Apply safe remediation scaffolds")
+    p_fix = sub.add_parser("fix", help="Draft the Amendments — apply safe remediation scaffolds")
     p_fix.add_argument("--project", default=".")
     p_fix.add_argument("--apply", action="store_true", help="Write changes (default is dry-run)")
     p_fix.add_argument("--force", action="store_true", help="Apply even if the worktree is dirty")
@@ -107,6 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("version", help="Print version stamps").set_defaults(func=cmd_version)
     sub.add_parser("formats", help="List supported report formats").set_defaults(func=cmd_formats)
+    sub.add_parser("banner", help="Print the Sheldon banner").set_defaults(func=cmd_banner)
     return parser
 
 
@@ -118,6 +147,9 @@ def _cmd_fix(args) -> int:
 def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if not hasattr(args, "func"):
+        print(render_banner(sys.stdout.isatty()))
+        return 0
     return args.func(args)
 
 

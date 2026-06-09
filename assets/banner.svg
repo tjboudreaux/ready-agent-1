@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" role="img" aria-label="Sheldon — the roommate agreement for your codebase">
+  <title>Sheldon</title>
+  <defs>
+    <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.6" fill="#14142B" opacity="0.05"/>
+    </pattern>
+  </defs>
+
+  <!-- paper + comic-dot texture -->
+  <rect width="1200" height="400" fill="#F7F5EF"/>
+  <rect width="1200" height="400" fill="url(#dots)"/>
+
+  <!-- wax-seal: CERTIFIED READY -->
+  <g transform="translate(1148,56)">
+    <circle r="44" fill="#E8B23A"/>
+    <circle r="44" fill="none" stroke="#14142B" stroke-width="2" stroke-dasharray="2 5" opacity="0.5"/>
+    <text text-anchor="middle" font-family="JetBrains Mono, monospace" fill="#14142B">
+      <tspan x="0" y="-10" font-size="8" letter-spacing="1">CERTIFIED</tspan>
+      <tspan x="0" y="9" font-size="19" font-weight="800">READY</tspan>
+      <tspan x="0" y="24" font-size="8" letter-spacing="1">§ LEVEL</tspan>
+    </text>
+  </g>
+
+  <!-- "his spot" couch -->
+  <g>
+    <rect x="86" y="252" width="392" height="58" rx="14" fill="#BDB9AE"/>
+    <rect x="86" y="300" width="392" height="74" rx="14" fill="#C9C5BA"/>
+    <rect x="98" y="300" width="120" height="40" rx="8" fill="#C9C5BA" stroke="#AEA99D" stroke-width="2"/>
+    <rect x="346" y="300" width="120" height="40" rx="8" fill="#C9C5BA" stroke="#AEA99D" stroke-width="2"/>
+    <!-- MY SPOT cushion -->
+    <rect x="222" y="300" width="120" height="40" rx="8" fill="#F7F5EF" stroke="#E8B23A" stroke-width="3"/>
+    <text x="282" y="325" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="16" font-weight="800" fill="#E8B23A" letter-spacing="2">MY SPOT</text>
+  </g>
+
+  <!-- evoked silhouette (arms crossed, layered tee), standing on the spot -->
+  <g transform="translate(154,64)">
+    <g fill="#14142B">
+      <circle cx="128" cy="70" r="25"/>
+      <rect x="103" y="50" width="50" height="16" rx="8"/>
+      <rect x="120" y="90" width="16" height="14"/>
+      <path d="M94 104 Q128 96 162 104 L156 182 Q128 191 100 182 Z"/>
+      <path d="M94 104 q-16 2 -19 22 q12 6 24 2 Z"/>
+      <path d="M162 104 q16 2 19 22 q-12 6 -24 2 Z"/>
+      <rect x="86" y="120" width="84" height="17" rx="8.5" transform="rotate(-13 128 128)"/>
+      <rect x="86" y="134" width="84" height="17" rx="8.5" transform="rotate(11 128 142)"/>
+      <rect x="109" y="186" width="16" height="48" rx="5"/>
+      <rect x="131" y="186" width="16" height="48" rx="5"/>
+    </g>
+    <g fill="none" stroke="#F7F5EF" stroke-width="3">
+      <circle cx="128" cy="110" r="7"/>
+      <path d="M80 124 q14 5 26 1"/>
+      <path d="M176 124 q-14 5 -26 1"/>
+    </g>
+  </g>
+
+  <!-- speech bubble -->
+  <g>
+    <path d="M300 78 h188 a12 12 0 0 1 12 12 v34 a12 12 0 0 1 -12 12 h-150 l-24 22 l4 -22 h-18 a12 12 0 0 1 -12 -12 v-34 a12 12 0 0 1 12 -12 Z" fill="#14142B"/>
+    <text x="394" y="112" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="17" fill="#F7F5EF">knock, knock, knock.</text>
+  </g>
+
+  <!-- wordmark + positioning -->
+  <text x="540" y="176" font-family="Space Grotesk, Archivo, Arial, sans-serif" font-size="108" font-weight="800" letter-spacing="4" fill="#14142B">SHELDON</text>
+  <text x="562" y="222" font-family="Space Grotesk, Archivo, Arial, sans-serif" font-size="30" fill="#14142B">The Roommate Agreement for your codebase.</text>
+  <text x="562" y="256" font-family="JetBrains Mono, monospace" font-size="17" fill="#5B5B73">score readiness · cite every clause · draft the amendments</text>
+
+  <!-- the rungs -->
+  <g font-family="JetBrains Mono, monospace" font-size="18" font-weight="800" text-anchor="middle">
+    <g>
+      <rect x="562" y="288" width="60" height="40" rx="8" fill="#F7F5EF" stroke="#AEA99D" stroke-width="2"/>
+      <text x="592" y="314" fill="#5B5B73">L1</text>
+    </g>
+    <g>
+      <rect x="632" y="288" width="60" height="40" rx="8" fill="#F7F5EF" stroke="#AEA99D" stroke-width="2"/>
+      <text x="662" y="314" fill="#5B5B73">L2</text>
+    </g>
+    <g>
+      <rect x="702" y="288" width="60" height="40" rx="8" fill="#E8B23A"/>
+      <text x="732" y="314" fill="#14142B">L3</text>
+    </g>
+    <g>
+      <rect x="772" y="288" width="60" height="40" rx="8" fill="#F7F5EF" stroke="#AEA99D" stroke-width="2"/>
+      <text x="802" y="314" fill="#5B5B73">L4</text>
+    </g>
+    <g>
+      <rect x="842" y="288" width="60" height="40" rx="8" fill="#F7F5EF" stroke="#AEA99D" stroke-width="2"/>
+      <text x="872" y="314" fill="#5B5B73">L5</text>
+    </g>
+    <text x="930" y="314" text-anchor="start" font-size="15" font-weight="400" fill="#5B5B73">← you are here</text>
+  </g>
+
+  <!-- footer -->
+  <text x="600" y="390" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="14" fill="#5B5B73">deterministic · cited · non-negotiable</text>
+</svg>

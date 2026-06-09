@@ -1,65 +1,75 @@
-# agent-readiness
+<p align="center">
+  <img src="assets/banner.png" alt="Sheldon — the Roommate Agreement for your codebase" width="100%">
+</p>
 
-**Score a repository's readiness for AI agents — deterministically, with cited evidence — and remediate the gaps.**
+# Sheldon
 
-An open, local alternative to Factory.ai's Agent Readiness Report. Two agent skills over one
-pure-stdlib Python engine:
+**The Roommate Agreement for your codebase — so your agents and your team play by the same rules.**
 
-- **`readiness-report`** — produces a reproducible **Level 1–5** score across 7 pillars (Style &
-  Validation, Build System, Testing, Documentation, Dev Environment, Security & Governance, Task
-  Discovery), with every verdict backed by cited evidence.
-- **`readiness-fix`** — remediates the gaps with safe config scaffolds, proposes documentation drafts
-  for review, and lists the GitHub settings to change — applied to a local branch, never pushed.
+Your codebase just got new roommates: AI agents. Without an agreement, chaos. Sheldon reads your repo,
+assigns it a readiness **Level (1–5)**, cites the evidence for every clause, and drafts the **amendments**
+to get you to the next level. Deterministic. Non-negotiable. Occasionally smug.
 
-It runs anywhere: Claude Code, Droid, Codex, Gemini, or CI.
+> *knock knock knock. Your readiness. knock knock knock. Your readiness.*
 
-## Why it's different
+## What Sheldon actually does
 
-| | file-existence tools (e.g. kodus) | Factory (SaaS) | **agent-readiness** |
+Two agent skills over one pure-stdlib Python engine:
+
+- **`sheldon-report`** — produces a reproducible Level score across 7 pillars (Style & Validation, Build
+  System, Testing, Documentation, Dev Environment, Security & Governance, Task Discovery). Every verdict
+  cites the file, commit, or GitHub setting that justifies it.
+- **`sheldon-fix`** — drafts the Amendments: writes the safe config scaffolds that are simply *missing*,
+  proposes documentation for your review, and lists the GitHub settings to change — all on a local branch,
+  never pushed.
+
+Sheldon doesn't write your features. He makes the apartment liveable for agents.
+
+## Why Sheldon and not the others
+
+| | file-existence tools | Factory (SaaS) | **Sheldon** |
 |---|---|---|---|
 | Verification | `ls` heuristics | grounded LLM (opaque) | real: semantic config parse + git + **GitHub API** |
-| Score | — | server-side | **deterministic & reproducible**, every verdict cited |
-| LLM role | optional | authoritative | **advisory only** — never moves the gating score |
-| Project-type awareness | none | yes | yes, with explicit `unknown` (no silent skips) |
-| Remediation | none | PR | **safe scaffolds + drafts**, local-branch, never pushes |
-| Hosting | npm | upload your code | **local & open** — nothing leaves your machine |
-| Extensible | fork | — | typed Python checks + data registry |
+| The score | — | server-side | **deterministic & reproducible**, every clause cited |
+| The LLM's role | optional | authoritative | **advisory only** — it explains the Agreement, never rewrites it |
+| Remediation | none | PR | **safe scaffolds + drafts**, local branch, never pushes |
+| Where it lives | npm | upload your code | **local & open** — the Agreement is yours |
 
-The split is the point: a **pure-stdlib engine owns the deterministic gating score** (same repo +
-same engine version → identical score, in CI or locally); the **agent adds non-gating advisory**.
+The split *is* the point: a pure-stdlib engine owns the deterministic score (identical in CI and on your
+machine); Sheldon (the agent) adds non-gating advisory — and is contractually forbidden from inflating it.
 
-## Install
+## Move in
 
-The skills follow the [agentskills.io](https://agentskills.io) `SKILL.md` standard and carry the
-`agent-skills` topic, so any of these work:
+The skills follow the [agentskills.io](https://agentskills.io) standard and carry the `agent-skills` topic:
 
 ```bash
-gh skill install tjboudreaux/agent-readiness          # GitHub CLI
-npx skills add tjboudreaux/agent-readiness            # skills.sh
-gemini skills install tjboudreaux/agent-readiness     # Gemini CLI
+gh skill install getsheldon/sheldon          # GitHub CLI
+npx skills add getsheldon/sheldon            # skills.sh
+gemini skills install getsheldon/sheldon     # Gemini CLI
 # or add the plugin in Claude Code
 ```
 
-No runtime dependencies — just **Python 3.11+** (and an authenticated `gh` for the GitHub checks).
+No runtime dependencies — **Python 3.11+** (and an authenticated `gh` unlocks the GitHub clauses).
 
-## Use
-
-In your agent, ask for a readiness report (the `readiness-report` skill runs the engine and adds
-advisory). Or run the engine directly:
+## Review the Agreement
 
 ```bash
-# Score a repo (writes report.md / report.json / latest.json under .agents/readiness/)
-python3 skills/readiness-report/scripts/readiness/cli.py report --project . \
-  --format markdown,json --out .agents/readiness
-
-# See what remediation would do (dry run), then apply safe scaffolds to a branch
-python3 skills/readiness-fix/scripts/readiness/cli.py fix --project .
-python3 skills/readiness-fix/scripts/readiness/cli.py fix --project . --apply
+sheldon report --project .                    # the Agreement (Level + cited clauses)
+sheldon report --project . --format markdown,json --out .agents/readiness
+sheldon fix --project .                       # dry-run: what the Amendments would change
+sheldon fix --project . --apply               # write safe scaffolds to a local branch
 ```
 
-## CI
+(Or, through an agent: *"run a readiness report on this repo."*)
 
-Gate merges on a minimum level and publish findings (SARIF → Security tab, JUnit, step summary):
+## The Rungs
+
+Levels **1 Functional → 2 Documented → 3 Standardized → 4 Optimized → 5 Autonomous**. A rung is yours when
+≥80% of its clauses pass *and* every rung below it is satisfied. Clauses that don't apply to your project
+are `skipped` (visibly, with a reason); when Sheldon can't determine the project type he says `unknown`
+rather than waving it through. *(Sheldon scores his own repo at Level 3. He is working on Level 4. He has a flowchart.)*
+
+## House rules at the door (CI)
 
 ```yaml
 # .github/workflows/readiness.yml
@@ -68,26 +78,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: tjboudreaux/agent-readiness/ci@v1
+      - uses: getsheldon/sheldon/ci@v1
         with: { min-level: "3", formats: "markdown,junit,sarif,github" }
         env: { GH_TOKEN: "${{ github.token }}" }
 ```
 
-## The level model
+SARIF → Security tab, JUnit → test UIs, Markdown → the step summary, and a non-zero exit below your minimum
+level. The Agreement is enforced at the door.
 
-Levels **1 Functional → 2 Documented → 3 Standardized → 4 Optimized → 5 Autonomous**. A level is
-achieved when ≥80% of its gating criteria pass *and* all lower levels are achieved. Criteria that
-don't apply to the project type are `skipped` (visibly, with a reason); when the type can't be
-determined they're `unknown`, never silently skipped. v1 gates ~32 high-confidence deterministic
-criteria; observability and product-analytics ship advisory-only (see [docs/extending.md](docs/extending.md)).
+## Reference
 
-## Docs
-
-- [Getting started](docs/getting-started.md)
-- [CLI reference](docs/cli.md)
-- [Extending the criteria](docs/extending.md)
-- [Contributing](CONTRIBUTING.md)
+- [Brand guide](BRAND.md) · [Getting started](docs/getting-started.md) · [CLI](docs/cli.md) · [Extending the clauses](docs/extending.md) · [Contributing](CONTRIBUTING.md)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). *Sheldon* is a product name; this project uses no character likeness, series
+name, or trademarked catchphrase — only an original archetype and original copy.

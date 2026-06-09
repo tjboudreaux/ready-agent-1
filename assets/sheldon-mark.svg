@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Sheldon mark">
+  <title>Sheldon</title>
+  <!-- paper badge + agreement-gold ring -->
+  <rect x="6" y="6" width="244" height="244" rx="44" fill="#F7F5EF"/>
+  <rect x="6" y="6" width="244" height="244" rx="44" fill="none" stroke="#E8B23A" stroke-width="6"/>
+
+  <!-- evoked archetype silhouette: tall, upright, arms crossed, layered tee -->
+  <g fill="#14142B">
+    <!-- head + neat fringe (flattened top) -->
+    <circle cx="128" cy="70" r="25"/>
+    <rect x="103" y="50" width="50" height="16" rx="8"/>
+    <!-- neck -->
+    <rect x="120" y="90" width="16" height="14"/>
+    <!-- torso: tapered layered tee -->
+    <path d="M94 104 Q128 96 162 104 L156 182 Q128 191 100 182 Z"/>
+    <!-- short-sleeve caps (the iconic double layer) -->
+    <path d="M94 104 q-16 2 -19 22 q12 6 24 2 Z"/>
+    <path d="M162 104 q16 2 19 22 q-12 6 -24 2 Z"/>
+    <!-- crossed forearms, elbows poking past the torso so the cross reads -->
+    <rect x="86" y="120" width="84" height="17" rx="8.5" transform="rotate(-13 128 128)"/>
+    <rect x="86" y="134" width="84" height="17" rx="8.5" transform="rotate(11 128 142)"/>
+    <!-- legs -->
+    <rect x="109" y="186" width="16" height="48" rx="5"/>
+    <rect x="131" y="186" width="16" height="48" rx="5"/>
+  </g>
+
+  <!-- paper-knockout details: blank superhero roundel + sleeve hems -->
+  <g fill="none" stroke="#F7F5EF" stroke-width="3">
+    <circle cx="128" cy="110" r="7"/>
+    <path d="M80 124 q14 5 26 1"/>
+    <path d="M176 124 q-14 5 -26 1"/>
+  </g>
+</svg>
