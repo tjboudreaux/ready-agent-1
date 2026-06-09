@@ -1,0 +1,10 @@
+{
+  "name": "agent-readiness",
+  "version": "0.1.0",
+  "description": "Agent Readiness skills: score a repository's readiness for AI agents (deterministic, cited, Level 1–5) and remediate the gaps with safe scaffolds.",
+  "author": { "name": "Travis Boudreaux" },
+  "homepage": "https://github.com/tjboudreaux/agent-readiness",
+  "repository": "https://github.com/tjboudreaux/agent-readiness",
+  "license": "MIT",
+  "keywords": ["agent-skills", "claude-code", "readiness", "code-quality", "ci"]
+}

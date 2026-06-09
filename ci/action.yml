@@ -1,0 +1,50 @@
+name: "Agent Readiness"
+description: "Run the agent-readiness engine, publish a report, and gate on a minimum level."
+branding:
+  icon: "check-circle"
+  color: "green"
+inputs:
+  project:
+    description: "Path to the repository to analyze"
+    required: false
+    default: "."
+  min-level:
+    description: "Fail the job if the readiness level is below this (1-5)"
+    required: false
+    default: "3"
+  formats:
+    description: "Comma-separated report formats"
+    required: false
+    default: "markdown,junit,sarif,github"
+  upload-sarif:
+    description: "Upload SARIF to GitHub code scanning"
+    required: false
+    default: "true"
+runs:
+  using: "composite"
+  steps:
+    - name: Run readiness engine (deterministic)
+      shell: bash
+      run: |
+        python3 "${{ github.action_path }}/../engine/readiness/cli.py" report \
+          --project "${{ inputs.project }}" \
+          --format "${{ inputs.formats }}" \
+          --out "${{ inputs.project }}/.agents/readiness"
+        echo "report written"
+    - name: Publish job summary
+      shell: bash
+      run: |
+        if [ -f "${{ inputs.project }}/.agents/readiness/report.md" ]; then
+          cat "${{ inputs.project }}/.agents/readiness/report.md" >> "$GITHUB_STEP_SUMMARY"
+        fi
+    - name: Upload SARIF
+      if: ${{ inputs.upload-sarif == 'true' && hashFiles(format('{0}/.agents/readiness/report.sarif', inputs.project)) != '' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: "${{ inputs.project }}/.agents/readiness/report.sarif"
+    - name: Gate on minimum level
+      shell: bash
+      run: |
+        python3 "${{ github.action_path }}/../engine/readiness/cli.py" report \
+          --project "${{ inputs.project }}" --format json \
+          --min-level "${{ inputs.min-level }}" > /dev/null
