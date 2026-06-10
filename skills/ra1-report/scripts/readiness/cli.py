@@ -48,7 +48,8 @@ def _render(report, fmt: str) -> str:
 
 
 def cmd_report(args) -> int:
-    report = analyze(args.project, {"no_github": args.no_github})
+    report = analyze(args.project, {"no_github": args.no_github,
+                                    "exec": args.exec_t3, "exec_timeout": args.exec_timeout})
     formats = [f.strip() for f in args.format.split(",") if f.strip()] or ["json"]
     out_dir = Path(args.out) if args.out else None
     if out_dir:
@@ -117,6 +118,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_report.add_argument("--format", default="json", help="Comma list: json,markdown,github,junit,sarif")
     p_report.add_argument("--out", default=None, help="Directory to write report artifacts")
     p_report.add_argument("--no-github", action="store_true", help="Disable T2 GitHub API checks")
+    p_report.add_argument("--exec", dest="exec_t3", action="store_true",
+                          help="Opt in to T3 execution (sandboxed copy, allowlisted test cmd; advisory only)")
+    p_report.add_argument("--exec-timeout", type=int, default=120,
+                          help="T3 execution timeout in seconds (default 120)")
     p_report.add_argument("--min-level", type=int, default=None, help="Exit non-zero if below this level")
     p_report.add_argument("--fail-on", nargs="*", default=None, help="Exit non-zero if these criterion ids fail")
     p_report.set_defaults(func=cmd_report)

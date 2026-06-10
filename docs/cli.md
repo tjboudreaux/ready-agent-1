@@ -12,6 +12,8 @@ Analyze a repository and emit a readiness report.
 | `--format LIST` | `json` | Comma list: `json,markdown,github,junit,sarif` |
 | `--out DIR` | — | Write `report.<ext>` + `latest.json` to this directory |
 | `--no-github` | off | Disable T2 GitHub API checks (offline / deterministic) |
+| `--exec` | off | Opt in to T3 execution: runs the detected test command on an isolated temp copy (allowlisted argv, scrubbed env, hard timeout). Advisory only — never changes the level |
+| `--exec-timeout N` | 120 | T3 execution timeout in seconds |
 | `--min-level N` | — | Exit non-zero if the achieved level is below N |
 | `--fail-on ID …` | — | Exit non-zero if any of these criterion ids fail |
 

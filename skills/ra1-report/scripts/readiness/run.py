@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import version
-from .collectors import GitCollector, GithubCollector, StaticCollector
+from .collectors import ExecCollector, GitCollector, GithubCollector, StaticCollector
 from .detect import detect
 from .model import Report
 from .score import evaluate
@@ -26,9 +26,11 @@ def build_collectors(root, options):
 
 
 def analyze(root, options=None) -> Report:
-    options = options or {}
+    options = dict(options or {})
     root = Path(root)
     static, git, github = build_collectors(root, options)
+    # T3 is constructed disabled unless options["exec"] is set; checks see it as ctx.exec.
+    options.setdefault("_exec", ExecCollector(root, options))
     detection = detect(root, static, options)
 
     vs = version.version_stamp()

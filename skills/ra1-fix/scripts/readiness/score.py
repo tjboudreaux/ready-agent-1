@@ -72,7 +72,8 @@ def _lang_match(applies_langs, actual_langs):
 
 def _ctx(root, detection, static, git, github, app, options):
     return Context(root=Path(root), detection=detection, static=static, git=git,
-                   github=github, app=app, options=options)
+                   github=github, app=app, options=options,
+                   exec=(options or {}).get("_exec"))
 
 
 def _base(crit):

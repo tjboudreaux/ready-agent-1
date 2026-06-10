@@ -70,7 +70,9 @@ as advisory first, in whatever release specs them; none of this list affects tod
 
 ### Testing (deterministic + T3 candidates)
 - Coverage threshold configured/enforced (T0/T2).
-- Tests actually pass on clean checkout (T3, sandbox-gated).
+- **Tests Pass** (`testing.tests_pass`, T3) — shipped advisory in engine 0.2.0: the detected
+  test command runs on an isolated copy under the sandbox contract, opt-in via `--exec`.
+  Graduates only with deterministic T3 fixtures.
 - Flake quarantine / retry policy present (T0).
 
 ### Observability (advisory-only in v1, the largest deferred pillar)

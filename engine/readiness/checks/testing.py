@@ -36,3 +36,27 @@ def test_naming(ctx):
     if any_tests:
         return failed("Test directories exist but files don't match a standard naming convention.")
     return skipped("No tests present to assess naming.")
+
+
+def tests_pass(ctx):
+    """T3 (advisory): the detected test command succeeds on an isolated copy of the repo.
+
+    Skips unless the user opted in (``--exec``); CI status from T2 substitutes by default.
+    """
+    ex = ctx.exec
+    if ex is None or not ex.enabled:
+        return skipped("T3 execution disabled (opt in with --exec); CI status (T2) substitutes.")
+    cmd = ctx.app.test_cmd
+    if not cmd:
+        return skipped("No detected test command to execute.")
+    res = ex.run_test_cmd(cmd, ctx.app.path)
+    if res is None:
+        return skipped("T3 execution unavailable.")
+    if not res["allowed"]:
+        return skipped(f"'{cmd}' is not on the T3 allowlist; not executed.")
+    if res["timed_out"]:
+        return failed(f"'{cmd}' timed out after {ex.timeout}s on an isolated copy.")
+    if res["returncode"] == 0:
+        return passed(f"'{cmd}' succeeded on an isolated copy.",
+                      [ev(f"T3 sandboxed run: {' '.join(res['argv'])}", tier="T3")])
+    return failed(f"'{cmd}' exited {res['returncode']} on an isolated copy.")

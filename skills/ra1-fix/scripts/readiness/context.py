@@ -23,6 +23,7 @@ class Context:
     github: GithubCollector
     app: App
     options: dict = field(default_factory=dict)
+    exec: object = None  # ExecCollector when T3 is opted in (None otherwise)
 
     def app_static(self) -> StaticCollector:
         """Collector scoped to the current application's directory (repo root for '.')."""
