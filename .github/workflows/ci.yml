@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dev tools (coverage is dev-only; runtime is pure stdlib)
+        run: python3 -m pip install coverage
+      - name: Tests with coverage (gate >90%)
+        run: |
+          python3 -m coverage run --branch --source=engine/readiness,evals -m unittest discover -s tests -t .
+          python3 -m coverage report --fail-under=90
+      - name: Vendored skills byte-parity
+        run: python3 scripts/vendor.py --check
