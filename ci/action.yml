@@ -39,6 +39,9 @@ runs:
         fi
     - name: Upload SARIF
       if: ${{ inputs.upload-sarif == 'true' && hashFiles(format('{0}/.agents/readiness/report.sarif', inputs.project)) != '' }}
+      # Best-effort: code scanning is unavailable on private repos without GHAS;
+      # the readiness gate is the report + min-level step, not this upload.
+      continue-on-error: true
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: "${{ inputs.project }}/.agents/readiness/report.sarif"
