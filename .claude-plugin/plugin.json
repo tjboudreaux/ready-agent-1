@@ -1,6 +1,6 @@
 {
   "name": "ready-agent-1",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Ready Agent 1 — is your codebase ready for the agents? Score a repository's agent-readiness (deterministic, cited, Level 1–5) and clear the gates to raise it.",
   "author": { "name": "Travis Boudreaux" },
   "homepage": "https://github.com/tjboudreaux/ready-agent-1",

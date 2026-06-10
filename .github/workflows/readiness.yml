@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   security-events: write   # upload SARIF to code scanning
+  actions: read            # upload-sarif + T2 workflow checks need workflow-run reads
   pull-requests: write
 
 jobs:
