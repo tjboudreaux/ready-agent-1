@@ -7,6 +7,7 @@ silently skipped.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import List, Tuple
 
@@ -29,6 +30,38 @@ CONF_HIGH = 0.9
 CONF_MED = 0.6
 CONF_LOW = 0.3
 UNKNOWN_THRESHOLD = 0.5
+
+PIN_SOURCE = ".agents/readiness/config.json"
+VALID_PIN_TYPES = {"library", "service", "frontend", "cli", "data", "infra"}
+
+
+def load_detect_config(root, options=None) -> dict:
+    """Read the ``detect`` block of ``.agents/readiness/config.json`` (user pins).
+
+    Mirrors ``score.load_waivers``: an explicit ``options["detect_config"]`` beats the
+    on-disk file, malformed JSON is ignored, and a miss returns ``{}``. A pin can only
+    set a type — it is always surfaced as a signal so the override stays auditable.
+    """
+    options = options or {}
+    if options.get("detect_config") is not None:
+        data = options["detect_config"]
+    else:
+        cf = Path(root) / ".agents" / "readiness" / "config.json"
+        if not cf.exists():
+            return {}
+        try:
+            data = json.loads(cf.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+    if not isinstance(data, dict):
+        return {}
+    detect_cfg = data.get("detect")
+    return detect_cfg if isinstance(detect_cfg, dict) else {}
+
+
+def _pin_app(app: App, pinned: str) -> None:
+    app.runtime = pinned
+    app.deploy_surface = pinned
 
 
 def _classify(static: StaticCollector) -> Tuple[str, float, List[str]]:
@@ -161,20 +194,36 @@ def _detect_test_cmd(static: StaticCollector) -> str:
     return ""
 
 
-def detect(root, static: StaticCollector = None) -> Detection:
+def detect(root, static: StaticCollector = None, options=None) -> Detection:
     root = Path(root)
     static = static or StaticCollector(root)
+
+    cfg = load_detect_config(root, options)
+    root_pin = cfg.get("project_type")
+    app_pins = cfg.get("apps") if isinstance(cfg.get("apps"), dict) else {}
 
     ws = _workspace_dirs(root, static)
     has_mono_tooling = bool(static.exists_any(["turbo.json", "nx.json", "pnpm-workspace.yaml", "lerna.json", "go.work"]))
     is_monorepo = len(ws) > 1 or (has_mono_tooling and len(ws) >= 1)
 
     if is_monorepo:
-        apps = [_build_app(root, rel) for rel in ws] or [_build_app(root, ".")]
+        signals = []
+        apps = []
+        for rel in ws or ["."]:
+            app = _build_app(root, rel)
+            pinned = app_pins.get(rel)
+            if pinned in VALID_PIN_TYPES:
+                _pin_app(app, pinned)
+                signals.append(f"app '{rel}' type pinned to '{pinned}' via {PIN_SOURCE}")
+            elif pinned is not None:
+                signals.append(f"ignored invalid type pin '{pinned}' for app '{rel}' in {PIN_SOURCE}")
+            apps.append(app)
         languages = sorted({l for a in apps for l in a.languages})
-        signals = [f"monorepo: {len(apps)} application(s) discovered"]
+        signals.insert(0, f"monorepo: {len(apps)} application(s) discovered")
         if has_mono_tooling:
             signals.append("monorepo tooling present")
+        if root_pin is not None:
+            signals.append(f"root project_type pin ignored for monorepo (use detect.apps in {PIN_SOURCE})")
         return Detection(
             project_type="monorepo-root",
             confidence=CONF_HIGH if apps else CONF_LOW,
@@ -186,6 +235,12 @@ def detect(root, static: StaticCollector = None) -> Detection:
 
     surface, conf, signals = _classify(static)
     app = _build_app(root, ".")
+    if root_pin in VALID_PIN_TYPES:
+        surface, conf = root_pin, CONF_HIGH
+        _pin_app(app, root_pin)
+        signals.append(f"project_type pinned to '{root_pin}' via {PIN_SOURCE}")
+    elif root_pin is not None:
+        signals.append(f"ignored invalid project_type pin '{root_pin}' in {PIN_SOURCE}")
     project_type = surface if conf >= UNKNOWN_THRESHOLD else "unknown"
     if conf < UNKNOWN_THRESHOLD:
         signals.append("confidence below threshold -> type=unknown (criteria will not be silently skipped)")

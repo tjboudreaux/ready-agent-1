@@ -29,7 +29,7 @@ def analyze(root, options=None) -> Report:
     options = options or {}
     root = Path(root)
     static, git, github = build_collectors(root, options)
-    detection = detect(root, static)
+    detection = detect(root, static, options)
 
     vs = version.version_stamp()
     report = Report(

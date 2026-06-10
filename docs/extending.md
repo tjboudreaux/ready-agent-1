@@ -48,8 +48,26 @@ and false-negative rates on the labeled fixtures in `tests/`. This keeps the gat
 
 ## Project type pinning
 
-If detection is wrong or low-confidence, pin it in `.agents/readiness/config.json` (planned) or open an
-issue with the repo shape — misclassification is treated as a bug, since a wrong skip inflates the score.
+If detection is wrong or low-confidence, pin it in `.agents/readiness/config.json`:
+
+```json
+{
+  "schema_version": "1",
+  "detect": {
+    "project_type": "service",
+    "apps": { "packages/api": "service", "packages/web": "frontend" }
+  }
+}
+```
+
+- `detect.project_type` pins a single-app repo (one of `library`, `service`, `frontend`, `cli`,
+  `data`, `infra`); `detect.apps` pins per-app types in a monorepo, keyed by app path.
+- A pin sets the type to high confidence and always emits a signal naming the config file, so the
+  override stays auditable in the report. Invalid values are ignored (with a signal), and pins can
+  only set a type — they cannot skip criteria or lower confidence.
+
+Also consider opening an issue with the repo shape — misclassification is treated as a bug, since a
+wrong skip inflates the score.
 
 ## Fix recipes
 
