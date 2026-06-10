@@ -1,0 +1,47 @@
+{
+  "name": "unknown-pinned-service",
+  "description": "Repo with no recognizable manifest, pinned to 'service' via .agents/readiness/config.json \u2014 exercises detection pinning end-to-end; README is substantive so docs.readme passes while api_schema_docs fails (no framework, no schema).",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    ".agents/readiness/config.json": "{ \"schema_version\": \"1\", \"detect\": { \"project_type\": \"service\" } }\n",
+    "README.md": "# Telemetry relay\n\nA service that fans telemetry events out to downstream consumers.\n\n## Running\n\n```bash\n./run.sh\n```\n\n## Protocol\n\nEvents arrive as newline-delimited JSON on stdin and are re-published to each configured\nsink with at-least-once semantics. Sinks are declared in `sinks.conf`; failures are retried\nwith exponential backoff and surfaced on stderr.\n\n## Operations\n\nThe relay is stateless; restart at will. Backpressure is applied upstream when any sink\nfalls behind by more than the configured window.\n",
+    "run.sh": "#!/bin/sh\nexec ./relay\n"
+  },
+  "expected": {
+    "build.ci_present": "fail",
+    "build.ci_runs_tests": "skipped",
+    "build.deps_pinned": "pass",
+    "build.release_automation": "fail",
+    "build.vcs_cli": "fail",
+    "devenv.devcontainer": "fail",
+    "devenv.env_template": "fail",
+    "docs.agents_md": "fail",
+    "docs.agents_md_validation": "skipped",
+    "docs.api_schema_docs": "fail",
+    "docs.doc_freshness": "unknown",
+    "docs.readme": "pass",
+    "docs.skills": "fail",
+    "security.automated_security_review": "fail",
+    "security.branch_protection": "skipped",
+    "security.codeowners": "fail",
+    "security.dependency_update_automation": "fail",
+    "security.gitignore_comprehensive": "fail",
+    "security.secret_scanning": "skipped",
+    "security.security_md": "fail",
+    "style.formatter": "fail",
+    "style.linter_config": "fail",
+    "style.precommit_hooks": "fail",
+    "style.strict_typing": "fail",
+    "style.type_check": "fail",
+    "taskdisc.backlog_health": "skipped",
+    "taskdisc.issue_labeling": "skipped",
+    "taskdisc.issue_templates": "fail",
+    "taskdisc.pr_templates": "fail",
+    "testing.integration_tests_exist": "fail",
+    "testing.test_naming": "skipped",
+    "testing.unit_tests_exist": "fail"
+  },
+  "expected_level": 0
+}

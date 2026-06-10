@@ -1,0 +1,51 @@
+{
+  "name": "monorepo-two-apps",
+  "description": "npm-workspaces monorepo with an Express API and a React frontend \u2014 exercises monorepo detection and repository-scoped criteria over a multi-app inventory.",
+  "detect": {
+    "project_type": "monorepo-root"
+  },
+  "files": {
+    "package.json": "{ \"name\": \"shop\", \"workspaces\": [\"packages/*\"] }\n",
+    "package-lock.json": "{ \"name\": \"shop\", \"lockfileVersion\": 3, \"packages\": {} }\n",
+    "README.md": "# Shop monorepo\n\nTwo workspaces: `packages/api` (Express) and `packages/web` (React).\n\n## Development\n\n```bash\nnpm install\nnpm test --workspaces\n```\n\n## Layout\n\nShared tooling lives at the root; each workspace owns its own runtime dependencies and\ntests. CI fans out per workspace.\n",
+    ".gitignore": "node_modules/\n.env\ndist/\n",
+    "packages/api/package.json": "{ \"name\": \"api\", \"dependencies\": { \"express\": \"^4\" } }\n",
+    "packages/api/src/server.test.js": "// unit tests\n",
+    "packages/web/package.json": "{ \"name\": \"web\", \"dependencies\": { \"react\": \"^18\", \"react-dom\": \"^18\" } }\n"
+  },
+  "expected": {
+    "build.ci_present": "fail",
+    "build.ci_runs_tests": "skipped",
+    "build.deps_pinned": "pass",
+    "build.release_automation": "fail",
+    "build.vcs_cli": "fail",
+    "devenv.devcontainer": "fail",
+    "devenv.env_template": "fail",
+    "docs.agents_md": "fail",
+    "docs.agents_md_validation": "skipped",
+    "docs.api_schema_docs": "fail",
+    "docs.doc_freshness": "unknown",
+    "docs.readme": "fail",
+    "docs.skills": "fail",
+    "security.automated_security_review": "fail",
+    "security.branch_protection": "skipped",
+    "security.codeowners": "fail",
+    "security.dependency_update_automation": "fail",
+    "security.gitignore_comprehensive": "pass",
+    "security.secret_scanning": "skipped",
+    "security.security_md": "fail",
+    "style.formatter": "fail",
+    "style.linter_config": "fail",
+    "style.precommit_hooks": "fail",
+    "style.strict_typing": "fail",
+    "style.type_check": "fail",
+    "taskdisc.backlog_health": "skipped",
+    "taskdisc.issue_labeling": "skipped",
+    "taskdisc.issue_templates": "fail",
+    "taskdisc.pr_templates": "fail",
+    "testing.integration_tests_exist": "fail",
+    "testing.test_naming": "pass",
+    "testing.unit_tests_exist": "pass"
+  },
+  "expected_level": 0
+}

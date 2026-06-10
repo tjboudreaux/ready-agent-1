@@ -1,0 +1,7 @@
+{
+  "_comment": "Release gate for the labeled-fixture evals (evals/fixtures.py, evals/parity.py). Rates are over all (criterion, fixture) expectations. Gating criteria must show zero FP/FN regardless of these rates; see references/pillars.md for the graduation rules.",
+  "max_fp_rate": 0.0,
+  "max_fn_rate": 0.0,
+  "max_applicability_rate": 0.0,
+  "parity_min_agree": 0.85
+}

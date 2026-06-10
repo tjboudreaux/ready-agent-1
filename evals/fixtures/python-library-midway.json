@@ -1,0 +1,49 @@
+{
+  "name": "python-library-midway",
+  "description": "Python library with deliberately mixed hygiene \u2014 substantive README and ruff/mypy via pyproject, but no lockfile, secrets-blind .gitignore, mypy without strict, and no governance files. Catches FP in both directions.",
+  "detect": {
+    "project_type": "library"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname = \"timeparse\"\nversion = \"2.1.0\"\ndependencies = [\"python-dateutil\"]\n\n[tool.ruff]\nline-length = 100\n\n[tool.mypy]\npython_version = \"3.11\"\n",
+    "README.md": "# timeparse\n\nA small library for parsing human time expressions into datetimes.\n\n## Install\n\n```bash\npip install timeparse\n```\n\n## Usage\n\n```python\nfrom timeparse import parse\nparse(\"next tuesday at noon\")\n```\n\n## Design notes\n\nThe parser is a recursive-descent grammar over a normalized token stream; ambiguity is\nresolved toward the nearest future instant. No network, no locale data downloads.\n",
+    ".gitignore": "__pycache__/\n*.pyc\ndist/\n.venv/\n",
+    ".pre-commit-config.yaml": "repos: []\n",
+    "tests/test_core.py": "def test_truth():\n    assert True\n"
+  },
+  "expected": {
+    "build.ci_present": "fail",
+    "build.ci_runs_tests": "skipped",
+    "build.deps_pinned": "fail",
+    "build.release_automation": "fail",
+    "build.vcs_cli": "fail",
+    "devenv.devcontainer": "fail",
+    "devenv.env_template": "skipped",
+    "docs.agents_md": "fail",
+    "docs.agents_md_validation": "skipped",
+    "docs.api_schema_docs": "skipped",
+    "docs.doc_freshness": "unknown",
+    "docs.readme": "pass",
+    "docs.skills": "fail",
+    "security.automated_security_review": "fail",
+    "security.branch_protection": "skipped",
+    "security.codeowners": "fail",
+    "security.dependency_update_automation": "fail",
+    "security.gitignore_comprehensive": "fail",
+    "security.secret_scanning": "skipped",
+    "security.security_md": "fail",
+    "style.formatter": "pass",
+    "style.linter_config": "pass",
+    "style.precommit_hooks": "pass",
+    "style.strict_typing": "fail",
+    "style.type_check": "pass",
+    "taskdisc.backlog_health": "skipped",
+    "taskdisc.issue_labeling": "skipped",
+    "taskdisc.issue_templates": "fail",
+    "taskdisc.pr_templates": "fail",
+    "testing.integration_tests_exist": "skipped",
+    "testing.test_naming": "pass",
+    "testing.unit_tests_exist": "pass"
+  },
+  "expected_level": 0
+}

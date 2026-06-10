@@ -24,3 +24,7 @@ jobs:
           python3 -m coverage report --fail-under=90
       - name: Vendored skills byte-parity
         run: python3 scripts/vendor.py --check
+      - name: Labeled-fixture evals (per-criterion FP/FN gate)
+        run: python3 -m evals.fixtures
+      - name: Parity vs Factory reference shapes (offline)
+        run: python3 -m evals.parity

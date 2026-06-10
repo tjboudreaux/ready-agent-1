@@ -1,0 +1,67 @@
+{
+  "name": "fastapi-service-bare",
+  "description": "FastAPI service with nothing but a thin README \u2014 expect Level 0 with broad fails; api_schema_docs passes via FastAPI's generated OpenAPI. Parity reference for Factory's public FastAPI report shape.",
+  "detect": {
+    "project_type": "service"
+  },
+  "expected_level": 0,
+  "files": {
+    "pyproject.toml": "[project]\nname = \"orders-api\"\nversion = \"0.1.0\"\ndependencies = [\"fastapi\", \"uvicorn\"]\n",
+    "README.md": "# Orders API\n\nA FastAPI service.\n"
+  },
+  "expected": {
+    "build.ci_present": "fail",
+    "build.ci_runs_tests": "skipped",
+    "build.deps_pinned": "fail",
+    "build.release_automation": "fail",
+    "build.vcs_cli": "fail",
+    "devenv.devcontainer": "fail",
+    "devenv.env_template": "fail",
+    "docs.agents_md": "fail",
+    "docs.agents_md_validation": "skipped",
+    "docs.api_schema_docs": "pass",
+    "docs.doc_freshness": "unknown",
+    "docs.readme": "fail",
+    "docs.skills": "fail",
+    "security.automated_security_review": "fail",
+    "security.branch_protection": "skipped",
+    "security.codeowners": "fail",
+    "security.dependency_update_automation": "fail",
+    "security.gitignore_comprehensive": "fail",
+    "security.secret_scanning": "skipped",
+    "security.security_md": "fail",
+    "style.formatter": "fail",
+    "style.linter_config": "fail",
+    "style.precommit_hooks": "fail",
+    "style.strict_typing": "fail",
+    "style.type_check": "fail",
+    "taskdisc.backlog_health": "skipped",
+    "taskdisc.issue_labeling": "skipped",
+    "taskdisc.issue_templates": "fail",
+    "taskdisc.pr_templates": "fail",
+    "testing.integration_tests_exist": "fail",
+    "testing.test_naming": "skipped",
+    "testing.unit_tests_exist": "fail"
+  },
+  "parity": {
+    "source": "Hand-curated from the structure of Factory.ai's public FastAPI readiness report (2026-06 snapshot; offline by design \u2014 Factory's published criterion counts conflict, so this is a reviewed equivalence map, not a scrape).",
+    "criteria": {
+      "docs.readme": "fail",
+      "build.deps_pinned": "fail",
+      "build.ci_present": "fail",
+      "testing.unit_tests_exist": "fail",
+      "style.linter_config": "fail",
+      "style.formatter": "fail",
+      "style.type_check": "fail",
+      "security.gitignore_comprehensive": "fail",
+      "security.codeowners": "fail",
+      "security.security_md": "fail",
+      "security.dependency_update_automation": "fail",
+      "taskdisc.issue_templates": "fail",
+      "taskdisc.pr_templates": "fail",
+      "devenv.devcontainer": "fail",
+      "devenv.env_template": "fail",
+      "docs.api_schema_docs": "pass"
+    }
+  }
+}
