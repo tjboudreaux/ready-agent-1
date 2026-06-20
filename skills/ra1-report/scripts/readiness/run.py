@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import version
+from . import history, version
 from .collectors import ExecCollector, GitCollector, GithubCollector, StaticCollector
 from .detect import detect
 from .model import Report
@@ -43,6 +43,8 @@ def analyze(root, options=None) -> Report:
         commit=git.head_sha(),
         branch=git.branch(),
         github_available=github.available,
+        generated_at=options.get("generated_at") or history.now_iso(),
+        repository=options.get("repository"),
         detection=detection,
     )
 

@@ -11,6 +11,9 @@ Analyze a repository and emit a readiness report.
 | `--project PATH` | `.` | Repository to analyze |
 | `--format LIST` | `json` | Comma list: `json,markdown,github,junit,sarif` |
 | `--out DIR` | — | Write `report.<ext>` + `latest.json` to this directory |
+| `--require-origin` | off | Fail if the repo has no `origin` remote (matches Droid's `/readiness-report` prerequisite) |
+| `--store-history` | off | Write a timestamped local history snapshot keyed by repository identity |
+| `--history-dir DIR` | `<out>/history` or `<project>/.agents/readiness/history` | History root used by `--store-history` and `fix --latest` |
 | `--no-github` | off | Disable T2 GitHub API checks (offline / deterministic) |
 | `--exec` | off | Opt in to T3 execution: runs the detected test command on an isolated temp copy (allowlisted argv, scrubbed env, hard timeout). Advisory only — never changes the level |
 | `--exec-timeout N` | 120 | T3 execution timeout in seconds |
@@ -19,6 +22,20 @@ Analyze a repository and emit a readiness report.
 
 Exit code is `0` unless a gate (`--min-level` / `--fail-on`) fails. By default, advisory criteria
 do not affect the deterministic level; `--fail-on loop.some_id` is an explicit user override.
+
+### Repository identity and history
+
+Every report carries a `repository` identity. When an `origin` remote exists it is an
+`origin` identity (`host`/`owner`/`name`/`identity_hash`) with the remote URL **redacted** —
+credentials embedded in the URL are never serialized. Without an origin (and without
+`--require-origin`) RA1 falls back to a `local_path` identity derived from a path hash; the raw
+absolute path is never written.
+
+`--store-history` writes `<primary-out>/latest.json` (canonical latest), an immutable
+`<history-root>/<identity_hash>/<timestamp>.json` snapshot, and an ordered
+`<history-root>/<identity_hash>/index.json`. `<primary-out>` is `--out` or
+`<project>/.agents/readiness`. Reports are **schema 2**; schema-1 reports are only usable via an
+explicit `fix --report PATH` and are ineligible for `fix --latest` / history / delta.
 
 ## `fix`
 
@@ -30,6 +47,8 @@ Plan or apply remediation from the latest report.
 | `--apply` | off | Write changes (default is a dry-run plan) |
 | `--force` | off | Apply even if the worktree is dirty |
 | `--report PATH` | `.agents/readiness/latest.json` | Report to read |
+| `--latest` | off | Resolve the latest stored report by repository identity (schema 2 only) |
+| `--history-dir DIR` | `<project>/.agents/readiness/history` | History root for `--latest` |
 
 Only safe config scaffolds are written, idempotently, never overwriting non-empty files.
 

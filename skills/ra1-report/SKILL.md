@@ -16,16 +16,22 @@ score**; you (the agent) add **advisory** commentary only. You must never change
 ## Steps
 
 1. **Run the engine** (it does all the deterministic work — file/config parsing, git history, and,
-   if `gh` is authenticated, the GitHub API):
+   if `gh` is authenticated, the GitHub API). Mirroring Droid's `/readiness-report`, require an
+   `origin` remote and persist local history:
 
    ```bash
    python3 "$(dirname "$0")/scripts/readiness/cli.py" report \
-     --project <repo-path> --format json,markdown --out <repo-path>/.agents/readiness
+     --project <repo-path> --format json,markdown \
+     --require-origin --store-history --out <repo-path>/.agents/readiness
    ```
 
-   This writes `report.md`, `report.json`, and `latest.json` under `.agents/readiness/` and prints
-   the canonical JSON. Read `.agents/readiness/latest.json` from the prior run first, if present, to
-   compute a **Δ vs last run** (only when engine + registry versions match; otherwise skip the delta).
+   This requires a git repo with an `origin` remote (drop `--require-origin` to scan an arbitrary
+   local path — an RA1 extension). It writes `report.md`, `report.json`, and the canonical
+   `latest.json` under `.agents/readiness/`, plus an immutable timestamped snapshot and index under
+   `.agents/readiness/history/<identity_hash>/`, and prints the canonical JSON. The report carries a
+   redacted `repository` identity (no remote credentials, no absolute paths). Read the prior
+   `latest.json` first, if present, to compute a **Δ vs last run** (only when the schema, engine,
+   registry, and detector versions match; otherwise skip the delta).
 
 2. **Emit the score verbatim.** Your final report MUST contain a fenced ```json block holding the
    engine's `score` object **exactly** — `level`, `level_name`, `pass_rate`, `gating_passed`,

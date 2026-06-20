@@ -6,7 +6,7 @@ from contextlib import redirect_stdout
 from unittest import mock
 
 from readiness.fix import recipes
-from readiness import cli
+from readiness import cli, history
 from tests._util import make_repo, rmtree
 
 REPORT = {
@@ -247,6 +247,75 @@ class TestFormatPlan(unittest.TestCase):
         self.assertIn("Propose", text)
         self.assertIn("GitHub settings", text)
 
+
+
+class TestRecipeCoverage(unittest.TestCase):
+    def test_load_report_corrupt_json_returns_none(self):
+        root = make_repo({"bad.json": "{not json"})
+        self.addCleanup(rmtree, root)
+        args = _args(root, report=str(root / "bad.json"))
+        self.assertIsNone(recipes.load_report(args, root))
+
+    def test_scaffold_kind_unresolved_goes_manual(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        plan = recipes.build_plan(root, {"results": [{"id": "x.s", "status": "fail"}]},
+                                  registry=[{"id": "x.s", "fix": {"kind": "scaffold"}}])
+        self.assertIn("x.s", plan["manual"])
+
+    def test_duplicate_target_deduped(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        report = {"detection": {"languages": ["python"]},
+                  "results": [{"id": "style.linter_config", "status": "fail"},
+                              {"id": "style.formatter", "status": "fail"}]}
+        plan = recipes.build_plan(root, report)
+        targets = [a["target"] for a in plan["auto"]]
+        self.assertEqual(targets.count("ruff.toml"), 1)
+
+    def test_apply_plan_dry_run_records_without_writing(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        plan = recipes.build_plan(root, REPORT)
+        result = recipes.apply_plan(root, plan, write=False)
+        self.assertIn("ruff.toml", result["written"])
+        self.assertFalse((root / "ruff.toml").exists())
+
+    def test_gitignore_dry_run_reports_change_without_writing(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        self.assertTrue(recipes._apply_gitignore(root / ".gitignore", write=False))
+        self.assertFalse((root / ".gitignore").exists())
+
+    def test_format_plan_empty_sections(self):
+        text = recipes.format_plan({"auto": [], "propose": [], "github": [], "manual": []})
+        self.assertIn("- (none)", text)
+        self.assertNotIn("## Manual", text)
+
+
+class TestRunFixLatest(unittest.TestCase):
+    def _seed_history(self, root):
+        ident = history.repo_identity(str(root))
+        report = {"schema_version": "2", "engine_version": "0.3.0", "registry_version": "0.3.0",
+                  "detector_version": "0.3.0", "generated_at": "2026-06-20T00:00:00+00:00",
+                  "repository": ident, "detection": {"languages": ["python"]},
+                  "results": [{"id": "style.linter_config", "status": "fail"}],
+                  "score": {"level": 1}}
+        history.store_history(report, str(root))
+
+    def test_latest_no_history_errors(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        code, _ = _cli(["fix", "--project", str(root), "--latest"])
+        self.assertEqual(code, 2)
+
+    def test_latest_resolves_stored_report(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        self._seed_history(root)
+        code, out = _cli(["fix", "--project", str(root), "--latest"])
+        self.assertEqual(code, 0)
+        self.assertIn("ruff.toml", out)
 
 if __name__ == "__main__":
     unittest.main()

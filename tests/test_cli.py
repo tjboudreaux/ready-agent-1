@@ -1,9 +1,10 @@
 import io
 import json
+import subprocess
 import unittest
 from contextlib import redirect_stdout
 
-from readiness import cli
+from readiness import cli, history
 from tests._util import make_repo, rmtree
 
 
@@ -135,6 +136,80 @@ class TestCli(unittest.TestCase):
             self.assertEqual(r["status"], "fail")
         for field in ("level", "gating_passed", "gating_total"):
             self.assertEqual(reports["opt_in_missing"]["score"][field], reports["opt_out_missing"]["score"][field])
+
+
+def _init_git(root, origin=None):
+    subprocess.run(["git", "init", "-q"], cwd=root, capture_output=True, timeout=30, check=True)
+    if origin:
+        subprocess.run(["git", "remote", "add", "origin", origin], cwd=root,
+                       capture_output=True, timeout=30, check=True)
+
+
+class TestBannerAndMain(unittest.TestCase):
+    def test_render_banner_color_and_plain(self):
+        self.assertIn("insert coin", cli.render_banner(color=True))
+        self.assertIn("insert coin", cli.render_banner(color=False))
+
+    def test_main_no_command_prints_banner(self):
+        code, out = run([])
+        self.assertEqual(code, 0)
+        self.assertIn("insert coin", out)
+
+    def test_banner_command(self):
+        code, out = run(["banner"])
+        self.assertEqual(code, 0)
+        self.assertIn("insert coin", out)
+
+
+class TestReportIdentityAndHistory(unittest.TestCase):
+    def setUp(self):
+        self.repo = make_repo({"README.md": "# lib", "pyproject.toml": '[project]\nname="lib"\n'})
+        self.addCleanup(rmtree, self.repo)
+
+    def test_require_origin_without_origin_exits_nonzero(self):
+        code, _ = run(["report", "--project", str(self.repo), "--no-github", "--require-origin"])
+        self.assertEqual(code, 1)
+
+    def test_origin_identity_is_redacted(self):
+        _init_git(self.repo, origin="https://user:secrettoken@github.com/acme/widget.git")
+        code, out = run(["report", "--project", str(self.repo), "--no-github",
+                         "--require-origin", "--format", "json"])
+        self.assertEqual(code, 0)
+        repo = json.loads(out)["repository"]
+        self.assertEqual(repo["identity_kind"], "origin")
+        self.assertEqual(repo["host"], "github.com")
+        self.assertNotIn("secrettoken", out)
+
+    def test_store_history_local_identity_and_resolve(self):
+        code, _ = run(["report", "--project", str(self.repo), "--no-github", "--store-history"])
+        self.assertEqual(code, 0)
+        latest = self.repo / ".agents" / "readiness" / "latest.json"
+        self.assertTrue(latest.exists())
+        report = json.loads(latest.read_text())
+        self.assertEqual(report["repository"]["identity_kind"], "local_path")
+        self.assertNotIn(str(self.repo), json.dumps(report["repository"]))
+        # the same canonical store resolves the latest report by identity (fix --latest uses this)
+        resolved, reason = history.resolve_latest(str(self.repo))
+        self.assertEqual(reason, "")
+        self.assertEqual(resolved["repository"]["identity_hash"],
+                         report["repository"]["identity_hash"])
+
+    def test_store_history_with_out_dir(self):
+        out_dir = self.repo / "_out"
+        code, _ = run(["report", "--project", str(self.repo), "--no-github",
+                       "--store-history", "--out", str(out_dir)])
+        self.assertEqual(code, 0)
+        self.assertTrue((out_dir / "latest.json").exists())
+        self.assertTrue((out_dir / "history").exists())
+
+    def test_min_level_satisfied_passes(self):
+        rich = make_repo(BASE_NON_LOOP)
+        self.addCleanup(rmtree, rich)
+        code, out = run(["report", "--project", str(rich), "--no-github", "--format", "json"])
+        level = json.loads(out)["score"]["level"]
+        self.assertGreaterEqual(level, 1)  # rich fixture must clear at least Level 1
+        code, _ = run(["report", "--project", str(rich), "--no-github", "--min-level", str(level)])
+        self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":

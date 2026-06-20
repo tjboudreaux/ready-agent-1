@@ -45,13 +45,6 @@ class Verdict:
     rationale: str = ""
     evidence: list = field(default_factory=list)  # list[Evidence]
 
-    def to_dict(self) -> dict:
-        return {
-            "status": self.status.value,
-            "rationale": self.rationale,
-            "evidence": [e.to_dict() for e in self.evidence],
-        }
-
 
 @dataclass
 class App:
@@ -186,6 +179,8 @@ class Report:
     commit: str = ""
     branch: str = ""
     github_available: bool = False
+    generated_at: str = ""
+    repository: Optional[dict] = None
     detection: Optional[Detection] = None
     results: list = field(default_factory=list)        # list[CriterionResult]
     score: Optional[ScoreSummary] = None
@@ -201,6 +196,8 @@ class Report:
             "commit": self.commit,
             "branch": self.branch,
             "github_available": self.github_available,
+            "generated_at": self.generated_at,
+            "repository": self.repository,
             "detection": self.detection.to_dict() if self.detection else None,
             "score": self.score.to_dict() if self.score else None,
             "results": [r.to_dict() for r in self.results],

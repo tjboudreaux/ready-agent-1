@@ -183,10 +183,17 @@ def format_plan(plan, result=None, dry_run=True):
 
 def run_fix(args) -> int:
     root = Path(args.project)
-    report = load_report(args, root)
-    if report is None:
-        sys.stderr.write("ra1 fix: no report found; run `ra1 report` first.\n")
-        return 2
+    if getattr(args, "latest", False) and not getattr(args, "report", None):
+        from .. import history
+        report, reason = history.resolve_latest(root, history_dir=getattr(args, "history_dir", None))
+        if report is None:
+            sys.stderr.write(f"ra1 fix: {reason}\n")
+            return 2
+    else:
+        report = load_report(args, root)
+        if report is None:
+            sys.stderr.write("ra1 fix: no report found; run `ra1 report` first.\n")
+            return 2
     plan = build_plan(root, report)
     if not getattr(args, "apply", False):
         print(format_plan(plan, dry_run=True))
