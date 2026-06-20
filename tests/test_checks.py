@@ -1,6 +1,6 @@
 import unittest
 
-from readiness.checks import build, devenv, docs, security, style, taskdisc, testing
+from readiness.checks import build, devenv, docs, loop, security, style, taskdisc, testing
 from readiness.collectors.git import GitCollector
 from readiness.collectors.github import GithubCollector
 from readiness.collectors.static import StaticCollector
@@ -211,5 +211,84 @@ class TestTaskDiscChecks(CheckCase):
         self.assertEqual(self.s(taskdisc.backlog_health(ctx)), Status.FAIL)
 
 
+
+class TestLoopChecks(CheckCase):
+    FILLED = "# Artifact\n\nThis filled loop readiness artifact documents a stable maintainer-owned convention with enough detail.\n"
+    RULES = "# Loop Rules\n\nThis rules index points maintainers to the denylist and related loop policies.\n"
+    DENY = "# Loop Denylist\n\nNever mutate secrets or deploy without confirmation. Block unsafe paths.\n"
+    SIGNAL = (
+        "# Signal Schema\n\n```json\n"
+        "{\"schema_version\":\"1\",\"signal\":\"loop.run\",\"source\":\"runner\","
+        "\"timestamp\":\"2026-01-01T00:00:00Z\",\"evidence\":[]}\n"
+        "```\n"
+    )
+    PR_ARTIFACT = "# PR Evidence\n\nCite the loop-runs log, CI output, screenshot, video, and artifact evidence.\n"
+    SKILL = "---\nname: loop-skill\ndescription: Filled OMP loop skill artifact\n---\n# Skill\n\nUse this loop skill artifact for safe loop operations.\n"
+
+    def test_loop_runs_dir_pass_and_fail(self):
+        self.assertEqual(self.s(loop.loop_runs_dir(self.ctx({"loop-runs/README.md": self.FILLED}))), Status.PASS)
+        self.assertEqual(self.s(loop.loop_runs_dir(self.ctx({}))), Status.FAIL)
+        v = loop.loop_runs_dir(self.ctx({"loop-runs/README.md": "# Loop\n\nTODO write the loop run convention in detail.\n"}))
+        self.assertEqual(v.status, Status.FAIL)
+        self.assertIn("placeholder", v.rationale)
+
+    def test_rules_index_pass_and_fail(self):
+        self.assertEqual(self.s(loop.rules_index(self.ctx({".omp/rules/README.md": self.RULES}))), Status.PASS)
+        self.assertEqual(self.s(loop.rules_index(self.ctx({}))), Status.FAIL)
+        self.assertEqual(self.s(loop.rules_index(self.ctx({".omp/rules/README.md": "# Policy\n\nThis describes safe execution without the required index terms.\n"}))), Status.FAIL)
+
+    def test_denylist_pass_and_fail(self):
+        self.assertEqual(self.s(loop.denylist(self.ctx({".omp/rules/denylist.md": self.DENY}))), Status.PASS)
+        self.assertEqual(self.s(loop.denylist(self.ctx({}))), Status.FAIL)
+        no_policy = "# Policy\n\nThis document has prose about safe execution but no required policy vocabulary.\n"
+        self.assertEqual(self.s(loop.denylist(self.ctx({".omp/rules/denylist.md": no_policy}))), Status.FAIL)
+
+    def test_signal_schema_pass_and_fail(self):
+        self.assertEqual(self.s(loop.signal_schema(self.ctx({"signals/README.md": self.SIGNAL}))), Status.PASS)
+        self.assertEqual(self.s(loop.signal_schema(self.ctx({}))), Status.FAIL)
+        no_fence = "# Signal\n\nschema_version signal source timestamp evidence are documented without code.\n"
+        self.assertEqual(self.s(loop.signal_schema(self.ctx({"signals/README.md": no_fence}))), Status.FAIL)
+
+    def test_pr_artifact_template_variants(self):
+        generic = "# Pull Request\n\nSummarize the change and testing for reviewers in a normal template.\n"
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({".github/pull_request_template.md": generic}))), Status.FAIL)
+        evidence_heading_with_incidental_ci = (
+            "# Pull Request\n\n"
+            "## Evidence\n\n"
+            "Reviewer decisions need sufficient context and logical explanations, but no artifacts.\n"
+        )
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({".github/pull_request_template.md": evidence_heading_with_incidental_ci}))), Status.FAIL)
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({".github/pull_request_template.md": self.PR_ARTIFACT}))), Status.PASS)
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({".omp/commands/pr-artifact-template.md": self.FILLED}))), Status.PASS)
+
+    def test_skills_present_minimum(self):
+        files = {f".omp/skills/s{i}/SKILL.md": self.SKILL for i in range(loop.LOOP_SKILL_MIN)}
+        self.assertEqual(self.s(loop.skills_present(self.ctx(files))), Status.PASS)
+        too_few = {f".omp/skills/s{i}/SKILL.md": self.SKILL for i in range(loop.LOOP_SKILL_MIN - 1)}
+        v = loop.skills_present(self.ctx(too_few))
+        self.assertEqual(v.status, Status.FAIL)
+        self.assertEqual(v.rationale, "Only 2 OMP loop skill artifact(s) found (<3).")
+
+    def test_prompt_contracts_pass_and_missing_paths(self):
+        files = {".omp/commands/goal.md": self.FILLED, ".omp/commands/loop.md": self.FILLED}
+        self.assertEqual(self.s(loop.prompt_contracts(self.ctx(files))), Status.PASS)
+        v = loop.prompt_contracts(self.ctx({".omp/commands/goal.md": self.FILLED}))
+        self.assertEqual(v.status, Status.FAIL)
+        self.assertIn(".omp/commands/loop.md", v.rationale)
+
+    def test_architecture_doc_pass_and_fail(self):
+        self.assertEqual(self.s(loop.architecture_doc(self.ctx({"docs/architecture.md": self.FILLED}))), Status.PASS)
+        self.assertEqual(self.s(loop.architecture_doc(self.ctx({}))), Status.FAIL)
+
+    def test_domain_docs_pass_and_fail(self):
+        ordinary_markdown = (
+            "# Billing Domain\n\n"
+            "- [ ] Keep the billing workflow documented for maintainers.\n"
+            "See [reference](https://example.com) for external context and examples.\n"
+        )
+        self.assertEqual(self.s(loop.domain_docs(self.ctx({"domains/billing/README.md": ordinary_markdown}))), Status.PASS)
+        self.assertEqual(self.s(loop.domain_docs(self.ctx({}))), Status.FAIL)
+        placeholder = "# Domain\n\n[owner] should replace this placeholder with domain documentation.\n"
+        self.assertEqual(self.s(loop.domain_docs(self.ctx({"domains/core/README.md": placeholder}))), Status.FAIL)
 if __name__ == "__main__":
     unittest.main()

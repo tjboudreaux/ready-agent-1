@@ -29,6 +29,10 @@ STATIC_SCAFFOLDS = {
     "style.precommit_hooks": (".pre-commit-config.yaml", "precommit-config.yaml"),
     "security.codeowners": ("CODEOWNERS", "CODEOWNERS"),
     "devenv.env_template": (".env.example", "env.example"),
+    "loop.loop_runs_dir": ("loop-runs/README.md", "loop/loop-runs-README.md"),
+    "loop.denylist": (".omp/rules/denylist.md", "loop/denylist.md"),
+    "loop.signal_schema": ("signals/README.md", "loop/signals-README.md"),
+    "loop.pr_artifact_template": (".omp/commands/pr-artifact-template.md", "loop/pr-artifact-template.md"),
 }
 
 _GH_COMMANDS = {

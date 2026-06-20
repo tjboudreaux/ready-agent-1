@@ -1,9 +1,12 @@
+import io
 import json
 import types
 import unittest
+from contextlib import redirect_stdout
 from unittest import mock
 
 from readiness.fix import recipes
+from readiness import cli
 from tests._util import make_repo, rmtree
 
 REPORT = {
@@ -17,6 +20,46 @@ REPORT = {
         {"id": "docs.skills", "title": "Skills", "status": "pass"},  # not failing -> ignored
     ],
 }
+
+LOOP_REPORT = {
+    "detection": {"languages": ["python"]},
+    "results": [
+        {"id": "loop.loop_runs_dir", "title": "Loop Run Log README", "status": "fail"},
+        {"id": "loop.rules_index", "title": "Loop Rules Index", "status": "fail"},
+        {"id": "loop.denylist", "title": "Loop Denylist", "status": "fail"},
+        {"id": "loop.signal_schema", "title": "Signal Schema README", "status": "fail"},
+        {"id": "loop.pr_artifact_template", "title": "PR Artifact Evidence Template", "status": "fail"},
+        {"id": "loop.skills_present", "title": "OMP Loop Skills", "status": "fail"},
+        {"id": "loop.prompt_contracts", "title": "Loop Prompt Contracts", "status": "fail"},
+        {"id": "loop.architecture_doc", "title": "Architecture Doc", "status": "fail"},
+        {"id": "loop.domain_docs", "title": "Domain README Docs", "status": "fail"},
+    ],
+}
+
+LOOP_TARGETS = [
+    "loop-runs/README.md",
+    ".omp/rules/denylist.md",
+    "signals/README.md",
+    ".omp/commands/pr-artifact-template.md",
+]
+
+UNSAFE_LOOP_TARGETS = [
+    ".agents/readiness/config.json",
+    ".github/pull_request_template.md",
+    ".omp/skills",
+    "domains",
+    ".omp/commands/goal.md",
+    ".omp/commands/loop.md",
+    "ARCHITECTURE.md",
+    "docs/MOBILE.md",
+]
+
+
+def _cli(argv):
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        code = cli.main(argv)
+    return code, buf.getvalue()
 
 
 def _args(root, apply=False, force=False, report=None):
@@ -32,6 +75,26 @@ class TestResolveScaffold(unittest.TestCase):
         self.assertEqual(recipes.resolve_scaffold("security.security_md", [])[0], "SECURITY.md")
         self.assertEqual(recipes.resolve_scaffold("security.gitignore_comprehensive", [])[1], "__gitignore_append__")
         self.assertIsNone(recipes.resolve_scaffold("unknown.criterion", []))
+
+    def test_loop_scaffolds_are_only_safe_four(self):
+        expected = {
+            "loop.loop_runs_dir": ("loop-runs/README.md", "loop/loop-runs-README.md"),
+            "loop.denylist": (".omp/rules/denylist.md", "loop/denylist.md"),
+            "loop.signal_schema": ("signals/README.md", "loop/signals-README.md"),
+            "loop.pr_artifact_template": (".omp/commands/pr-artifact-template.md", "loop/pr-artifact-template.md"),
+        }
+        for cid, scaffold in expected.items():
+            self.assertEqual(recipes.resolve_scaffold(cid, []), scaffold)
+        for cid in [
+            "loop.rules_index",
+            "loop.skills_present",
+            "loop.prompt_contracts",
+            "loop.architecture_doc",
+            "loop.domain_docs",
+            "loop.mobile_doc",
+            "loop.smoke_artifacts_cited",
+        ]:
+            self.assertIsNone(recipes.resolve_scaffold(cid, []))
 
 
 class TestBuildPlan(unittest.TestCase):
@@ -95,10 +158,10 @@ class TestWorktreeDirty(unittest.TestCase):
 
 
 class TestRunFix(unittest.TestCase):
-    def _seed_report(self, root):
+    def _seed_report(self, root, report=REPORT):
         rp = root / ".agents" / "readiness"
         rp.mkdir(parents=True, exist_ok=True)
-        (rp / "latest.json").write_text(json.dumps(REPORT))
+        (rp / "latest.json").write_text(json.dumps(report))
 
     def test_no_report_returns_2(self):
         root = make_repo({})
@@ -126,6 +189,52 @@ class TestRunFix(unittest.TestCase):
         with mock.patch.object(recipes, "worktree_dirty", return_value=True):
             self.assertEqual(recipes.run_fix(_args(root, apply=True, force=False)), 1)
         self.assertFalse((root / "ruff.toml").exists())  # nothing written on refusal
+
+    def test_loop_dry_run_apply_and_safety(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        self._seed_report(root, LOOP_REPORT)
+
+        code, out = _cli(["fix", "--project", str(root)])
+        self.assertEqual(code, 0)
+        self.assertTrue(out.startswith("# ra1-fix plan (dry run — no files written)"))
+        for target in LOOP_TARGETS:
+            self.assertIn(target, out)
+            self.assertFalse((root / target).exists())
+        for target in UNSAFE_LOOP_TARGETS:
+            self.assertNotIn(f"`{target}`", out)
+
+        code, out = _cli(["fix", "--project", str(root), "--apply"])
+        self.assertEqual(code, 0)
+        for target in LOOP_TARGETS:
+            self.assertTrue((root / target).exists(), target)
+            self.assertIn(f"`{target}`", out)
+        for target in UNSAFE_LOOP_TARGETS:
+            self.assertFalse((root / target).exists(), target)
+
+        code, out = _cli(["fix", "--project", str(root), "--apply"])
+        self.assertEqual(code, 0)
+        for target in LOOP_TARGETS:
+            self.assertIn(f"`{target}`", out)
+            self.assertIn("exists → skipped", out)
+
+    def test_loop_existing_targets_not_overwritten(self):
+        root = make_repo({"loop-runs/README.md": "# custom\n"})
+        self.addCleanup(rmtree, root)
+        self._seed_report(root, LOOP_REPORT)
+        code, _out = _cli(["fix", "--project", str(root), "--apply"])
+        self.assertEqual(code, 0)
+        self.assertEqual((root / "loop-runs/README.md").read_text(), "# custom\n")
+
+    def test_loop_dirty_worktree_refuses_without_writes(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        self._seed_report(root, LOOP_REPORT)
+        with mock.patch.object(recipes, "worktree_dirty", return_value=True):
+            code, _out = _cli(["fix", "--project", str(root), "--apply"])
+        self.assertEqual(code, 1)
+        for target in LOOP_TARGETS:
+            self.assertFalse((root / target).exists(), target)
 
 
 class TestFormatPlan(unittest.TestCase):

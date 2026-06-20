@@ -41,6 +41,24 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn("unknown", md.lower())
 
 
+    def test_non_gating_failures_render_as_advisory_improvements(self):
+        rep = Report(project_path=".", schema_version="1", engine_version="0.3.0",
+                     registry_version="0.3.0", detector_version="0.3.0")
+        rep.results = [
+            CriterionResult(id="docs.readme", title="README", pillar="Documentation", level=1,
+                            scope="repository", gating=True, status=Status.FAIL, rationale="missing"),
+            CriterionResult(id="loop.loop_runs_dir", title="Loop Run Log README", pillar="Documentation", level=2,
+                            scope="repository", gating=False, status=Status.FAIL, rationale="missing loop log",
+                            fix_kind="scaffold"),
+        ]
+        md = report_mod.render_markdown(rep)
+        self.assertIn("**Loop Run Log README** (**advisory**, L2): missing loop log", md)
+        self.assertIn("## Advisory Improvements", md)
+        self.assertIn("- Loop Run Log README (L2, Documentation) — missing loop log", md)
+        action_section = md.split("## Advisory Improvements")[0].split("## Action Items", 1)[1]
+        self.assertNotIn("Loop Run Log README", action_section)
+        self.assertIn("README", action_section)
+
 class TestGithub(unittest.TestCase):
     def test_annotations(self):
         root, rep = _report(BARE)
@@ -49,6 +67,15 @@ class TestGithub(unittest.TestCase):
         self.assertIn("::warning", gh)
         self.assertIn("::notice::Agent Readiness Level", gh)
 
+
+    def test_non_gating_failures_omit_annotations(self):
+        rep = Report(project_path=".", schema_version="1", engine_version="0.3.0",
+                     registry_version="0.3.0", detector_version="0.3.0")
+        rep.results = [CriterionResult(id="loop.loop_runs_dir", title="Loop Run Log README",
+                                       pillar="Documentation", level=2, scope="repository",
+                                       gating=False, status=Status.FAIL, rationale="missing")]
+        gh = report_mod.render_github(rep)
+        self.assertNotIn("::warning", gh)
 
 class TestJunit(unittest.TestCase):
     def test_valid_xml(self):
@@ -83,6 +110,17 @@ class TestSarif(unittest.TestCase):
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0]["ruleId"], "style.large_file")
         self.assertEqual(res[0]["locations"][0]["physicalLocation"]["artifactLocation"]["uri"], "src/big.py")
+
+    def test_non_gating_failures_omitted_from_sarif(self):
+        rep = Report(project_path=".", schema_version="1", engine_version="0.3.0",
+                     registry_version="0.3.0", detector_version="0.3.0")
+        rep.results = [CriterionResult(
+            id="loop.loop_runs_dir", title="Loop Run Log README", pillar="Documentation", level=2,
+            scope="repository", gating=False, status=Status.FAIL, rationale="missing",
+            evidence=[Evidence(summary="loop", source="loop-runs/README.md")],
+        )]
+        doc = json.loads(report_mod.render_sarif(rep))
+        self.assertEqual(doc["runs"][0]["results"], [])
 
 
 class TestRenderDispatch(unittest.TestCase):

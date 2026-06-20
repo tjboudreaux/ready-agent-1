@@ -85,6 +85,7 @@ class Detection:
     languages: list = field(default_factory=list)
     apps: list = field(default_factory=list)       # list[App]
     is_monorepo: bool = False
+    opt_in: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -94,6 +95,7 @@ class Detection:
             "languages": list(self.languages),
             "is_monorepo": self.is_monorepo,
             "apps": [a.to_dict() for a in self.apps],
+            "opt_in": dict(self.opt_in),
         }
 
 
