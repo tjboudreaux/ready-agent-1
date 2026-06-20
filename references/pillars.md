@@ -16,9 +16,10 @@ document is the source of truth for what comes next and the rules for getting th
 | **T3 execution** | running the repo's own lint/test/build | **OFF** — opt-in only, behind a sandbox contract (no network, scrubbed env, isolated copy, timeout, command allowlist); CI status from T2 substitutes |
 | **T4 agent** | qualitative judgment (naming, doc quality, modularization) | skills only, **advisory** — never changes the score |
 
-## Current gating set (v0.3.0 — 32 deterministic criteria)
+## Current gating set (v0.4.0 — 32 deterministic gating criteria)
 
-Generated from `registry.json` v0.3.0; if this table and the registry disagree, the registry wins.
+Generated from `registry.json` v0.4.0; if this table and the registry disagree, the registry wins.
+The gating set is unchanged at 32; 0.4.0 adds six **advisory** criteria (see the roadmap below).
 
 | id | Pillar | Title | Level | Applies to |
 |---|---|---|---|---|
@@ -80,18 +81,29 @@ proof that a denylist/schema is semantically correct or enforced. They only say 
 maintainer-owned contract exists and is not obviously empty or placeholder text.
 
 ### Build System (deterministic candidates)
-- **Agentic Development** (T1) — agent co-authorship trailers in recent history. The check
-  exists (`checks/build.py:agentic_development`) but is intentionally unregistered until the
-  fixture corpus covers git-history shapes.
-- Build reproducibility (T3) — clean-checkout build succeeds under the sandbox contract.
-- CI duration budget (T2) — feedback loop fast enough for agent iteration.
+- **Agentic Development** (`build.agentic_development`, T1) — shipped advisory in 0.4.0: agent
+  co-authorship trailers in recent history. Graduates only after the fixture corpus covers
+  git-history shapes.
+- **Build Command Documented** (`build.build_command_documented`, T0) — shipped advisory in 0.4.0:
+  an explicit build command in package config or a Build doc section (Makefile targets not inferred).
+- **CI Duration Budget** (`build.ci_duration_budget`, T2) — shipped advisory in 0.4.0: recent CI
+  runs within a configured `ci_budget_minutes`; needs canned-`gh` run-timing fixtures before graduation.
+- Build reproducibility (T3) — **deferred** (not registered): a clean-checkout build under the
+  sandbox contract; see the reproducible-build rules below.
 
 ### Testing (deterministic + T3 candidates)
-- Coverage threshold configured/enforced (T0/T2).
+- **Coverage Threshold Enforced** (`testing.coverage_threshold`, T0) — shipped advisory in 0.4.0:
+  coverage config **and** CI enforcement; config without enforcement fails.
 - **Tests Pass** (`testing.tests_pass`, T3) — shipped advisory in engine 0.2.0: the detected
   test command runs on an isolated copy under the sandbox contract, opt-in via `--exec`.
   Graduates only with deterministic T3 fixtures.
-- Flake quarantine / retry policy present (T0).
+- **Flaky Test Quarantine Policy** (`testing.flake_quarantine`, T0) — shipped advisory in 0.4.0:
+  a documented quarantine policy; blind retries do not count.
+
+### Task Discovery (deterministic candidates)
+- **Actionable Backlog Items** (`taskdisc.actionable_backlog_items`, T2) — shipped advisory in
+  0.4.0: most open issues are labeled/milestoned **and** carry a body; needs canned-`gh` fixtures
+  before graduation.
 
 ### Observability (advisory-only in v1, the largest deferred pillar)
 - Structured logging configured · distributed tracing · metrics export · alerting rules ·

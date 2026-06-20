@@ -290,5 +290,86 @@ class TestLoopChecks(CheckCase):
         self.assertEqual(self.s(loop.domain_docs(self.ctx({}))), Status.FAIL)
         placeholder = "# Domain\n\n[owner] should replace this placeholder with domain documentation.\n"
         self.assertEqual(self.s(loop.domain_docs(self.ctx({"domains/core/README.md": placeholder}))), Status.FAIL)
+class TestPhase5BuildChecks(CheckCase):
+    def test_build_command_documented(self):
+        self.assertEqual(self.s(build.build_command_documented(
+            self.ctx({"package.json": '{"scripts":{"build":"tsc"}}'}))), Status.PASS)
+        readme = "# Project\n\n## Build\n\n```\nmake release\n```\n"
+        self.assertEqual(self.s(build.build_command_documented(
+            self.ctx({"README.md": readme}))), Status.PASS)
+        no_block = "# Project\n\n## Build\n\nRun it somehow.\n"  # heading, no code block
+        self.assertEqual(self.s(build.build_command_documented(
+            self.ctx({"README.md": no_block}))), Status.FAIL)
+        self.assertEqual(self.s(build.build_command_documented(
+            self.ctx({"README.md": "# Project\n\n## Usage\n"}))), Status.FAIL)
+
+    def test_ci_duration_budget(self):
+        runs_fast = ('{"workflow_runs":[{"run_started_at":"2026-06-01T00:00:00Z",'
+                     '"updated_at":"2026-06-01T00:05:00Z"}]}')
+        runs_slow = ('{"workflow_runs":[{"run_started_at":"2026-06-01T00:00:00Z",'
+                     '"updated_at":"2026-06-01T00:30:00Z"}]}')
+        runs_untimed = '{"workflow_runs":[{"conclusion":"success"}]}'
+        cfg = {".agents/readiness/config.json": '{"ci_budget_minutes": 15}'}
+        runs_key = ("api", "repos/o/r/actions/runs?per_page=20")
+        # no github -> skipped
+        self.assertEqual(self.s(build.ci_duration_budget(self.ctx(cfg))), Status.SKIPPED)
+        # github but no budget -> unknown
+        self.assertEqual(self.s(build.ci_duration_budget(
+            self.ctx({}, gh=_gh_available({runs_key: runs_fast})))), Status.UNKNOWN)
+        # budget but no timed runs -> unknown
+        self.assertEqual(self.s(build.ci_duration_budget(
+            self.ctx(cfg, gh=_gh_available({runs_key: runs_untimed})))), Status.UNKNOWN)
+        # within budget -> pass
+        self.assertEqual(self.s(build.ci_duration_budget(
+            self.ctx(cfg, gh=_gh_available({runs_key: runs_fast})))), Status.PASS)
+        # exceeds budget -> fail
+        self.assertEqual(self.s(build.ci_duration_budget(
+            self.ctx(cfg, gh=_gh_available({runs_key: runs_slow})))), Status.FAIL)
+
+    def test_run_minutes_malformed(self):
+        self.assertIsNone(build._run_minutes({"run_started_at": "bad", "updated_at": "also-bad"}))
+        self.assertIsNone(build._run_minutes({}))
+
+
+class TestPhase5TestingChecks(CheckCase):
+    def test_coverage_threshold(self):
+        wf = {".github/workflows/aaa.yml": "name: lint\nrun: echo no coverage here\n",
+              ".github/workflows/ci.yml": "name: ci\nrun: coverage report --fail-under=90\n"}
+        # config + CI enforcement -> pass (first workflow has no enforce token, second does)
+        self.assertEqual(self.s(testing.coverage_threshold(
+            self.ctx({".coveragerc": "[run]\n", **wf}))), Status.PASS)
+        # config only -> fail
+        self.assertEqual(self.s(testing.coverage_threshold(
+            self.ctx({"pyproject.toml": "[tool.coverage.run]\nbranch=true\n"}))), Status.FAIL)
+        # no config -> fail
+        self.assertEqual(self.s(testing.coverage_threshold(self.ctx(wf))), Status.FAIL)
+        # jest coverageThreshold config path + codecov enforcement
+        jest = {"package.json": '{"jest":{"coverageThreshold":{"global":{"lines":80}}}}',
+                ".github/workflows/ci.yml": "name: ci\nuses: codecov/codecov-action@v4\n"}
+        self.assertEqual(self.s(testing.coverage_threshold(self.ctx(jest))), Status.PASS)
+
+    def test_flake_quarantine(self):
+        doc = "# Testing\n\n## Flaky tests\n\nWe quarantine flaky tests in a separate job.\n"
+        self.assertEqual(self.s(testing.flake_quarantine(
+            self.ctx({"CONTRIBUTING.md": doc}))), Status.PASS)
+        self.assertEqual(self.s(testing.flake_quarantine(
+            self.ctx({"README.md": "# x\n\nWe retry tests automatically.\n"}))), Status.FAIL)
+
+
+class TestPhase5TaskdiscChecks(CheckCase):
+    def test_actionable_backlog_items(self):
+        issues_good = ('[{"number":1,"labels":[{"name":"bug"}],"body":"steps to reproduce"},'
+                       '{"number":2,"milestone":{"title":"v1"},"body":"do the thing"}]')
+        issues_bad = '[{"number":1,"labels":[],"body":""},{"number":2,"body":"   "}]'
+        key = ("api", "repos/o/r/issues?state=open&per_page=50")
+        self.assertEqual(self.s(taskdisc.actionable_backlog_items(self.ctx({}))), Status.SKIPPED)
+        self.assertEqual(self.s(taskdisc.actionable_backlog_items(
+            self.ctx({}, gh=_gh_available({key: "[]"})))), Status.PASS)
+        self.assertEqual(self.s(taskdisc.actionable_backlog_items(
+            self.ctx({}, gh=_gh_available({key: issues_good})))), Status.PASS)
+        self.assertEqual(self.s(taskdisc.actionable_backlog_items(
+            self.ctx({}, gh=_gh_available({key: issues_bad})))), Status.FAIL)
+
+
 if __name__ == "__main__":
     unittest.main()
