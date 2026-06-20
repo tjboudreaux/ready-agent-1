@@ -32,7 +32,7 @@ strict = true
 
 [tool.coverage.run]
 branch = true
-source = ["engine/readiness", "evals"]
+source = ["engine/readiness", "evals", "scripts"]
 
 [tool.coverage.report]
 show_missing = true

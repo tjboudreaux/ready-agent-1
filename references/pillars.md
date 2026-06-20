@@ -123,6 +123,12 @@ A criterion graduates only when **all** of the following hold, enforced by
    T4 criteria never gate.
 4. **Applicability honesty** — unsupported environments must `skip` with a reason (e.g.
    `skipped: no GitHub API`), never silently pass or fail.
+5. **Coverage discipline (roadmap work)** — any roadmap criterion phase is blocked until its
+   pass/fail fixture pair exists *and* every new or changed Python module reaches 100% branch
+   coverage (or carries a reviewed `# pragma: no cover`). This is enforced by
+   `scripts/coverage_gate.py` against the PR diff, in addition to the >90% total gate. T2
+   criteria additionally require canned-`gh` fixtures in the corpus — not only unit tests —
+   before they may graduate.
 
 Notes on current coverage: T2 criteria are exercised in the corpus for applicability only
 (fixtures run with `no_github`, so they must skip cleanly); their pass/fail logic is covered

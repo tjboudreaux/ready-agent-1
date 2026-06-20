@@ -64,6 +64,24 @@ def no_fabricated_pass(engine: dict, text: str) -> bool:
     return True
 
 
+def gating_total_matches(engine: dict) -> bool:
+    """Engine invariant: the deterministic gate counts only gating criteria.
+
+    ``gating_total`` must equal the number of gating criteria that are not skipped/waived, and
+    ``gating_passed`` the number of those that pass. This proves advisory (``gating: false``)
+    results -- including advisory *failures* -- can never change the gate or the level derived
+    from it.
+    """
+    score = engine.get("score") or {}
+    countable = [
+        r for r in engine.get("results", [])
+        if r.get("gating") and r.get("status") not in ("skipped", "waived")
+    ]
+    passed = [r for r in countable if r.get("status") == "pass"]
+    return (score.get("gating_total") == len(countable)
+            and score.get("gating_passed") == len(passed))
+
+
 def run_contract_checks(engine: dict, text: str) -> dict:
     score = engine.get("score") or {}
     return {

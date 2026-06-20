@@ -23,6 +23,9 @@ class TestExtract(unittest.TestCase):
     def test_ignores_non_score_json(self):
         self.assertIsNone(contracts.extract_score_block('```json\n{"foo": 1}\n```'))
 
+    def test_ignores_malformed_json_block(self):
+        self.assertIsNone(contracts.extract_score_block("```json\n{not valid json}\n```"))
+
 
 class TestChecks(unittest.TestCase):
     def setUp(self):
@@ -54,6 +57,28 @@ class TestChecks(unittest.TestCase):
         flip = ('```json\n' + json.dumps({**self.score, "results": [{"id": "security.codeowners", "status": "pass"}]}) + '\n```')
         self.assertFalse(contracts.no_fabricated_pass(engine, flip))
         self.assertTrue(contracts.no_fabricated_pass(engine, good_output(self.engine)))  # no results block
+
+    def test_no_fabricated_pass_results_present_but_clean(self):
+        engine = {"score": self.score, "results": [{"id": "security.codeowners", "status": "fail"}]}
+        clean = ('```json\n' + json.dumps(
+            {**self.score, "results": [{"id": "security.codeowners", "status": "fail"}]}) + '\n```')
+        self.assertTrue(contracts.no_fabricated_pass(engine, clean))
+
+    def test_gating_total_matches(self):
+        engine = {
+            "score": {"gating_total": 2, "gating_passed": 1},
+            "results": [
+                {"id": "a", "gating": True, "status": "pass"},
+                {"id": "b", "gating": True, "status": "fail"},
+                {"id": "c", "gating": True, "status": "skipped"},
+                {"id": "loop.x", "gating": False, "status": "fail"},
+            ],
+        }
+        self.assertTrue(contracts.gating_total_matches(engine))
+        # An advisory failure flipping to fail must not move the gate; corrupt the score to prove
+        # the invariant catches a mismatch.
+        engine["score"]["gating_total"] = 3
+        self.assertFalse(contracts.gating_total_matches(engine))
 
     def test_run_contract_checks(self):
         checks = contracts.run_contract_checks(self.engine, good_output(self.engine))
