@@ -112,6 +112,34 @@ def cmd_formats(args) -> int:
     return 0
 
 
+def cmd_history_list(args) -> int:
+    from readiness import history, report as report_mod
+    payload, reason = history.list_history(args.project, history_dir=args.history_dir)
+    if payload is None:  # pragma: no cover - unreachable: list has no --require-origin, local id always resolves
+        sys.stderr.write(f"ra1 history: {reason}\n")
+        return 1
+    if args.format == "markdown":
+        print(report_mod.render_history_list(payload))
+    else:
+        print(json.dumps(payload, indent=2))
+    return 0
+
+
+def cmd_history_diff(args) -> int:
+    from readiness import history, report as report_mod
+    old = history.load_snapshot(args.project, args.from_id, history_dir=args.history_dir)
+    new = history.load_snapshot(args.project, args.to_id, history_dir=args.history_dir)
+    if old is None or new is None:
+        sys.stderr.write("ra1 history: could not resolve --from/--to snapshots.\n")
+        return 1
+    payload = {"from": args.from_id, "to": args.to_id, **history.delta(old, new)}
+    if args.format == "markdown":
+        print(report_mod.render_history_diff(payload))
+    else:
+        print(json.dumps(payload, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ra1",
@@ -160,6 +188,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_fix.add_argument("--instructions", default=None,
                        help="Focus grammar, e.g. 'prioritize security' or 'do not touch CI'")
     p_fix.set_defaults(func=_cmd_fix)
+
+    p_hist = sub.add_parser("history", help="Local readiness history (list/diff)")
+    hsub = p_hist.add_subparsers(dest="history_op")
+    h_list = hsub.add_parser("list", help="List stored reports for this repo")
+    h_list.add_argument("--project", default=".")
+    h_list.add_argument("--history-dir", default=None)
+    h_list.add_argument("--format", default="json", help="json or markdown")
+    h_list.set_defaults(func=cmd_history_list)
+    h_diff = hsub.add_parser("diff", help="Diff two stored reports")
+    h_diff.add_argument("--project", default=".")
+    h_diff.add_argument("--from", dest="from_id", required=True, help="history id or 'latest'")
+    h_diff.add_argument("--to", dest="to_id", default="latest", help="history id or 'latest'")
+    h_diff.add_argument("--history-dir", default=None)
+    h_diff.add_argument("--format", default="json", help="json or markdown")
+    h_diff.set_defaults(func=cmd_history_diff)
 
     sub.add_parser("version", help="Print version stamps").set_defaults(func=cmd_version)
     sub.add_parser("formats", help="List supported report formats").set_defaults(func=cmd_formats)

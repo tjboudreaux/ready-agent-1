@@ -62,6 +62,19 @@ or prose work requires an explicit `--include`. The plan ends with a **Verify** 
 
 Print project-type detection (type, confidence, signals, application inventory) as JSON.
 
+## `history`
+
+Local, API-shaped readiness history for a repository (no cloud parity — Factory's dashboard/API are
+external surfaces; RA1 stores only local `.agents/readiness` history).
+
+- `ra1 history list --project <repo> [--history-dir DIR] [--format json|markdown]` — ordered
+  snapshots with timestamp, level, pass rate, gating counts, and registry version. Each entry has an
+  `id` used by `diff`.
+- `ra1 history diff --project <repo> --from <id> --to <id|latest> [--format json|markdown]` — score
+  and per-criterion deltas. Only comparable when `schema/engine/registry` versions match; a detector
+  version change is flagged and application N/M deltas are suppressed. Corrupt or mismatched history
+  is reported, never crashes.
+
 ## `version` / `formats`
 
 `version` prints the engine/registry/detector/schema version stamps. `formats` lists report formats.

@@ -211,6 +211,75 @@ class TestReportIdentityAndHistory(unittest.TestCase):
         code, _ = run(["report", "--project", str(rich), "--no-github", "--min-level", str(level)])
         self.assertEqual(code, 0)
 
+class TestHistoryCommand(unittest.TestCase):
+    def _seed(self, root, specs):
+        for i, (lvl, eng, det) in enumerate(specs):
+            ident = history.repo_identity(str(root))
+            rep = {"schema_version": "2", "engine_version": eng, "registry_version": "0.4.0",
+                   "detector_version": det, "generated_at": f"2026-06-2{i}T00:00:00+00:00",
+                   "commit": f"c{i}", "repository": ident,
+                   "score": {"level": lvl, "pass_rate": 0.5, "gating_passed": lvl, "gating_total": 10},
+                   "results": [{"id": "docs.readme", "status": "fail" if i == 0 else "pass"}]}
+            history.store_history(rep, str(root))
+
+    def _ids(self, root):
+        code, out = run(["history", "list", "--project", str(root)])
+        self.assertEqual(code, 0)
+        return [e["id"] for e in json.loads(out)["entries"]]
+
+    def test_list_no_history_errors(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        # local-path identity always resolves; with no history the entries list is simply empty
+        code, out = run(["history", "list", "--project", str(root)])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["entries"], [])
+        code, md = run(["history", "list", "--project", str(root), "--format", "markdown"])
+        self.assertIn("_(none)_", md)
+        self._seed(root, [(2, "0.4.0", "0.4.0"), (3, "0.4.0", "0.4.0")])
+        code, out = run(["history", "list", "--project", str(root)])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(json.loads(out)["entries"]), 2)
+        code, md = run(["history", "list", "--project", str(root), "--format", "markdown"])
+        self.assertEqual(code, 0)
+        self.assertIn("# Readiness History", md)
+
+    def test_diff_json_and_markdown(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        self._seed(root, [(2, "0.4.0", "0.4.0"), (3, "0.4.0", "0.4.0")])
+        a, b = self._ids(root)
+        code, out = run(["history", "diff", "--project", str(root), "--from", a, "--to", b])
+        self.assertEqual(code, 0)
+        d = json.loads(out)
+        self.assertTrue(d["comparable"])
+        self.assertEqual(d["newly_passing"], ["docs.readme"])
+        code, md = run(["history", "diff", "--project", str(root), "--from", a, "--to", b,
+                        "--format", "markdown"])
+        self.assertIn("Level: 2 → 3", md)
+
+    def test_diff_incomparable_and_detector_change(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        # engine mismatch -> incomparable; detector mismatch -> comparable but flagged
+        self._seed(root, [(2, "0.3.0", "0.4.0"), (3, "0.4.0", "0.4.0"), (3, "0.4.0", "0.5.0")])
+        ids = self._ids(root)
+        code, md = run(["history", "diff", "--project", str(root), "--from", ids[0], "--to", ids[1],
+                        "--format", "markdown"])
+        self.assertIn("Not comparable", md)
+        code, out = run(["history", "diff", "--project", str(root), "--from", ids[1], "--to", ids[2]])
+        self.assertTrue(json.loads(out)["detector_changed"])
+        code, md = run(["history", "diff", "--project", str(root), "--from", ids[1], "--to", ids[2],
+                        "--format", "markdown"])
+        self.assertIn("detector version changed", md)
+
+    def test_diff_missing_snapshot_errors(self):
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
+        self._seed(root, [(2, "0.4.0", "0.4.0")])
+        code, _ = run(["history", "diff", "--project", str(root), "--from", "nope", "--to", "latest"])
+        self.assertEqual(code, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

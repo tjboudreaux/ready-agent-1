@@ -232,6 +232,40 @@ class TestDelta(unittest.TestCase):
         new = self._r(results=[{"id": "a", "status": "fail"}])
         self.assertEqual(history.delta(old, new)["newly_failing"], ["a"])
 
+class TestListAndSnapshot(unittest.TestCase):
+    def test_list_no_identity(self):
+        payload, reason = history.list_history("/tmp/x", require_origin=True, git_runner=_no_origin())
+        self.assertIsNone(payload)
+        self.assertIn("origin", reason)
+
+    def test_list_and_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            history.store_history(_report(tmp, level=2, generated_at="2026-06-20T00:00:00+00:00"), tmp)
+            history.store_history(_report(tmp, level=3, generated_at="2026-06-21T00:00:00+00:00"), tmp)
+            payload, reason = history.list_history(tmp, git_runner=_no_origin())
+            self.assertEqual(reason, "")
+            ids = [e["id"] for e in payload["entries"]]
+            self.assertEqual(len(ids), 2)
+            self.assertEqual(history.load_snapshot(tmp, ids[-1], git_runner=_no_origin())["score"]["level"], 3)
+            self.assertEqual(history.load_snapshot(tmp, "latest", git_runner=_no_origin())["score"]["level"], 3)
+            self.assertIsNone(history.load_snapshot(tmp, "nope", git_runner=_no_origin()))
+
+    def test_load_no_identity(self):
+        self.assertIsNone(history.load_snapshot("/tmp/x", "latest", require_origin=True,
+                                                git_runner=_no_origin()))
+
+    def test_load_latest_empty_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(history.load_snapshot(tmp, "latest", git_runner=_no_origin()))
+
+    def test_load_corrupt_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ident = history.repo_identity(tmp, git_runner=_no_origin())
+            bucket = history.history_root(tmp) / ident["identity_hash"]
+            bucket.mkdir(parents=True)
+            (bucket / "index.json").write_text(json.dumps([{"file": "missing.json"}]))
+            self.assertIsNone(history.load_snapshot(tmp, "missing", git_runner=_no_origin()))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -214,3 +214,36 @@ def render_sarif(report) -> str:
         }],
     }
     return json.dumps(doc, indent=2)
+
+
+# ---------------------------------------------------------------------------- history
+def render_history_list(payload) -> str:
+    repo = payload.get("repository") or {}
+    lines = ["# Readiness History", "",
+             f"_{repo.get('identity_kind', '?')}: {repo.get('name', '')}_", "",
+             "| id | timestamp | level | pass_rate | gating | registry |",
+             "|---|---|---|---|---|---|"]
+    for e in payload.get("entries", []):
+        lines.append(f"| {e.get('id', '')} | {e.get('timestamp', '')} | {e.get('level', '')} | "
+                     f"{e.get('pass_rate', '')} | {e.get('gating_passed', '')}/{e.get('gating_total', '')} | "
+                     f"{e.get('registry_version', '')} |")
+    if not payload.get("entries"):
+        lines.append("| _(none)_ | | | | | |")
+    return "\n".join(lines) + "\n"
+
+
+def render_history_diff(payload) -> str:
+    lines = ["# Readiness Delta", "", f"_{payload.get('from')} → {payload.get('to')}_", ""]
+    if not payload.get("comparable", False):
+        lines.append(f"Not comparable: {payload.get('reason', '')}")
+        return "\n".join(lines) + "\n"
+    lvl = (payload.get("score_delta") or {}).get("level", {})
+    lines.append(f"- Level: {lvl.get('from')} → {lvl.get('to')}")
+    if payload.get("detector_changed"):
+        lines.append("- ⚠️ detector version changed: application N/M deltas are suppressed.")
+    for label, key in (("Newly passing", "newly_passing"), ("Newly failing", "newly_failing"),
+                       ("Newly unknown", "newly_unknown")):
+        items = payload.get(key) or []
+        if items:
+            lines.append(f"- {label}: {', '.join(items)}")
+    return "\n".join(lines) + "\n"

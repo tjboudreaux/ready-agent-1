@@ -211,6 +211,39 @@ def resolve_latest(project, *, history_dir=None, require_origin=False, git_runne
     return report, ""
 
 
+def list_history(project, *, history_dir=None, require_origin=False, git_runner=None):
+    """Ordered history index for this repo's identity (API-shaped, no schema translation needed)."""
+    identity = repo_identity(project, require_origin=require_origin, git_runner=git_runner)
+    if identity is None:
+        return None, "no repository identity (origin remote required)"
+    bucket = history_root(project, out=None, history_dir=history_dir) / identity["identity_hash"]
+    entries = [{**e, "id": _stem(e.get("file", ""))} for e in load_index(bucket / "index.json")]
+    return {"repository": identity, "entries": entries}, ""
+
+
+def load_snapshot(project, snapshot_id, *, history_dir=None, require_origin=False, git_runner=None):
+    """Load a stored report by its history id (file stem) or the literal ``latest``; else None."""
+    identity = repo_identity(project, require_origin=require_origin, git_runner=git_runner)
+    if identity is None:
+        return None
+    bucket = history_root(project, out=None, history_dir=history_dir) / identity["identity_hash"]
+    index = load_index(bucket / "index.json")
+    if snapshot_id == "latest":
+        target = index[-1] if index else None
+    else:
+        target = next((e for e in index if _stem(e.get("file", "")) == snapshot_id), None)
+    if not target:
+        return None
+    try:
+        return json.loads((bucket / target.get("file", "")).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _stem(filename):
+    return filename[:-5] if filename.endswith(".json") else filename
+
+
 # --------------------------------------------------------------------------- delta
 def delta(old, new):
     """Deterministic delta between two report dicts.
