@@ -137,9 +137,19 @@ def _eval_criterion(crit, root, detection, static, git, github, waivers, options
     return CriterionResult(status=v.status, rationale=v.rationale, evidence=list(v.evidence), app_path=".", **base)
 
 
+def _status_counts(status):
+    """Repository-scope N/M: one assessable unit, counted only when applicable."""
+    if status == Status.PASS:
+        return 1, 1
+    if status in (Status.FAIL, Status.UNKNOWN):
+        return 0, 1
+    return 0, 0  # skipped / waived -> not applicable
+
+
 def _aggregate(base, per):
     if not per:
-        return CriterionResult(status=Status.SKIPPED, rationale="Not applicable to any application.", app_path=".", **base)
+        return CriterionResult(status=Status.SKIPPED, rationale="Not applicable to any application.",
+                               app_path=".", passed_apps=0, evaluated_apps=0, **base)
     evidence, fails, unknown_apps = [], [], []
     passes = skips = 0
     multi = len(per) > 1
@@ -160,18 +170,23 @@ def _aggregate(base, per):
             evidence.append(Evidence(summary=label, tier=e.tier, source=e.source, detail=e.detail))
     total = len(per)
     app_path = per[0][0].path if total == 1 else "*"
+    counts = {"passed_apps": passes, "evaluated_apps": total}
 
     if fails:
         crit = [a.path for a in fails if a.prod_facing is True]
         note = f"{passes}/{total} application(s) pass."
         note += (" Production-facing failing: " + ", ".join(crit) + ".") if crit else \
                 (" Failing: " + ", ".join(a.path for a in fails) + ".")
-        return CriterionResult(status=Status.FAIL, rationale=note, evidence=evidence, app_path=app_path, **base)
+        return CriterionResult(status=Status.FAIL, rationale=note, evidence=evidence,
+                               app_path=app_path, **counts, **base)
     if unknown_apps and passes == 0:
-        return CriterionResult(status=Status.UNKNOWN, rationale=f"Undetermined for {', '.join(unknown_apps)}.", evidence=evidence, app_path=app_path, **base)
+        return CriterionResult(status=Status.UNKNOWN, rationale=f"Undetermined for {', '.join(unknown_apps)}.",
+                               evidence=evidence, app_path=app_path, **counts, **base)
     if passes > 0:
-        return CriterionResult(status=Status.PASS, rationale=f"{passes}/{total} application(s) pass.", evidence=evidence, app_path=app_path, **base)
-    return CriterionResult(status=Status.SKIPPED, rationale="Skipped for all applications.", evidence=evidence, app_path=app_path, **base)
+        return CriterionResult(status=Status.PASS, rationale=f"{passes}/{total} application(s) pass.",
+                               evidence=evidence, app_path=app_path, **counts, **base)
+    return CriterionResult(status=Status.SKIPPED, rationale="Skipped for all applications.",
+                           evidence=evidence, app_path=app_path, **counts, **base)
 
 
 def summarize(results, registry=None):
@@ -221,6 +236,8 @@ def evaluate(root, detection, static, git, github, options=None):
     results, done = [], {}
     for crit in registry:
         result = _eval_criterion(crit, root, detection, static, git, github, waivers, options, done)
+        if result.scope != "application":
+            result.passed_apps, result.evaluated_apps = _status_counts(result.status)
         done[result.id] = result.status
         results.append(result)
     return results, summarize(results, registry)

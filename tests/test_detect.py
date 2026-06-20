@@ -156,6 +156,161 @@ class TestDetectPinning(unittest.TestCase):
         self.assertEqual(d.project_type, "monorepo-root")
         self.assertTrue(any("root project_type pin ignored" in s for s in d.signals))
 
+class TestAppDiscovery(unittest.TestCase):
+    def _detect(self, files):
+        root = make_repo(files)
+        self.addCleanup(rmtree, root)
+        return detect(root)
+
+    def test_go_cmd_binaries_are_apps(self):
+        d = self._detect({
+            "go.mod": "module example.com/x\n\ngo 1.21\n",
+            "cmd/api/main.go": "package main\nfunc main() {}\n",
+            "cmd/worker/main.go": "package main\nfunc main() {}\n",
+        })
+        self.assertTrue(d.is_monorepo)
+        paths = sorted(a.path for a in d.apps)
+        self.assertEqual(paths, ["cmd/api", "cmd/worker"])
+        self.assertTrue(all(a.deploy_surface == "cli" for a in d.apps))  # no web dep -> cli
+        self.assertIn("go", d.languages)
+
+    def test_go_cmd_service_classification(self):
+        d = self._detect({
+            "go.mod": "module x\n\ngo 1.21\n\nrequire (\n\tgithub.com/gin-gonic/gin v1.9.1\n)\n",
+            "cmd/api/main.go": "package main\nfunc main() {}\n",
+            "cmd/worker/main.go": "package main\nfunc main() {}\n",
+        })
+        self.assertTrue(all(a.deploy_surface == "service" for a in d.apps))
+
+    def test_maven_multi_module(self):
+        d = self._detect({
+            "pom.xml": ('<project xmlns="http://maven.apache.org/POM/4.0.0">\n'
+                        "<modules><module>svc</module><module>lib</module></modules></project>\n"),
+            "svc/pom.xml": '<project xmlns="http://maven.apache.org/POM/4.0.0"></project>\n',
+            "lib/pom.xml": '<project xmlns="http://maven.apache.org/POM/4.0.0"></project>\n',
+        })
+        self.assertTrue(d.is_monorepo)
+        self.assertEqual(sorted(a.path for a in d.apps), ["lib", "svc"])
+        self.assertIn("java", d.languages)
+
+    def test_gradle_includes(self):
+        d = self._detect({
+            "settings.gradle": "include ':app', ':lib', ':ghost'\n",  # ghost dir absent -> skipped
+            "app/build.gradle": "plugins { id 'application' }\n",
+            "lib/build.gradle": "plugins { id 'java-library' }\n",
+        })
+        self.assertTrue(d.is_monorepo)
+        self.assertEqual(sorted(a.path for a in d.apps), ["app", "lib"])
+
+    def test_examples_are_not_inflated_into_apps(self):
+        d = self._detect({
+            "package.json": '{"name":"root","workspaces":["packages/*","examples/*"]}',
+            "packages/real/package.json": '{"name":"real","dependencies":{"express":"^4"}}',
+            "packages/real2/package.json": '{"name":"real2","dependencies":{"fastify":"^4"}}',
+            "packages/empty/.keep": "",  # no manifest -> not an app
+            "examples/demo/package.json": '{"name":"demo","dependencies":{"express":"^4"}}',
+        })
+        paths = [a.path for a in d.apps]
+        self.assertIn("packages/real", paths)
+        self.assertNotIn("examples/demo", paths)
+        self.assertNotIn("packages/empty", paths)
+
+    def test_npm_workspaces_packages_dict_form(self):
+        d = self._detect({
+            "package.json": '{"name":"root","workspaces":{"packages":["packages/*"]}}',
+            "packages/a/package.json": '{"name":"a","dependencies":{"express":"^4"}}',
+            "packages/b/package.json": '{"name":"b","dependencies":{"fastify":"^4"}}',
+        })
+        self.assertEqual(sorted(a.path for a in d.apps), ["packages/a", "packages/b"])
+
+    def test_cargo_workspace_members(self):
+        d = self._detect({
+            "Cargo.toml": '[workspace]\nmembers = ["crates/*"]\n',
+            "crates/a/Cargo.toml": '[package]\nname="a"\n',
+            "crates/b/Cargo.toml": '[package]\nname="b"\n',
+            "crates/empty/.keep": "",  # dir without manifest -> not an app
+        })
+        self.assertTrue(d.is_monorepo)
+        self.assertEqual(sorted(a.path for a in d.apps), ["crates/a", "crates/b"])
+
+    def test_invalid_app_pin_signal(self):
+        d = self._detect({
+            "package.json": '{"name":"root","workspaces":["packages/*"]}',
+            "packages/a/package.json": '{"name":"a","dependencies":{"express":"^4"}}',
+            "packages/b/package.json": '{"name":"b","dependencies":{"fastify":"^4"}}',
+            ".agents/readiness/config.json": '{"detect":{"apps":{"packages/a":"notatype"}}}',
+        })
+        self.assertTrue(any("ignored invalid type pin" in s for s in d.signals))
+
+    def test_single_language_signals(self):
+        for files, lang in [
+            ({"Cargo.toml": '[package]\nname="x"\n'}, "rust"),
+            ({"Gemfile": "source 'x'\n"}, "ruby"),
+        ]:
+            d = self._detect(files)
+            self.assertIn(lang, d.languages)
+            self.assertTrue(any(s.startswith("languages:") for s in d.signals))
+
+
+class TestDetectInternals(unittest.TestCase):
+    def test_ignored_app_dir(self):
+        from readiness import detect as det
+        self.assertTrue(det._ignored_app_dir("examples/demo"))
+        self.assertTrue(det._ignored_app_dir("vendor/lib"))
+        self.assertFalse(det._ignored_app_dir("packages/api"))
+
+    def test_go_cmd_apps_requires_go_mod_and_cmd(self):
+        from readiness import detect as det
+        no_go = make_repo({"cmd/api/main.go": "package main\n"})
+        self.addCleanup(rmtree, no_go)
+        self.assertEqual(det._go_cmd_apps(no_go), [])
+        no_cmd = make_repo({"go.mod": "module x\n"})
+        self.addCleanup(rmtree, no_cmd)
+        self.assertEqual(det._go_cmd_apps(no_cmd), [])
+
+    def test_maven_modules_malformed_pom(self):
+        from readiness import detect as det
+        root = make_repo({"pom.xml": "<project><modules><module>svc"})  # truncated/invalid
+        self.addCleanup(rmtree, root)
+        self.assertEqual(det._maven_modules(root), [])
+
+    def test_detect_test_cmd_variants(self):
+        from readiness import detect as det
+        from readiness.collectors.static import StaticCollector
+        cases = [
+            ({"package.json": '{"scripts":{"test":"jest"}}'}, "npm test"),
+            ({"pyproject.toml": '[tool.pytest.ini_options]\n'}, "pytest"),
+            ({"go.mod": "module x\n"}, "go test ./..."),
+            ({"Cargo.toml": '[package]\nname="x"\n'}, "cargo test"),
+            ({"README.md": "# x"}, ""),
+        ]
+        for files, expected in cases:
+            root = make_repo(files)
+            self.addCleanup(rmtree, root)
+            self.assertEqual(det._detect_test_cmd(StaticCollector(root)), expected)
+
+    def test_malformed_config_is_ignored(self):
+        bad = self._d({".agents/readiness/config.json": "{not json"})
+        self.assertEqual(bad.project_type, "unknown")  # config error -> no pin, no crash
+        nondict = self._d({"pyproject.toml": '[project]\nname="x"\n',
+                           ".agents/readiness/config.json": '{"detect":"notadict"}'})
+        self.assertEqual(nondict.project_type, "library")  # detect block ignored
+
+    def test_config_via_options(self):
+        root = make_repo({"pyproject.toml": '[project]\nname="x"\n'})
+        self.addCleanup(rmtree, root)
+        # explicit readiness_config option beats on-disk file (covers the options branch)
+        d = detect(root, None, {"readiness_config": {"loop_ready": True}})
+        self.assertTrue(d.opt_in["loop_ready"])
+        # non-dict detect_config option is ignored without crashing
+        d2 = detect(root, None, {"detect_config": "notadict"})
+        self.assertEqual(d2.project_type, "library")
+
+    def _d(self, files):
+        root = make_repo(files)
+        self.addCleanup(rmtree, root)
+        return detect(root)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,7 @@
 """T0 static evidence: file existence, globs, and semantic config/manifest parsing."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -112,6 +113,16 @@ class StaticCollector:
                 for section in ("dependencies", "dev-dependencies"):
                     for k in (parsed.get(section, {}) or {}):
                         deps.add(k.lower())
+            elif fname == "go.mod" and isinstance(parsed, str):
+                for m in re.finditer(r"^\s*([\w./\-]+)\s+v[\w.\-+]+", parsed, re.MULTILINE):
+                    path = m.group(1).lower()
+                    deps.add(path)
+                    segs = path.split("/")
+                    if len(segs) >= 2:
+                        deps.add("/".join(segs[-2:]))
+            elif fname == "Gemfile" and isinstance(parsed, str):
+                for m in re.finditer(r"""^\s*gem\s+["']([^"']+)["']""", parsed, re.MULTILINE):
+                    deps.add(m.group(1).lower())
         self._cache["deps"] = deps
         return deps
 

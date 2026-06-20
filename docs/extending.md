@@ -72,6 +72,24 @@ If detection is wrong or low-confidence, pin it in `.agents/readiness/config.jso
 Also consider opening an issue with the repo shape — misclassification is treated as a bug, since a
 wrong skip inflates the score.
 
+## Application discovery
+
+Detection inventories independently deployable applications so app-scoped criteria report
+`passed_apps/evaluated_apps` (an N/M numerator/denominator). Discovered sources:
+
+- **npm/yarn/pnpm workspaces** (`workspaces` in `package.json`, or `pnpm-workspace.yaml` /
+  `turbo.json` / `nx.json` / `lerna.json` globbing `packages|apps|services/*`).
+- **Cargo workspaces** (`[workspace].members`).
+- **Go binaries** — each `cmd/<name>/` with a `.go` file (classified `service` when the module
+  declares a web framework, else `cli`).
+- **Maven modules** (`<modules>` in `pom.xml`) and **Gradle** `include` entries in
+  `settings.gradle[.kts]`.
+
+Library-only and non-deployable directories are never inflated into apps: a workspace glob match is
+only an app when it carries a manifest, and paths under `examples/`, `vendor/`, `third_party/`,
+`node_modules/`, `testdata/`, `fixtures/`, `samples/`, `docs/`, and `test(s)/` are excluded even when
+they do. Honesty over score: when signals are weak the type stays `unknown` rather than guessed.
+
 ## Fix recipes
 
 To make a criterion auto-remediable, add a `fix` block in the registry (`"kind": "scaffold"` +

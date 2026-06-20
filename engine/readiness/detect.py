@@ -8,6 +8,7 @@ silently skipped.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import List, Tuple
 
@@ -164,7 +165,10 @@ def _workspace_dirs(root: Path, static: StaticCollector) -> List[str]:
             for p in root.glob(member):
                 if p.is_dir() and _has_manifest(p):
                     dirs.add(p.relative_to(root).as_posix())
-    return sorted(dirs)
+    dirs |= set(_go_cmd_apps(root))
+    dirs |= set(_maven_modules(root))
+    dirs |= set(_gradle_modules(root, static))
+    return sorted(d for d in dirs if not _ignored_app_dir(d))
 
 
 def _has_manifest(path: Path) -> bool:
@@ -174,10 +178,66 @@ def _has_manifest(path: Path) -> bool:
     return False
 
 
-def _build_app(root: Path, rel: str) -> App:
+# Directories that are never independently deployable apps even with a manifest.
+_IGNORED_APP_PREFIXES = ("examples/", "example/", "vendor/", "third_party/", "third-party/",
+                         "node_modules/", "testdata/", "fixtures/", "samples/", "docs/",
+                         "test/", "tests/")
+
+
+def _ignored_app_dir(rel: str) -> bool:
+    return (rel.strip("/").lower() + "/").startswith(_IGNORED_APP_PREFIXES)
+
+
+def _go_cmd_apps(root: Path) -> List[str]:
+    """Go convention: each ``cmd/<name>`` with a ``.go`` file is an independent binary."""
+    if not (root / "go.mod").exists():
+        return []
+    cmd = root / "cmd"
+    if not cmd.is_dir():
+        return []
+    return [p.relative_to(root).as_posix() for p in sorted(cmd.iterdir())
+            if p.is_dir() and any(p.glob("*.go"))]
+
+
+def _maven_modules(root: Path) -> List[str]:
+    pom = root / "pom.xml"
+    if not pom.exists():
+        return []
+    import xml.etree.ElementTree as ET
+    try:
+        tree = ET.parse(pom)
+    except (ET.ParseError, OSError):
+        return []
+    out = []
+    for el in tree.iter():
+        if el.tag.split("}")[-1] == "module" and el.text and (root / el.text.strip()).is_dir():
+            out.append(el.text.strip())
+    return out
+
+
+def _gradle_modules(root: Path, static: StaticCollector) -> List[str]:
+    text = (static.read("settings.gradle") or "") + "\n" + (static.read("settings.gradle.kts") or "")
+    out = []
+    for m in re.finditer(r"include[\s(]+([^)\n]+)", text):
+        for tok in re.findall(r"""["']([^"']+)["']""", m.group(1)):
+            rel = tok.lstrip(":").replace(":", "/")
+            if rel and (root / rel).is_dir():
+                out.append(rel)
+    return out
+
+
+def _go_root_surface(static: StaticCollector) -> str:
+    deps = static.declared_deps()
+    return "service" if deps & {n.lower() for n in WEB_SERVICE_DEPS} else "cli"
+
+
+def _build_app(root: Path, rel: str, root_static: StaticCollector = None) -> App:
     sub = StaticCollector(root / rel if rel != "." else root)
     surface, _conf, _sig = _classify(sub)
-    langs = sub.languages()
+    # A Go cmd/* binary has no manifest of its own; classify it from the module's deps.
+    if surface == "unknown" and rel != "." and (root / "go.mod").exists() and list((root / rel).glob("*.go")):
+        surface = _go_root_surface(root_static or StaticCollector(root))
+    langs = sub.languages() or (["go"] if list((root / rel).glob("*.go")) else [])
     test_cmd = _detect_test_cmd(sub)
     prod = "unknown"
     if surface in ("service", "frontend"):
@@ -226,7 +286,7 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
         signals = []
         apps = []
         for rel in ws or ["."]:
-            app = _build_app(root, rel)
+            app = _build_app(root, rel, static)
             pinned = app_pins.get(rel)
             if pinned in VALID_PIN_TYPES:
                 _pin_app(app, pinned)
@@ -251,7 +311,9 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
         )
 
     surface, conf, signals = _classify(static)
-    app = _build_app(root, ".")
+    app = _build_app(root, ".", static)
+    if app.languages:
+        signals.append("languages: " + ", ".join(app.languages))
     if root_pin in VALID_PIN_TYPES:
         surface, conf = root_pin, CONF_HIGH
         _pin_app(app, root_pin)

@@ -277,5 +277,134 @@ class TestRegistryIntegrity(unittest.TestCase):
                 self.assertIn(req, ids, f"{crit['id']} requires unknown {req}")
 
 
+class TestAppCounts(unittest.TestCase):
+    def test_repository_scope_counts_by_status(self):
+        root, results, _ = _evaluate(RICH_FILES, RICH_GH, RICH_GIT)
+        self.addCleanup(rmtree, root)
+        by = {r.id: r for r in results}
+        # README passes -> 1/1
+        self.assertEqual((by["docs.readme"].passed_apps, by["docs.readme"].evaluated_apps), (1, 1))
+
+    def test_repository_scope_fail_and_skip_counts(self):
+        root, results, _ = _evaluate({"README.md": "# x"})  # bare: readme fails, T2 skipped
+        self.addCleanup(rmtree, root)
+        by = {r.id: r for r in results}
+        self.assertEqual((by["docs.readme"].passed_apps, by["docs.readme"].evaluated_apps), (0, 1))
+        self.assertEqual((by["security.branch_protection"].passed_apps,
+                          by["security.branch_protection"].evaluated_apps), (0, 0))  # skipped
+
+    def test_app_scope_counts_reflect_apps_not_rationale(self):
+        files = {
+            "package.json": '{"name":"root","workspaces":["packages/*"]}',
+            "packages/a/package.json": '{"name":"a"}',
+            "packages/a/.eslintrc.json": "{}",
+            "packages/b/package.json": '{"name":"b"}',
+        }
+        root, results, _ = _evaluate(files)
+        self.addCleanup(rmtree, root)
+        r = next(r for r in results if r.id == "style.linter_config")
+        self.assertEqual(r.evaluated_apps, 2)
+        self.assertEqual(r.passed_apps, 1)
+
+
+class TestEvalCriterionBranches(unittest.TestCase):
+    def _eval(self, crit, files):
+        root = make_repo(files)
+        self.addCleanup(rmtree, root)
+        static = StaticCollector(root)
+        det = detect(root, static)
+        git = GitCollector(root, runner=fake_runner({}))
+        gh = GithubCollector(root, runner=fake_runner({}))
+        return score._eval_criterion(crit, root, det, static, git, gh, {}, {}, {})
+
+    def _crit(self, scope="repository", types=None, langs=None, opt_in=None):
+        aw = {"project_types": types or ["*"], "languages": langs or ["*"], "requires": []}
+        if opt_in is not None:
+            aw["opt_in"] = opt_in
+        return {"id": "docs.readme", "title": "R", "pillar": "Docs", "level": 1,
+                "scope": scope, "gating": True, "check": "docs.readme", "applies_when": aw}
+
+    def test_unsupported_opt_in_is_unknown(self):
+        r = self._eval(self._crit(opt_in="bogus"), {"README.md": "# x"})
+        self.assertEqual(r.status, Status.UNKNOWN)
+
+    def test_repository_type_skip(self):
+        r = self._eval(self._crit(types=["service"]), {"pyproject.toml": '[project]\nname="lib"\n'})
+        self.assertEqual(r.status, Status.SKIPPED)
+        self.assertIn("project type", r.rationale)
+
+    def test_repository_language_skip(self):
+        r = self._eval(self._crit(langs=["rust"]), {"pyproject.toml": '[project]\nname="lib"\n'})
+        self.assertEqual(r.status, Status.SKIPPED)
+        self.assertIn("language", r.rationale)
+
+    def test_repository_unknown_type(self):
+        r = self._eval(self._crit(types=["service"]), {"README.md": "# x", "Makefile": "all:\n\techo\n"})
+        self.assertEqual(r.status, Status.UNKNOWN)
+
+    def test_app_scope_language_skip_yields_not_applicable(self):
+        files = {
+            "package.json": '{"name":"root","workspaces":["packages/*"]}',
+            "packages/a/package.json": '{"name":"a"}',
+            "packages/b/package.json": '{"name":"b"}',
+        }
+        r = self._eval(self._crit(scope="application", langs=["rust"]), files)
+        self.assertEqual(r.status, Status.SKIPPED)
+        self.assertEqual(r.evaluated_apps, 0)
+
+
+class TestAggregateProdFacing(unittest.TestCase):
+    def test_prod_facing_failing_note(self):
+        files = {
+            "package.json": '{"name":"root","workspaces":["packages/*"]}',
+            "packages/api/package.json": '{"name":"api","dependencies":{"express":"^4"}}',
+            "packages/api/Dockerfile": "FROM node\n",  # prod-facing service, no eslint -> fails
+            "packages/web/package.json": '{"name":"web","dependencies":{"express":"^4"}}',
+            "packages/web/.eslintrc.json": "{}",
+        }
+        root, results, _ = _evaluate(files)
+        self.addCleanup(rmtree, root)
+        r = next(r for r in results if r.id == "style.linter_config")
+        self.assertEqual(r.status, Status.FAIL)
+        self.assertIn("Production-facing failing", r.rationale)
+
+
+class TestWaiverEdgeCases(unittest.TestCase):
+    def test_waiver_without_id_ignored(self):
+        root, results, _ = _evaluate({"README.md": "# x"},
+                                     options={"waivers": [{"reason": "no id here"}]})
+        self.addCleanup(rmtree, root)
+        r = next(r for r in results if r.id == "docs.readme")
+        self.assertEqual(r.status, Status.FAIL)  # not waived
+
+    def test_waiver_malformed_expires_still_waives(self):
+        waivers = [{"id": "docs.readme", "reason": "x", "expires": "not-a-date"}]
+        root, results, _ = _evaluate({"README.md": "# x"},
+                                     options={"waivers": waivers, "now": "2026-06-01"})
+        self.addCleanup(rmtree, root)
+        r = next(r for r in results if r.id == "docs.readme")
+        self.assertEqual(r.status, Status.WAIVED)
+
+
+
+class TestAggregateUnknownAndWaiverFuture(unittest.TestCase):
+    def test_aggregate_unknown_app(self):
+        from readiness.model import App, Verdict
+        base = {"id": "x.y", "title": "t", "pillar": "P", "level": 3, "scope": "application",
+                "gating": False, "fixable": False, "fix_kind": ""}
+        per = [(App(path="a"), Verdict(Status.UNKNOWN, "undetermined", []))]
+        r = score._aggregate(base, per)
+        self.assertEqual(r.status, Status.UNKNOWN)
+        self.assertEqual(r.evaluated_apps, 1)
+        self.assertEqual(r.passed_apps, 0)
+
+    def test_future_waiver_still_waives(self):
+        waivers = [{"id": "docs.readme", "reason": "x", "expires": "2099-01-01"}]
+        root, results, _ = _evaluate({"README.md": "# x"},
+                                     options={"waivers": waivers, "now": "2026-06-01"})
+        self.addCleanup(rmtree, root)
+        r = next(r for r in results if r.id == "docs.readme")
+        self.assertEqual(r.status, Status.WAIVED)
+
 if __name__ == "__main__":
     unittest.main()
