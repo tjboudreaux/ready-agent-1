@@ -153,6 +153,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Resolve the latest stored report by repository identity")
     p_fix.add_argument("--history-dir", default=None,
                        help="History root for --latest (default <project>/.agents/readiness/history)")
+    p_fix.add_argument("--include", nargs="*", default=None,
+                       help="Only remediate these criterion ids (authoritative filter)")
+    p_fix.add_argument("--exclude", nargs="*", default=None,
+                       help="Never remediate these criterion ids (authoritative filter)")
+    p_fix.add_argument("--instructions", default=None,
+                       help="Focus grammar, e.g. 'prioritize security' or 'do not touch CI'")
     p_fix.set_defaults(func=_cmd_fix)
 
     sub.add_parser("version", help="Print version stamps").set_defaults(func=cmd_version)

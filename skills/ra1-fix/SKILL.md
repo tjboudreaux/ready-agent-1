@@ -15,15 +15,21 @@ scaffolds; you handle git and author any prose. Three buckets, three different s
 
 ## Steps
 
-1. **Ensure a report exists.** If `.agents/readiness/latest.json` is missing, run the ra1-report
-   skill first.
+1. **Resolve the latest report.** Mirroring Droid's `/readiness-fix`, resolve the latest stored
+   report by repository identity from the local history; run the ra1-report skill first if none
+   exists.
 
 2. **Dry-run the plan** to see what would change:
    ```bash
-   python3 "$(dirname "$0")/scripts/readiness/cli.py" fix --project <repo-path>
+   python3 "$(dirname "$0")/scripts/readiness/cli.py" fix --project <repo-path> --latest
    ```
-   It prints three buckets: **Auto-apply** (safe config scaffolds), **Propose** (drafts for review),
-   **GitHub settings** (manual).
+   It prints **Auto-apply** (safe config scaffolds — includes registry-declared `autofixable`
+   scaffolds even when advisory), **Propose** (drafts for review), **GitHub settings** (manual),
+   plus a **Verify** reminder. Focus the plan deterministically:
+   - `--include <id>...` / `--exclude <id>...` are authoritative criterion-id filters;
+   - `--instructions "prioritize security"` / `"do not touch CI"` use a small keyword→pillar
+     grammar; any phrase outside the grammar is annotated as a Note and never silently filters.
+   Non-scaffold advisory/prose work is only planned when explicitly `--include`d.
 
 3. **Create a local branch first** (never work on the default branch):
    ```bash
@@ -32,7 +38,7 @@ scaffolds; you handle git and author any prose. Three buckets, three different s
 
 4. **Apply the safe scaffolds** (idempotent; refuses on a dirty worktree; never overwrites non-empty files):
    ```bash
-   python3 "$(dirname "$0")/scripts/readiness/cli.py" fix --project <repo-path> --apply
+   python3 "$(dirname "$0")/scripts/readiness/cli.py" fix --project <repo-path> --latest --apply
    ```
 
 5. **Author the "Propose" items yourself** — README sections, a tailored `AGENTS.md`, runbooks, a first

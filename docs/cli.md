@@ -49,8 +49,14 @@ Plan or apply remediation from the latest report.
 | `--report PATH` | `.agents/readiness/latest.json` | Report to read |
 | `--latest` | off | Resolve the latest stored report by repository identity (schema 2 only) |
 | `--history-dir DIR` | `<project>/.agents/readiness/history` | History root for `--latest` |
+| `--include ID...` | — | Only remediate these criterion ids (authoritative) |
+| `--exclude ID...` | — | Never remediate these criterion ids (authoritative) |
+| `--instructions TEXT` | — | Focus grammar (`prioritize <pillar>`, `do not touch <pillar>`); unrecognized text is annotated, never silently filtered |
 
-Only safe config scaffolds are written, idempotently, never overwriting non-empty files.
+Only safe config scaffolds are written, idempotently, never overwriting non-empty files. Advisory
+criteria are auto-scaffolded only when their fix is a registry-declared safe scaffold; other advisory
+or prose work requires an explicit `--include`. The plan ends with a **Verify** reminder to re-run
+`ra1 report`.
 
 ## `detect`
 
