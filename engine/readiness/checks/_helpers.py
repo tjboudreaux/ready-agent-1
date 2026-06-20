@@ -6,6 +6,8 @@ fall back to the repo root so shared monorepo config at the root still counts.
 """
 from __future__ import annotations
 
+import re
+
 from ..model import Evidence, Status, Verdict
 
 
@@ -50,3 +52,26 @@ def atool(ctx, name):
     return ctx.app_static().has_tool_config(name) or (
         ctx.app.path != "." and ctx.static.has_tool_config(name)
     )
+
+
+_SOURCE_EXTS = ("py", "js", "ts", "tsx", "jsx", "go", "java", "rb", "cs")
+
+
+def agrep(ctx, patterns, exts=_SOURCE_EXTS, limit=400):
+    """Return the first app source file whose text matches any regex in ``patterns``, else None.
+
+    Used for *wiring* evidence: a dependency or config file proves something is available, but only
+    a usage site in source proves it is actually wired in. Searches the app dir, falling back to the
+    repo root for single-app repos, and skips vendored/build dirs via the collector's ignore list."""
+    compiled = [re.compile(p) for p in patterns]
+    coll = ctx.app_static()
+    globs = [f"**/*.{e}" for e in exts]
+    files = coll.glob(globs)
+    if not files and ctx.app.path != ".":
+        coll = ctx.static
+        files = coll.glob(globs)
+    for f in files[:limit]:
+        text = coll.read(f) or ""
+        if any(r.search(text) for r in compiled):
+            return f
+    return None

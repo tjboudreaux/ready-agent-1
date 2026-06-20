@@ -1,0 +1,14 @@
+{
+  "name": "observability-tracing-pass",
+  "description": "observability.tracing pass: two-part-evidence fixture proving no import-only/doc-only false positive.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\",\"opentelemetry-sdk\"]\n",
+    "app/t.py": "from opentelemetry import trace\nt = trace.get_tracer(__name__)\n"
+  },
+  "expected": {
+    "observability.tracing": "pass"
+  }
+}

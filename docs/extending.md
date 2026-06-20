@@ -39,6 +39,15 @@ New criteria start `"gating": false` (advisory — they appear in the report but
 A criterion graduates to `"gating": true` only after the evals show it's reliable: low false-positive
 and false-negative rates on the labeled fixtures in `tests/`. This keeps the gating score trustworthy.
 
+## Evidence discipline (observability / product)
+
+The Observability and Product criteria are **advisory** and require **two-part evidence**: a
+configuration/dependency signal AND a wiring/usage signal (use `agrep` to confirm a usage site in
+source). A dependency, a config file, or a README mention on its own never passes — an OpenTelemetry
+import does not make a system observable, and a Segment/LaunchDarkly package does not make a product
+instrumented. RA1 verifies *configuration evidence is present and wired*, not the runtime quality of
+the telemetry, experiments, or flags.
+
 ## Applicability
 
 - `project_types` — `["*"]` for all; otherwise matched against the app's detected type. If the type is

@@ -1,0 +1,14 @@
+{
+  "name": "observability-dashboards-as-code-pass",
+  "description": "observability.dashboards_as_code pass: two-part-evidence fixture proving no import-only/doc-only false positive.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "dashboards/svc.json": "{\"panels\":[{\"targets\":[{\"expr\":\"rate(http_requests_total[5m])\"}]}]}"
+  },
+  "expected": {
+    "observability.dashboards_as_code": "pass"
+  }
+}

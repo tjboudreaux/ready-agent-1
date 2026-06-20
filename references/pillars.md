@@ -105,14 +105,21 @@ maintainer-owned contract exists and is not obviously empty or placeholder text.
   0.4.0: most open issues are labeled/milestoned **and** carry a body; needs canned-`gh` fixtures
   before graduation.
 
-### Observability (advisory-only in v1, the largest deferred pillar)
-- Structured logging configured · distributed tracing · metrics export · alerting rules ·
-  health/readiness endpoints · dashboards-as-code · on-call/runbook linkage.
-- Deliberately not gating: the presence of an OTel import does not make a system observable;
-  these graduate only with checks that read real configuration, not vibes.
+### Observability (shipped advisory in 0.4.0, application/repository scoped)
+- `observability.structured_logging` · `observability.tracing` · `observability.metrics` ·
+  `observability.health_endpoints` (application, L3); `observability.alerting_rules` ·
+  `observability.dashboards_as_code` (repository, L4).
+- Every criterion requires **two-part evidence** — configuration/dependency AND wiring/usage — so
+  an OTel/Prometheus import, a config file, or a README mention never passes on its own. RA1 checks
+  configuration evidence, not the runtime quality of the telemetry. Applies only to
+  service/api/frontend/monorepo-root; libraries/CLIs are skipped. Graduation needs the pass/fail
+  fixture corpus to stay clean across stacks.
 
-### Product & Analytics (advisory-only in v1)
-- Analytics instrumentation · feature-flag tooling · experiment configuration.
+### Product & Experimentation (shipped advisory in 0.4.0)
+- `product.analytics_instrumentation` (application, L3) · `product.feature_flags` (application, L4) ·
+  `product.experiment_config` (repository, L4).
+- Two-part evidence as above: an analytics/flag SDK in the dependency list is not enough without a
+  named event, flag evaluation, or an owned experiment registry (variants + success metric + owner).
 
 ### Agent-graded soft criteria (T4, advisory forever unless evals prove otherwise)
 - Naming Consistency · Code Modularization · README quality · AGENTS.md quality ·

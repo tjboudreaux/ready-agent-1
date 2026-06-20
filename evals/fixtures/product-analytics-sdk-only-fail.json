@@ -1,0 +1,14 @@
+{
+  "name": "product-analytics-sdk-only-fail",
+  "description": "product.analytics_instrumentation fail: two-part-evidence fixture proving no import-only/doc-only false negative.",
+  "detect": {
+    "project_type": "frontend"
+  },
+  "files": {
+    "package.json": "{\"name\":\"web\",\"dependencies\":{\"react\":\"^18\",\"react-dom\":\"^18\",\"@segment/analytics-node\":\"^1\"}}",
+    "src/x.js": "const a = 1;\n"
+  },
+  "expected": {
+    "product.analytics_instrumentation": "fail"
+  }
+}

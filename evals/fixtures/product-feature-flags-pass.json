@@ -1,0 +1,14 @@
+{
+  "name": "product-feature-flags-pass",
+  "description": "product.feature_flags pass: two-part-evidence fixture proving no import-only/doc-only false positive.",
+  "detect": {
+    "project_type": "frontend"
+  },
+  "files": {
+    "package.json": "{\"name\":\"web\",\"dependencies\":{\"react\":\"^18\",\"react-dom\":\"^18\",\"launchdarkly-node-server-sdk\":\"^7\"}}",
+    "src/flags.js": "const on = client.variation('new-ui', user, false);\n"
+  },
+  "expected": {
+    "product.feature_flags": "pass"
+  }
+}

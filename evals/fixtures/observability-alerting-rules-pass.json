@@ -1,0 +1,14 @@
+{
+  "name": "observability-alerting-rules-pass",
+  "description": "observability.alerting_rules pass: two-part-evidence fixture proving no import-only/doc-only false positive.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "alerts.yml": "groups:\n- name: a\n  rules:\n  - alert: HighErrorRate\n    team: payments\n"
+  },
+  "expected": {
+    "observability.alerting_rules": "pass"
+  }
+}

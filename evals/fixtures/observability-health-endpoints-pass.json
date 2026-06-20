@@ -1,0 +1,14 @@
+{
+  "name": "observability-health-endpoints-pass",
+  "description": "observability.health_endpoints pass: two-part-evidence fixture proving no import-only/doc-only false positive.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "app/api.py": "@app.get(\"/healthz\")\ndef health():\n    return \"ok\"\n"
+  },
+  "expected": {
+    "observability.health_endpoints": "pass"
+  }
+}

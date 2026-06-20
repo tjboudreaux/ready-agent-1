@@ -1,0 +1,14 @@
+{
+  "name": "observability-structured-logging-fail",
+  "description": "observability.structured_logging fail: two-part-evidence fixture proving no import-only/doc-only false negative.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\",\"structlog\"]\n",
+    "app/main.py": "x = 1\n"
+  },
+  "expected": {
+    "observability.structured_logging": "fail"
+  }
+}
