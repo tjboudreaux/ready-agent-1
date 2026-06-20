@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, for example v0.3.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          case "$tag" in
+            v*) ;;
+            *) echo "tag must start with v" >&2; exit 1 ;;
+          esac
+          git rev-parse "$tag" >/dev/null
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Verify release readiness
+        run: |
+          python3 -m unittest discover -s tests -t .
+          python3 scripts/vendor.py --check
+          ./bin/ra1 report --project . --no-github --min-level 3 >/tmp/ra1-report.json
+      - name: Build source archive
+        run: |
+          mkdir -p dist
+          tag="${{ steps.tag.outputs.tag }}"
+          git archive --format=tar.gz --prefix="ready-agent-1-${tag#v}/" "$tag" \
+            -o "dist/ready-agent-1-${tag#v}.tar.gz"
+          shasum -a 256 "dist/ready-agent-1-${tag#v}.tar.gz" > "dist/ready-agent-1-${tag#v}.tar.gz.sha256"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          gh release create "$tag" dist/* \
+            --verify-tag \
+            --title "Ready Agent 1 ${tag}" \
+            --notes "Automated release for ${tag}."
