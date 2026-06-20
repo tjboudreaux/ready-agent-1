@@ -1,6 +1,6 @@
 [project]
 name = "agent-readiness"
-version = "0.3.0"
+version = "0.4.0"
 description = "Score a repository's readiness for AI agents and remediate the gaps."
 requires-python = ">=3.11"
 readme = "README.md"
