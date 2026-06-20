@@ -227,6 +227,44 @@ class TestCliFormats(unittest.TestCase):
         code, _ = self._run(["report", "--project", str(root), "--no-github", "--min-level", "1"])
         self.assertEqual(code, 1)  # bare repo is level 0
 
+class TestLocationRedaction(unittest.TestCase):
+    """Phase 1 invariant: no serialized report or markdown carries the raw absolute path."""
+
+    def _rep(self, repository=None, project_path="."):
+        return Report(project_path=project_path, schema_version="2", engine_version="0.4.0",
+                      registry_version="0.4.0", detector_version="0.4.0", repository=repository)
+
+    def test_to_dict_omits_raw_project_path(self):
+        rep = self._rep(project_path="/abs/secret/path")
+        d = rep.to_dict()
+        self.assertNotIn("project_path", d)
+        self.assertNotIn("/abs/secret/path", json.dumps(d))
+
+    def test_location_origin_shows_owner_name(self):
+        rep = self._rep(repository={"identity_kind": "origin", "owner": "acme", "name": "widget"})
+        self.assertEqual(report_mod._location(rep), "acme/widget")
+
+    def test_location_origin_without_owner_falls_back_to_name(self):
+        rep = self._rep(repository={"identity_kind": "origin", "name": "widget"})
+        self.assertEqual(report_mod._location(rep), "widget")
+
+    def test_location_local_path_shows_name_only(self):
+        rep = self._rep(repository={"identity_kind": "local_path", "name": "widget",
+                                    "project_path_hash": "abc"}, project_path="/home/user/widget")
+        self.assertEqual(report_mod._location(rep), "widget")
+
+    def test_location_no_repository_uses_basename_not_abspath(self):
+        rep = self._rep(repository=None, project_path="/home/user/secret-proj")
+        self.assertEqual(report_mod._location(rep), "secret-proj")
+
+    def test_markdown_subtitle_redacts_abspath(self):
+        rep = self._rep(repository={"identity_kind": "local_path", "name": "proj",
+                                    "project_path_hash": "h"}, project_path="/home/user/proj")
+        md = report_mod.render_markdown(rep)
+        self.assertNotIn("/home/user", md)
+        self.assertIn("· proj", md)
+
+
 
 if __name__ == "__main__":
     unittest.main()

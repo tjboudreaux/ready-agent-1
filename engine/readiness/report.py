@@ -34,6 +34,13 @@ def render(report, fmt: str) -> str:
         return render_sarif(report)
     return json.dumps(report.to_dict(), indent=2)
 
+def _location(d) -> str:
+    """Redacted scan location for the human subtitle — never the raw absolute path."""
+    repo = d.repository or {}
+    if repo.get("identity_kind") == "origin" and repo.get("owner"):
+        return f"{repo['owner']}/{repo.get('name', '')}"
+    return repo.get("name") or d.project_path.rsplit("/", 1)[-1]
+
 
 # ---------------------------------------------------------------------------- markdown
 def render_markdown(report) -> str:
@@ -45,7 +52,7 @@ def render_markdown(report) -> str:
         lines.append(f"**Level {score.level} — {score.level_name}**  ·  "
                      f"{score.gating_passed}/{score.gating_total} gating criteria  ·  {pct}%")
     lines.append("")
-    lines.append(f"_{d.engine_version} · {d.project_path}"
+    lines.append(f"_{d.engine_version} · {_location(d)}"
                  + (f" · commit {d.commit[:8]}" if d.commit else "") + "_")
     lines.append("")
 

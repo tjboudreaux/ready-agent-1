@@ -12,6 +12,8 @@ Engine/registry/detector → `0.4.0`; report **schema → 2**.
 - **Report schema 2**: every report now carries a redacted `repository` identity and `generated_at`;
   each criterion result carries `passed_apps`/`evaluated_apps` (N/M); the score block carries
   `recommendations` (the top 2-3 gating next-actions). The gating criteria set is **unchanged at 32**.
+  The raw absolute project path is no longer serialized anywhere (JSON, history snapshots, or the
+  markdown subtitle) — the redacted `repository` identity is the only location reference.
 - **Detection/app discovery**: Go `cmd/*` binaries, Maven `<modules>`, and Gradle `include` modules
   are discovered as deployable apps (with false-app guards for `examples/`, `vendor/`, tests, etc.);
   Go/Ruby manifest dependencies are parsed for honest classification. This can change app-scoped N/M

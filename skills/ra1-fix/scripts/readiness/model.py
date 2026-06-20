@@ -198,7 +198,6 @@ class Report:
             "engine_version": self.engine_version,
             "registry_version": self.registry_version,
             "detector_version": self.detector_version,
-            "project_path": self.project_path,
             "commit": self.commit,
             "branch": self.branch,
             "github_available": self.github_available,
