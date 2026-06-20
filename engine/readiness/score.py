@@ -189,6 +189,25 @@ def _aggregate(base, per):
                            evidence=evidence, app_path=app_path, **counts, **base)
 
 
+_EFFORT_RANK = {"scaffold": 0, "github_setting": 1, "propose": 2, "": 3}
+
+
+def _recommendations(results, level, limit=3):
+    """Deterministic top next-actions: gating failures/unknowns, the next locked level first,
+    then ascending level and lowest effort. Capped at ``limit``.
+    """
+    candidates = [r for r in results if r.gating and r.status in (Status.FAIL, Status.UNKNOWN)]
+    next_level = (level or 0) + 1
+
+    def key(r):
+        at_next = 0 if r.level == next_level else 1
+        return (at_next, r.level, _EFFORT_RANK.get(r.fix_kind, 9), r.id)
+
+    return [{"id": r.id, "title": r.title, "pillar": r.pillar, "level": r.level,
+             "status": r.status.value, "fix_kind": r.fix_kind, "rationale": r.rationale}
+            for r in sorted(candidates, key=key)[:limit]]
+
+
 def summarize(results, registry=None):
     gating = [r for r in results if r.gating]
     levels = []
@@ -226,6 +245,7 @@ def summarize(results, registry=None):
         gating_total=len(applicable_all),
         levels=levels,
         pillars=pillars,
+        recommendations=_recommendations(results, overall),
     )
 
 

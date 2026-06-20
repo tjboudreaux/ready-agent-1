@@ -8,6 +8,7 @@ import json
 from xml.etree import ElementTree as ET
 
 from .model import Status
+from .score import _recommendations
 
 _SYMBOL = {
     "pass": "✓", "fail": "✗", "skipped": "–",
@@ -49,7 +50,7 @@ def render_markdown(report) -> str:
     lines.append("")
 
     if d.detection:
-        lines.append("## Applications")
+        lines.append("## Applications Discovered")
         for i, app in enumerate(d.detection.apps, 1):
             langs = ", ".join(app.languages) or "n/a"
             lines.append(f"{i}. `{app.path}` — {app.deploy_surface}; languages: {langs}")
@@ -66,24 +67,25 @@ def render_markdown(report) -> str:
             lines.append(f"- **L{lv.level} {lv.name}**: {lv.passed}/{lv.total} ({round(lv.ratio*100)}%) — {mark}")
         lines.append("")
 
-    lines.append("## Criteria")
+    lines.append("## Criteria Results")
     for pillar in _pillars_in_order(d.results):
         lines.append("")
         lines.append(f"### {pillar}")
         for r in [x for x in d.results if x.pillar == pillar]:
             sym = _SYMBOL.get(r.status.value, "?")
             gate_label = "gating" if r.gating else "**advisory**"
-            lines.append(f"- {sym} **{r.title}** ({gate_label}, L{r.level}): {r.rationale}")
+            lines.append(f"- {sym} **{r.title}** ({gate_label}, L{r.level}, {_display_score(r)}): {r.rationale}")
 
-    actions = _action_items(d.results)
-    if actions:
+    recs = _recommendations(d.results, score.level if score else 0)
+    if recs:
         lines.append("")
         lines.append("## Action Items")
-        for group, items in actions:
-            lines.append("")
-            lines.append(f"**{group}**")
-            for r in items:
-                lines.append(f"- {r.title} (L{r.level}, {r.pillar}) — {r.rationale}")
+        lines.append("")
+        lines.append(f"_Top {len(recs)} highest-impact gating next steps (clear the next level first)._")
+        for rec in recs:
+            effort = _EFFORT.get(rec.get("fix_kind", ""), _EFFORT[""])
+            lines.append(f"- **{rec['title']}** ({rec['id']}, L{rec['level']}, {rec['pillar']}) "
+                         f"— {effort} — {rec['rationale']}")
 
     advisory_actions = _advisory_items(d.results)
     if advisory_actions:
@@ -116,6 +118,11 @@ def _pillars_in_order(results):
     return seen
 
 
+def _display_score(r):
+    """N/M shown next to each criterion: passed vs evaluated apps (repository scope is 1 unit)."""
+    return f"{r.passed_apps}/{r.evaluated_apps}"
+
+
 def _group_by_effort(items):
     groups = {}
     for r in items:
@@ -124,16 +131,6 @@ def _group_by_effort(items):
     for label in _EFFORT.values():
         if label in groups:
             ordered.append((label, sorted(groups[label], key=lambda r: r.level)))
-    return ordered
-
-
-def _action_items(results):
-    failing = [r for r in results if r.gating and r.status == Status.FAIL]
-    ordered = _group_by_effort(failing)
-    unknowns = [r for r in results if r.gating and r.status == Status.UNKNOWN]
-    if unknowns:
-        ordered.append(("Resolve unknowns (clarify project type / enable gh)",
-                        sorted(unknowns, key=lambda r: r.level)))
     return ordered
 
 

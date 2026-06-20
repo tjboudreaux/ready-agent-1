@@ -46,13 +46,14 @@ class TestMarkdown(unittest.TestCase):
                      registry_version="0.3.0", detector_version="0.3.0")
         rep.results = [
             CriterionResult(id="docs.readme", title="README", pillar="Documentation", level=1,
-                            scope="repository", gating=True, status=Status.FAIL, rationale="missing"),
+                            scope="repository", gating=True, status=Status.FAIL, rationale="missing",
+                            passed_apps=0, evaluated_apps=1),
             CriterionResult(id="loop.loop_runs_dir", title="Loop Run Log README", pillar="Documentation", level=2,
                             scope="repository", gating=False, status=Status.FAIL, rationale="missing loop log",
-                            fix_kind="scaffold"),
+                            fix_kind="scaffold", passed_apps=0, evaluated_apps=1),
         ]
         md = report_mod.render_markdown(rep)
-        self.assertIn("**Loop Run Log README** (**advisory**, L2): missing loop log", md)
+        self.assertIn("**Loop Run Log README** (**advisory**, L2, 0/1): missing loop log", md)
         self.assertIn("## Advisory Improvements", md)
         self.assertIn("- Loop Run Log README (L2, Documentation) — missing loop log", md)
         action_section = md.split("## Advisory Improvements")[0].split("## Action Items", 1)[1]
@@ -129,6 +130,71 @@ class TestRenderDispatch(unittest.TestCase):
         self.addCleanup(rmtree, root)
         json.loads(report_mod.render(rep, "json"))
         json.loads(report_mod.render(rep, "totally-unknown-format"))  # falls back to JSON
+
+
+class TestRecommendationsAndDisplay(unittest.TestCase):
+    def test_json_has_recommendations_and_counts(self):
+        root, rep = _report(BARE)
+        self.addCleanup(rmtree, root)
+        d = rep.to_dict()
+        recs = d["score"]["recommendations"]
+        self.assertGreater(len(recs), 0)
+        self.assertLessEqual(len(recs), 3)
+        self.assertIn("id", recs[0])
+        self.assertIn("passed_apps", d["results"][0])
+        self.assertIn("evaluated_apps", d["results"][0])
+
+    def test_markdown_renders_nm_and_action_items(self):
+        root, rep = _report(BARE)
+        self.addCleanup(rmtree, root)
+        md = report_mod.render_markdown(rep)
+        self.assertIn("## Criteria Results", md)
+        self.assertIn("/1):", md)  # repository-scope criteria render N/1
+        self.assertIn("## Action Items", md)
+        self.assertIn("highest-impact", md)
+
+
+class TestRenderCoverage(unittest.TestCase):
+    def _rep(self, results, advisory=None, score=None):
+        rep = Report(project_path=".", schema_version="2", engine_version="0.3.0",
+                     registry_version="0.3.0", detector_version="0.3.0")
+        rep.results = results
+        if advisory:
+            rep.advisory = advisory
+        rep.score = score
+        return rep
+
+    def test_no_action_items_when_all_pass(self):
+        rep = self._rep([CriterionResult(id="docs.readme", title="README", pillar="Docs", level=1,
+                         scope="repository", gating=True, status=Status.PASS,
+                         passed_apps=1, evaluated_apps=1)])
+        self.assertNotIn("## Action Items", report_mod.render_markdown(rep))
+
+    def test_agent_advisory_rendered(self):
+        md = report_mod.render_markdown(self._rep([], advisory=["Consider tightening X."]))
+        self.assertIn("## Advisory (non-gating, agent-authored)", md)
+        self.assertIn("Consider tightening X.", md)
+
+    def test_github_annotation_with_source_skips_non_file_evidence(self):
+        r = CriterionResult(id="docs.api_schema_docs", title="API Schema", pillar="Docs", level=3,
+                            scope="repository", gating=True, status=Status.FAIL, rationale="missing",
+                            evidence=[Evidence(summary="api", source="repos/o/r"),
+                                      Evidence(summary="schema", source="src/openapi.yaml")])
+        gh = report_mod.render_github(self._rep([r]))
+        self.assertIn("file=src/openapi.yaml", gh)
+
+    def test_sarif_dedups_rule_for_repeated_id(self):
+        ev = [Evidence(summary="x", source="src/a.py")]
+        results = [
+            CriterionResult(id="x.y", title="X", pillar="P", level=2, scope="application",
+                            gating=True, status=Status.FAIL, rationale="r", evidence=ev, app_path="a"),
+            CriterionResult(id="x.y", title="X", pillar="P", level=2, scope="application",
+                            gating=True, status=Status.FAIL, rationale="r", evidence=ev, app_path="b"),
+        ]
+        doc = json.loads(report_mod.render_sarif(self._rep(results)))
+        rule_ids = [ru["id"] for ru in doc["runs"][0]["tool"]["driver"]["rules"]]
+        self.assertEqual(rule_ids.count("x.y"), 1)
+        self.assertEqual(len(doc["runs"][0]["results"]), 2)
 
 
 class TestCliFormats(unittest.TestCase):

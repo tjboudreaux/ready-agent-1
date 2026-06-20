@@ -160,6 +160,7 @@ class ScoreSummary:
     gating_total: int
     levels: list = field(default_factory=list)        # list[LevelScore]
     pillars: dict = field(default_factory=dict)       # pillar -> {passed,total}
+    recommendations: list = field(default_factory=list)  # top gating next-actions (deterministic)
 
     def to_dict(self) -> dict:
         return {
@@ -170,6 +171,7 @@ class ScoreSummary:
             "gating_total": self.gating_total,
             "levels": [l.to_dict() for l in self.levels],
             "pillars": self.pillars,
+            "recommendations": list(self.recommendations),
         }
 
 

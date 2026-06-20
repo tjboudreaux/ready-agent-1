@@ -406,5 +406,28 @@ class TestAggregateUnknownAndWaiverFuture(unittest.TestCase):
         r = next(r for r in results if r.id == "docs.readme")
         self.assertEqual(r.status, Status.WAIVED)
 
+class TestRecommendationSelector(unittest.TestCase):
+    def _r(self, cid, level, status, gating=True, fix_kind=""):
+        return CriterionResult(id=cid, title=cid.upper(), pillar="P", level=level, scope="repository",
+                               gating=gating, status=status, fix_kind=fix_kind)
+
+    def test_next_level_first_lowest_effort_capped(self):
+        results = [
+            self._r("a", 2, Status.FAIL, fix_kind="scaffold"),
+            self._r("b", 1, Status.FAIL, fix_kind=""),
+            self._r("c", 1, Status.FAIL, fix_kind="scaffold"),
+            self._r("d", 3, Status.UNKNOWN),
+            self._r("e", 1, Status.FAIL, gating=False),  # advisory -> excluded
+        ]
+        recs = score._recommendations(results, level=0)  # next locked level is 1
+        ids = [r["id"] for r in recs]
+        self.assertEqual(len(ids), 3)            # capped at 3
+        self.assertNotIn("e", ids)               # advisory excluded
+        self.assertEqual(ids[0], "c")            # L1 scaffold (next level, lowest effort)
+        self.assertEqual(ids[1], "b")            # L1 manual
+        self.assertEqual(ids[2], "a")            # L2 before L3
+
+
+
 if __name__ == "__main__":
     unittest.main()

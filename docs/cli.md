@@ -62,8 +62,8 @@ Print project-type detection (type, confidence, signals, application inventory) 
 
 ## Report formats
 
-- **json** — canonical; the `score` block is authoritative; feeds grounding + `fix`.
-- **markdown** — human report (Level, Applications, per-pillar criteria, gating Action Items, and separate Advisory Improvements); also the CI step summary.
+- **json** — canonical; the `score` block is authoritative (including `score.recommendations`, the deterministic top next-actions) and every criterion carries `passed_apps`/`evaluated_apps`; feeds grounding + `fix`.
+- **markdown** — human report (Level Achieved, Applications Discovered, per-criterion Criteria Results shown as N/M, the top 2-3 gating Action Items, and separate Advisory Improvements); also the CI step summary.
 - **github** — `::warning::` annotations for gating failures only, plus `::notice::` level summary.
 - **junit** — `<testsuites>` with one testcase per gating criterion.
 - **sarif** — SARIF 2.1.0 for gating failures with a real source location; advisory failures and repo-level claims are excluded.
