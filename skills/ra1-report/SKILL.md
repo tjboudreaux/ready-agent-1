@@ -40,20 +40,25 @@ score**; you (the agent) add **advisory** commentary only. You must never change
 3. **Add the human summary** from the engine's markdown (Level, Applications, per-pillar criteria with
    their statuses and cited evidence, Action Items).
 
-4. **Add an `## Advisory` section** (non-gating). Here you may, grounded strictly in the engine's
-   findings and the cited files:
-   - Judge the soft criteria the engine leaves to you (naming consistency, README/AGENTS.md quality,
-     code modularization, observability depth) — clearly labelled as advisory opinion.
-   - Explain *why* failing criteria matter and the highest-leverage next steps.
-   - Note stale or low-quality existing docs the engine can only see as "present".
+4. **Add a `## T4 Advisory` section** (qualitative, non-gating). The engine deliberately leaves these
+   soft judgments to you; label each clearly as advisory opinion grounded strictly in engine findings
+   and files you actually read. Use these labelled sub-headings:
+   - **Naming consistency** · **Code modularization** · **README quality** · **AGENTS.md quality** ·
+     **Service-flow docs** · **Runbook usefulness** · **Autonomy workflow maturity**.
+   For each, cite the specific file/finding, explain *why* it matters, and give the highest-leverage
+   next step. Example (good): "AGENTS.md quality (advisory): the build section names `make test` but
+   the repo uses `pytest` (see AGENTS.md L12 vs pyproject) — align them so an agent picks the right
+   command." Note stale or low-quality docs the engine can only see as "present".
 
 ## Contract (do not violate)
 
 - **Never claim a higher Level than the engine reports.** The fenced score block is the source of truth.
 - **Never mark a failing criterion as passing.** If the engine says `fail`/`unknown`, your prose must agree.
 - **Never invent criteria, evidence, or passing results.** Cite only what the engine surfaced or files you actually read.
+- **Never claim autonomy clearance.** Do not describe the repo as ready for unattended/autonomous
+  operation unless the engine reports **Level 5 (Autonomous)**; T4 commentary is advice, not clearance.
 - **Do not assert that a specific criterion is "gating" or "non-gating"** — only the engine's data says so. Don't add caveats absent from the findings.
-- Advisory is opinion and is explicitly **non-gating** — it cannot move the Level.
+- T4 advisory is opinion and is explicitly **non-gating** — it cannot move the Level, GitHub annotations, JUnit, or SARIF.
 
 ## Notes
 

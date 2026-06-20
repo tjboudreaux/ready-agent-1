@@ -88,5 +88,21 @@ class TestChecks(unittest.TestCase):
         self.assertFalse(bad["has_score_block"])
 
 
+class TestAutonomyClaim(unittest.TestCase):
+    def test_blocks_overclaim_below_level5(self):
+        engine = {"score": {"level": 3}}
+        self.assertFalse(contracts.no_autonomy_claim(
+            engine, "This repo is ready for unattended autonomous operation."))
+        self.assertTrue(contracts.no_autonomy_claim(engine, "Solid coverage; consider tracing next."))
+
+    def test_allows_at_level5(self):
+        self.assertTrue(contracts.no_autonomy_claim({"score": {"level": 5}}, "Cleared for autonomy."))
+
+    def test_part_of_default_checks(self):
+        checks = contracts.run_contract_checks({"score": {"level": 2}}, "ready for autonomy now")
+        self.assertIn("no_autonomy_claim", checks)
+        self.assertFalse(checks["no_autonomy_claim"])
+
+
 if __name__ == "__main__":
     unittest.main()

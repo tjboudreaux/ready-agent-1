@@ -82,6 +82,20 @@ def gating_total_matches(engine: dict) -> bool:
             and score.get("gating_passed") == len(passed))
 
 
+_AUTONOMY_RE = re.compile(
+    r"(unattended|fully autonomous|autonomous (operation|deployment|merge|clearance)|"
+    r"safe to run unattended|production autonomy|cleared for autonomy|ready for autonomy)", re.I)
+
+
+def no_autonomy_claim(engine: dict, text: str) -> bool:
+    """T4 guard: advisory prose may not claim unattended/autonomous clearance the engine did not
+    grant. Only an engine Level 5 (Autonomous) report may use such language."""
+    level = (engine.get("score") or {}).get("level", 0)
+    if level >= 5:
+        return True
+    return not _AUTONOMY_RE.search(text or "")
+
+
 def run_contract_checks(engine: dict, text: str) -> dict:
     score = engine.get("score") or {}
     return {
@@ -89,6 +103,7 @@ def run_contract_checks(engine: dict, text: str) -> dict:
         "score_matches": score_matches(score, text),
         "advisory_present": advisory_present(text),
         "no_fabricated_pass": no_fabricated_pass(engine, text),
+        "no_autonomy_claim": no_autonomy_claim(engine, text),
     }
 
 
