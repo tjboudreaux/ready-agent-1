@@ -19,6 +19,26 @@ from readiness import version  # noqa: E402
 
 SKILLS = ["ra1-report", "ra1-fix"]
 _SKIP_PARTS = {"__pycache__"}
+TEMPLATE_ALLOWLIST = [
+    "AGENTS.md",
+    "SECURITY.md",
+    "CODEOWNERS",
+    "env.example",
+    "devcontainer.json",
+    "dependabot.yml",
+    "precommit-config.yaml",
+    "prettierrc.json",
+    "eslintrc.json",
+    "ruff.toml",
+    "pull_request_template.md",
+    "ci/readiness.yml",
+    "ISSUE_TEMPLATE/bug_report.md",
+    "loop/loop-runs-README.md",
+    "loop/denylist.md",
+    "loop/signals-README.md",
+    "loop/pr-artifact-template.md",
+]
+
 
 
 def _files(src: Path):
@@ -35,8 +55,9 @@ def _plan(repo_root: Path):
         base = repo_root / "skills" / skill
         for f in _files(eng):
             pairs.append((f, base / "scripts" / "readiness" / f.relative_to(eng)))
-        for f in _files(tpl):
-            pairs.append((f, base / "templates" / f.relative_to(tpl)))
+        for rel in TEMPLATE_ALLOWLIST:
+            f = tpl / rel
+            pairs.append((f, base / "templates" / rel))
     return pairs
 
 

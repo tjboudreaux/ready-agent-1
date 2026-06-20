@@ -93,6 +93,12 @@ def _eval_criterion(crit, root, detection, static, git, github, waivers, options
     langs = aw.get("languages", ["*"])
     requires = aw.get("requires", [])
 
+    opt_in = aw.get("opt_in")
+    if opt_in == "loop_ready" and not detection.opt_in.get("loop_ready"):
+        return CriterionResult(status=Status.SKIPPED, rationale="not opted into loop readiness", app_path=".", **base)
+    if opt_in is not None and opt_in != "loop_ready":
+        return CriterionResult(status=Status.UNKNOWN, rationale=f"Unsupported opt-in '{opt_in}'.", app_path=".", **base)
+
     if cid in waivers:
         reason = waivers[cid].get("reason", "")
         return CriterionResult(status=Status.WAIVED, rationale=f"Waived: {reason}".strip(), app_path=".", **base)

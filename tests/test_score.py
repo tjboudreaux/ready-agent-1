@@ -1,3 +1,6 @@
+import json
+import tempfile
+from pathlib import Path
 import unittest
 
 from readiness import score
@@ -187,16 +190,90 @@ class TestSummarize(unittest.TestCase):
         self.assertFalse(summary.levels[1].achieved)
 
 
+class TestLoopOptIn(unittest.TestCase):
+    def _registry_file(self, registry):
+        path = Path(tempfile.mkdtemp(prefix="ar-registry-"))
+        self.addCleanup(rmtree, path)
+        reg = path / "registry.json"
+        reg.write_text(json.dumps(registry), encoding="utf-8")
+        return reg
+
+    def test_opt_in_applies_before_check_dispatch(self):
+        registry = [{
+            "id": "loop.test_opt_in",
+            "title": "Loop Opt In",
+            "pillar": "Documentation",
+            "level": 2,
+            "scope": "repository",
+            "decide": "deterministic",
+            "gating": False,
+            "check": "build.deps_pinned",
+            "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": [], "opt_in": "loop_ready"},
+            "engine_min_version": "0.3.0",
+        }]
+        reg = self._registry_file(registry)
+
+        root = make_repo({"README.md": "# x\n"})
+        self.addCleanup(rmtree, root)
+        static = StaticCollector(root)
+        det = detect(root, static)
+        results, _summary = score.evaluate(root, det, static, GitCollector(root), GithubCollector(root), {"registry_path": str(reg)})
+        self.assertEqual(results[0].status, Status.SKIPPED)
+        self.assertEqual(results[0].rationale, "not opted into loop readiness")
+
+        opted = make_repo({
+            "README.md": "# x\n",
+            ".agents/readiness/config.json": json.dumps({"schema_version": "1", "loop_ready": True}),
+        })
+        self.addCleanup(rmtree, opted)
+        static = StaticCollector(opted)
+        det = detect(opted, static)
+        results, _summary = score.evaluate(opted, det, static, GitCollector(opted), GithubCollector(opted), {"registry_path": str(reg)})
+        self.assertEqual(results[0].status, Status.PASS)
+
+    def test_real_loop_criteria_skip_when_not_opted_in(self):
+        root, results, _summary = _evaluate({"README.md": "# x\n"})
+        self.addCleanup(rmtree, root)
+        loop_results = [r for r in results if r.id.startswith("loop.")]
+        self.assertEqual(len(loop_results), 9)
+        for r in loop_results:
+            self.assertEqual(r.status, Status.SKIPPED)
+            self.assertFalse(r.gating)
+            self.assertEqual(r.rationale, "not opted into loop readiness")
+
+    def test_loop_failures_do_not_move_deterministic_score(self):
+        root_out, out_results, out_summary = _evaluate(RICH_FILES, RICH_GH, RICH_GIT)
+        self.addCleanup(rmtree, root_out)
+        root_in, in_results, in_summary = _evaluate(
+            {**RICH_FILES, ".agents/readiness/config.json": json.dumps({"schema_version": "1", "loop_ready": True})},
+            RICH_GH,
+            RICH_GIT,
+        )
+        self.addCleanup(rmtree, root_in)
+        self.assertTrue(any(r.id.startswith("loop.") and r.status == Status.FAIL and not r.gating for r in in_results))
+        self.assertTrue(all(r.status == Status.SKIPPED for r in out_results if r.id.startswith("loop.")))
+        self.assertEqual(in_summary.level, out_summary.level)
+        self.assertEqual(in_summary.gating_passed, out_summary.gating_passed)
+        self.assertEqual(in_summary.gating_total, out_summary.gating_total)
+
+
 class TestRegistryIntegrity(unittest.TestCase):
     def test_registry_well_formed(self):
         registry = score.load_registry()
         ids = [c["id"] for c in registry]
         self.assertEqual(len(ids), len(set(ids)), "duplicate criterion ids")
+        allowed_aw_keys = {"project_types", "languages", "requires", "opt_in"}
         for crit in registry:
             self.assertIn(crit["level"], (1, 2, 3, 4, 5))
             self.assertIn(crit["scope"], ("repository", "application"))
             score._resolve_check(crit["check"])  # must import without error
-            for req in crit.get("applies_when", {}).get("requires", []):
+            aw = crit.get("applies_when", {})
+            self.assertLessEqual(set(aw), allowed_aw_keys, f"{crit['id']} has unsupported applies_when keys")
+            if "opt_in" in aw:
+                self.assertEqual(aw["opt_in"], "loop_ready")
+                for key in ("project_types", "languages", "requires"):
+                    self.assertIn(key, aw)
+            for req in aw.get("requires", []):
                 self.assertIn(req, ids, f"{crit['id']} requires unknown {req}")
 
 

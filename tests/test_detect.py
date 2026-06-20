@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from readiness.detect import detect
@@ -102,6 +103,27 @@ class TestDetectPinning(unittest.TestCase):
         })
         self.assertEqual(d.project_type, "unknown")
 
+
+    def test_loop_ready_config_serializes_opt_in(self):
+        d = self._detect({
+            "README.md": "# hi",
+            ".agents/readiness/config.json": json.dumps({"schema_version": "1", "loop_ready": True}),
+        })
+        self.assertEqual(d.opt_in, {"loop_ready": True})
+        self.assertIs(d.to_dict()["opt_in"]["loop_ready"], True)
+
+    def test_loop_ready_requires_literal_true(self):
+        cases = [
+            {},
+            {".agents/readiness/config.json": "{not json"},
+            {".agents/readiness/config.json": json.dumps({"loop_ready": "true"})},
+            {".agents/readiness/config.json": json.dumps({"loop_ready": False})},
+            {".agents/readiness/config.json": json.dumps(["loop_ready"])},
+        ]
+        for files in cases:
+            with self.subTest(files=files):
+                d = self._detect({"README.md": "# hi", **files})
+                self.assertEqual(d.opt_in, {"loop_ready": False})
     def test_options_config_beats_file(self):
         d = self._detect(
             {

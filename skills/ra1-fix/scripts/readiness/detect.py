@@ -35,16 +35,15 @@ PIN_SOURCE = ".agents/readiness/config.json"
 VALID_PIN_TYPES = {"library", "service", "frontend", "cli", "data", "infra"}
 
 
-def load_detect_config(root, options=None) -> dict:
-    """Read the ``detect`` block of ``.agents/readiness/config.json`` (user pins).
+def load_readiness_config(root, options=None) -> dict:
+    """Read ``.agents/readiness/config.json`` as the readiness config root.
 
-    Mirrors ``score.load_waivers``: an explicit ``options["detect_config"]`` beats the
-    on-disk file, malformed JSON is ignored, and a miss returns ``{}``. A pin can only
-    set a type — it is always surfaced as a signal so the override stays auditable.
+    An explicit ``options["readiness_config"]`` beats the on-disk file. Missing,
+    malformed, unreadable, or non-object config returns ``{}``.
     """
     options = options or {}
-    if options.get("detect_config") is not None:
-        data = options["detect_config"]
+    if options.get("readiness_config") is not None:
+        data = options["readiness_config"]
     else:
         cf = Path(root) / ".agents" / "readiness" / "config.json"
         if not cf.exists():
@@ -53,6 +52,21 @@ def load_detect_config(root, options=None) -> dict:
             data = json.loads(cf.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return {}
+    return data if isinstance(data, dict) else {}
+
+
+def load_detect_config(root, options=None) -> dict:
+    """Read the nested ``detect`` block of readiness config (user pins).
+
+    ``options["detect_config"]`` preserves the legacy override path for detection
+    pins, while top-level readiness options continue to come from
+    ``load_readiness_config``.
+    """
+    options = options or {}
+    if options.get("detect_config") is not None:
+        data = options["detect_config"]
+    else:
+        data = load_readiness_config(root, options)
     if not isinstance(data, dict):
         return {}
     detect_cfg = data.get("detect")
@@ -198,7 +212,9 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
     root = Path(root)
     static = static or StaticCollector(root)
 
+    readiness_cfg = load_readiness_config(root, options)
     cfg = load_detect_config(root, options)
+    opt_in = {"loop_ready": readiness_cfg.get("loop_ready") is True}
     root_pin = cfg.get("project_type")
     app_pins = cfg.get("apps") if isinstance(cfg.get("apps"), dict) else {}
 
@@ -231,6 +247,7 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
             languages=languages,
             apps=apps,
             is_monorepo=True,
+            opt_in=opt_in,
         )
 
     surface, conf, signals = _classify(static)
@@ -251,4 +268,5 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
         languages=app.languages,
         apps=[app],
         is_monorepo=False,
+        opt_in=opt_in,
     )

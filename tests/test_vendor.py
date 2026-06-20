@@ -37,6 +37,14 @@ class TestVendor(unittest.TestCase):
             manifest = json.loads((tmp / "skills" / s / "manifest.json").read_text())
             self.assertIn("engine_version", manifest)
 
+            for rel in [
+                "loop/loop-runs-README.md",
+                "loop/denylist.md",
+                "loop/signals-README.md",
+                "loop/pr-artifact-template.md",
+            ]:
+                self.assertEqual((tmp / "skills" / s / "templates" / rel).read_bytes(),
+                                 (tmp / "templates" / rel).read_bytes())
     def test_check_detects_sync_and_drift(self):
         tmp = self._mk()
         self.addCleanup(rmtree, tmp)
@@ -45,6 +53,25 @@ class TestVendor(unittest.TestCase):
         (tmp / "engine" / "readiness" / "version.py").write_text("ENGINE_VERSION = '9.9.9'\n")
         drift = vendor.vendor(tmp, write=False)
         self.assertTrue(any("version.py" in d for d in drift))
+
+    def test_loop_template_drift_detected(self):
+        tmp = self._mk()
+        self.addCleanup(rmtree, tmp)
+        vendor.vendor(tmp, write=True)
+        (tmp / "templates" / "loop" / "denylist.md").write_text("# changed\n", encoding="utf-8")
+        drift = vendor.vendor(tmp, write=False)
+        self.assertTrue(any("templates/loop/denylist.md" in d for d in drift))
+
+    def test_unallowlisted_template_cruft_is_ignored(self):
+        tmp = self._mk()
+        self.addCleanup(rmtree, tmp)
+        (tmp / "templates" / ".DS_Store").write_text("cruft", encoding="utf-8")
+        (tmp / "templates" / "local-only.md").write_text("# local\n", encoding="utf-8")
+        vendor.vendor(tmp, write=True)
+        for s in vendor.SKILLS:
+            self.assertFalse((tmp / "skills" / s / "templates" / ".DS_Store").exists())
+            self.assertFalse((tmp / "skills" / s / "templates" / "local-only.md").exists())
+        self.assertEqual(vendor.vendor(tmp, write=False), [])
 
     def test_real_repo_in_sync(self):
         # Guard: the committed vendored skills must match engine + templates.

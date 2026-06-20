@@ -16,9 +16,9 @@ document is the source of truth for what comes next and the rules for getting th
 | **T3 execution** | running the repo's own lint/test/build | **OFF** — opt-in only, behind a sandbox contract (no network, scrubbed env, isolated copy, timeout, command allowlist); CI status from T2 substitutes |
 | **T4 agent** | qualitative judgment (naming, doc quality, modularization) | skills only, **advisory** — never changes the score |
 
-## Current gating set (v1 — 32 deterministic criteria)
+## Current gating set (v0.3.0 — 32 deterministic criteria)
 
-Generated from `registry.json` v0.1.0; if this table and the registry disagree, the registry wins.
+Generated from `registry.json` v0.3.0; if this table and the registry disagree, the registry wins.
 
 | id | Pillar | Title | Level | Applies to |
 |---|---|---|---|---|
@@ -60,6 +60,24 @@ Generated from `registry.json` v0.1.0; if this table and the registry disagree, 
 The full taxonomy targets roughly 90 criteria across the pillars below. Everything in this
 section is **non-gating** until it graduates (rules in the next section). Criteria are added
 as advisory first, in whatever release specs them; none of this list affects today's score.
+
+### Loop readiness advisory cluster
+
+Engine 0.3.0 adds nine `loop.*` criteria as an opt-in advisory cluster. A repo opts in with the
+top-level readiness config flag:
+
+```json
+{ "schema_version": "1", "loop_ready": true }
+```
+
+The checks are T0 structural presence/filledness only: loop run log README, rules index, denylist,
+signal schema README, PR artifact evidence template, OMP loop skills, prompt contracts,
+architecture doc, and at least one domain README. They are all `gating: false`; failures appear as
+Advisory Improvements and do not change the deterministic RA1 level or gating totals.
+
+These criteria are **not** L0-L3 loop-autonomy clearance, behavioral smoke/gate verification, or
+proof that a denylist/schema is semantically correct or enforced. They only say that a
+maintainer-owned contract exists and is not obviously empty or placeholder text.
 
 ### Build System (deterministic candidates)
 - **Agentic Development** (T1) — agent co-authorship trailers in recent history. The check

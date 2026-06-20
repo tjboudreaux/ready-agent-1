@@ -15,9 +15,10 @@ Analyze a repository and emit a readiness report.
 | `--exec` | off | Opt in to T3 execution: runs the detected test command on an isolated temp copy (allowlisted argv, scrubbed env, hard timeout). Advisory only — never changes the level |
 | `--exec-timeout N` | 120 | T3 execution timeout in seconds |
 | `--min-level N` | — | Exit non-zero if the achieved level is below N |
-| `--fail-on ID …` | — | Exit non-zero if any of these criterion ids fail |
+| `--fail-on ID …` | — | Exit non-zero if any named criterion id fails; this can deliberately gate advisory criteria |
 
-Exit code is `0` unless a gate (`--min-level` / `--fail-on`) fails.
+Exit code is `0` unless a gate (`--min-level` / `--fail-on`) fails. By default, advisory criteria
+do not affect the deterministic level; `--fail-on loop.some_id` is an explicit user override.
 
 ## `fix`
 
@@ -43,7 +44,7 @@ Print project-type detection (type, confidence, signals, application inventory) 
 ## Report formats
 
 - **json** — canonical; the `score` block is authoritative; feeds grounding + `fix`.
-- **markdown** — human report (Level, Applications, per-pillar criteria, Action Items); also the CI step summary.
-- **github** — `::warning::` / `::notice::` annotations.
+- **markdown** — human report (Level, Applications, per-pillar criteria, gating Action Items, and separate Advisory Improvements); also the CI step summary.
+- **github** — `::warning::` annotations for gating failures only, plus `::notice::` level summary.
 - **junit** — `<testsuites>` with one testcase per gating criterion.
-- **sarif** — SARIF 2.1.0, but only for criteria with a real source location (repo-level claims are excluded).
+- **sarif** — SARIF 2.1.0 for gating failures with a real source location; advisory failures and repo-level claims are excluded.

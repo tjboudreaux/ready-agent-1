@@ -27,7 +27,7 @@ Criteria are **data + typed Python** — there is no expression DSL and nothing 
     "level": 4, "scope": "repository", "decide": "deterministic", "gating": false,
     "check": "security.security_txt",
     "applies_when": {"project_types": ["service", "api"], "languages": ["*"], "requires": []},
-    "engine_min_version": "0.1.0"}
+    "engine_min_version": "0.3.0"}
    ```
 
 3. **Bump `REGISTRY_VERSION`** in `engine/readiness/version.py` (so stale cached state re-evaluates),
@@ -45,6 +45,9 @@ and false-negative rates on the labeled fixtures in `tests/`. This keeps the gat
   `unknown`, a type-restricted criterion reports `unknown` (never silently skipped).
 - `languages` — `["*"]` or an intersection with detected languages.
 - `requires` — criterion ids that must `pass` first (e.g. `agents_md_validation` requires `agents_md`).
+- `opt_in` — optional intent gate. The only supported value is `loop_ready`; when absent from
+  top-level `.agents/readiness/config.json` as the literal JSON boolean `true`, matching criteria
+  report `skipped` with rationale `not opted into loop readiness`.
 
 ## Project type pinning
 

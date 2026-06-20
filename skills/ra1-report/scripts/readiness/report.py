@@ -72,13 +72,24 @@ def render_markdown(report) -> str:
         lines.append(f"### {pillar}")
         for r in [x for x in d.results if x.pillar == pillar]:
             sym = _SYMBOL.get(r.status.value, "?")
-            lines.append(f"- {sym} **{r.title}** (L{r.level}): {r.rationale}")
+            gate_label = "gating" if r.gating else "**advisory**"
+            lines.append(f"- {sym} **{r.title}** ({gate_label}, L{r.level}): {r.rationale}")
 
     actions = _action_items(d.results)
     if actions:
         lines.append("")
         lines.append("## Action Items")
         for group, items in actions:
+            lines.append("")
+            lines.append(f"**{group}**")
+            for r in items:
+                lines.append(f"- {r.title} (L{r.level}, {r.pillar}) — {r.rationale}")
+
+    advisory_actions = _advisory_items(d.results)
+    if advisory_actions:
+        lines.append("")
+        lines.append("## Advisory Improvements")
+        for group, items in advisory_actions:
             lines.append("")
             lines.append(f"**{group}**")
             for r in items:
@@ -105,26 +116,36 @@ def _pillars_in_order(results):
     return seen
 
 
-def _action_items(results):
-    failing = [r for r in results if r.status == Status.FAIL]
+def _group_by_effort(items):
     groups = {}
-    for r in failing:
+    for r in items:
         groups.setdefault(_EFFORT.get(r.fix_kind, _EFFORT[""]), []).append(r)
-    unknowns = [r for r in results if r.status == Status.UNKNOWN]
-    if unknowns:
-        groups.setdefault("Resolve unknowns (clarify project type / enable gh)", []).extend(unknowns)
     ordered = []
-    for label in list(_EFFORT.values()) + ["Resolve unknowns (clarify project type / enable gh)"]:
+    for label in _EFFORT.values():
         if label in groups:
             ordered.append((label, sorted(groups[label], key=lambda r: r.level)))
     return ordered
+
+
+def _action_items(results):
+    failing = [r for r in results if r.gating and r.status == Status.FAIL]
+    ordered = _group_by_effort(failing)
+    unknowns = [r for r in results if r.gating and r.status == Status.UNKNOWN]
+    if unknowns:
+        ordered.append(("Resolve unknowns (clarify project type / enable gh)",
+                        sorted(unknowns, key=lambda r: r.level)))
+    return ordered
+
+
+def _advisory_items(results):
+    return _group_by_effort([r for r in results if not r.gating and r.status == Status.FAIL])
 
 
 # ---------------------------------------------------------------------------- github
 def render_github(report) -> str:
     out = []
     for r in report.results:
-        if r.status == Status.FAIL:
+        if r.gating and r.status == Status.FAIL:
             src = _first_source(r)
             prefix = f"::warning title=Readiness: {r.title}"
             if src:
@@ -170,7 +191,7 @@ def render_sarif(report) -> str:
     rules, results = [], []
     seen_rules = set()
     for r in report.results:
-        if r.status != Status.FAIL:
+        if not (r.gating and r.status == Status.FAIL):
             continue
         src = _first_source(r)
         if not src:
