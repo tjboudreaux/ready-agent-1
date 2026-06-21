@@ -104,6 +104,20 @@ def render_markdown(report) -> str:
             for r in items:
                 lines.append(f"- {r.title} (L{r.level}, {r.pillar}) — {r.rationale}")
 
+    judgments = [r for r in d.results if r.id.startswith("judgment.")]
+    if judgments:
+        assess = [r for r in judgments if r.status == Status.UNKNOWN]
+        ignored = [r for r in judgments if r.status == Status.WAIVED]
+        lines.append("")
+        lines.append("## Agent Judgments (advisory, never scored)")
+        if assess:
+            lines.append("")
+            lines.append("To assess: " + ", ".join(r.title for r in assess) + ".")
+        if ignored:
+            lines.append("")
+            lines.append(f"Ignored judgments ({len(ignored)}): " + ", ".join(r.title for r in ignored)
+                         + " — silenced via .agents/readiness/config.json `judgments`.")
+
     if d.advisory:
         lines.append("")
         lines.append("## Advisory (non-gating, agent-authored)")

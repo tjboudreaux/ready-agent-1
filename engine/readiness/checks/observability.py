@@ -106,3 +106,64 @@ def dashboards_as_code(ctx):
         if "grafana_dashboard" in low:
             return passed("Dashboard provisioned as code (Terraform).", [ev("dashboard tf", source=f)])
     return failed("No dashboards-as-code with metric targets (screenshots/docs do not count).")
+
+
+# --- Factory-parity observability depth (advisory; T0) -------------------------------
+
+_ERROR_DEPS = ["@sentry/node", "@sentry/browser", "@sentry/react", "@sentry/nextjs",
+               "sentry-sdk", "bugsnag", "@bugsnag/js", "rollbar", "airbrake",
+               "@honeybadger-io/js", "raygun4js"]
+_ERROR_CONFIG = ["sentry.properties", ".sentryclirc", "**/sentry.*.config.*", "bugsnag.config.*"]
+_ERROR_WIRING = [r"Sentry\.init|sentry_sdk\.init|Bugsnag\.(start|notify)|new Rollbar|Rollbar\(|"
+                 r"Honeybadger\.configure|airbrake\.|Raygun"]
+
+
+def error_tracking(ctx):
+    cfg = adep(ctx, _ERROR_DEPS) or aglob(ctx, _ERROR_CONFIG)
+    return _two_part("Error tracking", cfg, agrep(ctx, _ERROR_WIRING))
+
+
+_RUNBOOK_FILES = ["runbooks/**", "docs/runbooks/**", "RUNBOOK.md", "docs/RUNBOOK.md",
+                  "**/runbook*.md", "ops/runbooks/**"]
+
+
+def runbooks(ctx):
+    """A runbook must carry operational structure (sections/steps), not be a placeholder stub."""
+    for f in ctx.static.glob(_RUNBOOK_FILES):
+        text = ctx.static.read(f) or ""
+        if len(text) >= 200 and ("##" in text or "\n- " in text or "\n1." in text):
+            return passed(f"Runbook with operational steps: {f}", [ev("runbook", source=f)])
+    return failed("No runbook with operational steps (runbooks/ or RUNBOOK.md, non-placeholder).")
+
+
+_PROFILE_DEPS = ["pyroscope-io", "@pyroscope/nodejs", "py-spy", "ddtrace", "dd-trace",
+                 "elastic-apm-node", "newrelic", "scalene"]
+_PROFILE_WIRING = [r"pyroscope|tracemalloc|cProfile|startProfiling|StartCPUProfile|"
+                   r"newrelic\.agent|elasticapm"]
+
+
+def profiling(ctx):
+    return _two_part("Profiling", adep(ctx, _PROFILE_DEPS), agrep(ctx, _PROFILE_WIRING))
+
+
+_CB_DEPS = ["resilience4j", "opossum", "pybreaker", "circuitbreaker", "hystrix",
+            "polly", "gobreaker"]
+_CB_WIRING = [r"CircuitBreaker|circuit_breaker|circuitBreaker|new Opossum|opossum\(|"
+              r"@CircuitBreaker|gobreaker\.|pybreaker"]
+
+
+def circuit_breakers(ctx):
+    return _two_part("Circuit breakers", adep(ctx, _CB_DEPS), agrep(ctx, _CB_WIRING))
+
+
+_DEPLOY_MARKER_TOKENS = ("sentry/action-release", "sentry-cli releases", "datadog-ci",
+                         "honeybadger", "create-deployment", "deploy-marker",
+                         "newrelic-deployment", "newrelic/deployment-marker")
+
+
+def deployment_markers(ctx):
+    for f in ctx.static.glob([".github/workflows/*.yml", ".github/workflows/*.yaml"]):
+        low = (ctx.static.read(f) or "").lower()
+        if any(t in low for t in _DEPLOY_MARKER_TOKENS):
+            return passed(f"Deployment markers wired in CI: {f}", [ev("deploy marker", source=f)])
+    return failed("No deployment markers (release annotations to Sentry/Datadog/New Relic/GitHub).")

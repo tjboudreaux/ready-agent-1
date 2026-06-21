@@ -1,0 +1,36 @@
+{
+  "name": "gap-criteria-bare",
+  "description": "Minimal Express service with none of the G1-G4 Factory-parity advisory tooling; the new advisory criteria fail. Offline by design (no GitHub); exercises the fail shapes end-to-end.",
+  "detect": { "project_type": "service" },
+  "files": {
+    "package.json": "{\n  \"name\": \"gap-bare\",\n  \"dependencies\": { \"express\": \"^4.19.0\" }\n}\n",
+    "src/index.js": "const express = require('express');\nconst app = express();\napp.get('/', (req, res) => res.send('ok'));\nmodule.exports = app;\n",
+    "README.md": "# Gap Bare\n\nA minimal Express service used to exercise advisory fail shapes.\n"
+  },
+  "expected": {
+    "style.naming_convention_rule": "fail",
+    "style.complexity_budget": "fail",
+    "style.dead_code_detection": "fail",
+    "style.duplicate_code_detection": "fail",
+    "style.large_file_guard": "fail",
+    "style.tech_debt_tracking": "fail",
+    "observability.error_tracking": "fail",
+    "observability.runbooks": "fail",
+    "observability.profiling": "fail",
+    "observability.circuit_breakers": "fail",
+    "observability.deployment_markers": "fail",
+    "security.dependency_min_age": "fail",
+    "security.log_scrubbing": "fail",
+    "security.secrets_management": "fail",
+    "security.dast": "fail",
+    "build.unused_dependencies": "fail",
+    "build.single_command_setup": "fail",
+    "build.release_notes_automation": "fail",
+    "devenv.local_services": "fail",
+    "devenv.database_schema": "fail",
+    "docs.auto_generation": "fail",
+    "docs.agents_md_ci_validation": "fail",
+    "docs.architecture_doc": "fail",
+    "product.error_to_insight": "fail"
+  }
+}

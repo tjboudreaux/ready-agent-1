@@ -4,6 +4,42 @@ All notable changes to Ready Agent 1. The deterministic **gating score** and the
 are tracked separately: advisory additions never change a repo's Level, GitHub annotations, JUnit, or
 SARIF.
 
+## 0.5.0 — Factory parity gap closure
+
+Engine/registry/detector → `0.5.0`; report schema unchanged at **2**. The deterministic **gating set
+is unchanged at 32** — every addition below is advisory and never moves a repo's Level.
+
+### Advisory (T0/T1/T2 — never changes the score)
+- **Style code-health (6)**: `style.naming_convention_rule`, `style.complexity_budget`,
+  `style.dead_code_detection`, `style.duplicate_code_detection`, `style.large_file_guard`,
+  `style.tech_debt_tracking`. A capable linter installed is not enough — the rule/budget/scan must be
+  configured or actually wired (CI/pre-commit/scripts).
+- **Observability depth (5)**: `observability.error_tracking`, `runbooks`, `profiling`,
+  `circuit_breakers`, `deployment_markers` (two-part evidence / non-placeholder content).
+- **Security depth (4)**: `security.dependency_min_age`, `log_scrubbing`, `secrets_management`, `dast`.
+- **Build/dev-env hygiene (8)**: `build.unused_dependencies`, `version_drift`, `monorepo_tooling`,
+  `single_command_setup`, `release_notes_automation`, `dependency_weight_budget`;
+  `devenv.local_services`, `devenv.database_schema`.
+- **Docs/product (4)**: `docs.auto_generation`, `docs.agents_md_ci_validation`,
+  `docs.architecture_doc`, `product.error_to_insight`.
+
+### T4 judgments + ESLint-style ignore
+- Nine `judgment.*` agent-graded criteria (`decide:"agent"`), **structurally barred from gating** —
+  the scorer coerces `gating:false` for `decide:"agent"` regardless of the registry flag.
+- A `judgments` block in `.agents/readiness/config.json` silences a judgment like an ESLint rule:
+  `off | advisory` severities, a `*` default, and `judgment_overrides` path globs. `error` is rejected
+  (downgraded to advisory) — no config path turns a judgment into score-affecting credit. Silenced
+  judgments are `WAIVED` and disclosed in the report (`Ignored judgments (N): …`); never a pass.
+
+### T3 execution (advisory, opt-in via `--exec`, behind the sandbox contract)
+- `testing.behavioral_smoke` (declared `npm run smoke` / `make smoke`) and
+  `devenv.devcontainer_runnable` (`devcontainer build`) run under the existing isolated-copy /
+  scrubbed-env / command-allowlist / timeout contract. T3 stays non-gating; CI status (T2) substitutes.
+
+### Tests/fixtures
+- 100% branch coverage on every changed module; new pass/fail corpus fixtures (`gap-criteria-rich`,
+  `gap-criteria-bare`) keep the eval corpus at 0 FP/FN/applicability; parity unchanged (1.0).
+
 ## 0.4.0 — Factory/Droid parity
 
 Engine/registry/detector → `0.4.0`; report **schema → 2**.

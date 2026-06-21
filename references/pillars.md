@@ -16,10 +16,13 @@ document is the source of truth for what comes next and the rules for getting th
 | **T3 execution** | running the repo's own lint/test/build | **OFF** — opt-in only, behind a sandbox contract (no network, scrubbed env, isolated copy, timeout, command allowlist); CI status from T2 substitutes |
 | **T4 agent** | qualitative judgment (naming, doc quality, modularization) | skills only, **advisory** — never changes the score |
 
-## Current gating set (v0.4.0 — 32 deterministic gating criteria)
+## Current gating set (v0.5.0 — 32 deterministic gating criteria)
 
-Generated from `registry.json` v0.4.0; if this table and the registry disagree, the registry wins.
-The gating set is unchanged at 32; 0.4.0 adds six **advisory** criteria (see the roadmap below).
+Generated from `registry.json` v0.5.0; if this table and the registry disagree, the registry wins.
+The gating set is **unchanged at 32**. 0.5.0 adds a large advisory tier (Factory-parity gap closure:
+Style code-health, observability/security depth, build/dev-env hygiene, docs/product), nine
+agent-graded `judgment.*` criteria with an ESLint-style ignore (`.agents/readiness/config.json`
+`judgments`), and two T3 execution criteria — all non-gating. See the CHANGELOG for the full list.
 
 | id | Pillar | Title | Level | Applies to |
 |---|---|---|---|---|

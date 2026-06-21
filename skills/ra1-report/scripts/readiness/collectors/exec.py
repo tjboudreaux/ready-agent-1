@@ -32,6 +32,16 @@ ALLOWED_TEST_CMDS = {
     "cargo test": ["cargo", "test", "--quiet"],
 }
 
+ALLOWED_SMOKE_CMDS = {
+    "npm run smoke": ["npm", "run", "smoke", "--silent"],
+    "npm run healthcheck": ["npm", "run", "healthcheck", "--silent"],
+    "make smoke": ["make", "smoke"],
+}
+
+ALLOWED_BUILD_CMDS = {
+    "devcontainer build": ["devcontainer", "build", "--workspace-folder", "."],
+}
+
 
 class ExecCollector:
     def __init__(self, root, options=None, runner=None):
@@ -43,22 +53,32 @@ class ExecCollector:
         self._runner = runner or options.get("exec_runner") or self._default_runner
         self._cache: dict = {}
 
-    def run_test_cmd(self, test_cmd: str, app_path: str = ".") -> Optional[dict]:
-        """Execute the detected test command under the contract.
+    def run_allowed(self, allowlist, cmd, app_path: str = ".") -> Optional[dict]:
+        """Run an allowlisted ``cmd`` under the contract.
 
-        Returns ``None`` when disabled; ``{"allowed": False, ...}`` when the command is not
-        on the allowlist (and therefore was NOT executed); otherwise
-        ``{"allowed": True, "returncode": int|None, "timed_out": bool, "argv": [...]}``.
-        """
+        ``None`` when disabled; ``{"allowed": False, ...}`` when ``cmd`` is not on ``allowlist``
+        (and therefore NOT executed); otherwise the runner result with ``allowed: True``."""
         if not self.enabled:
             return None
-        argv = ALLOWED_TEST_CMDS.get(test_cmd)
+        argv = allowlist.get(cmd)
         if argv is None:
-            return {"cmd": test_cmd, "allowed": False, "returncode": None, "timed_out": False}
-        key = (test_cmd, app_path)
+            return {"cmd": cmd, "allowed": False, "returncode": None, "timed_out": False}
+        key = (cmd, app_path)
         if key not in self._cache:
             self._cache[key] = self._runner(argv, app_path)
-        return {"cmd": test_cmd, "allowed": True, "argv": argv, **self._cache[key]}
+        return {"cmd": cmd, "allowed": True, "argv": argv, **self._cache[key]}
+
+    def run_test_cmd(self, test_cmd: str, app_path: str = ".") -> Optional[dict]:
+        """Execute the detected test command under the contract (see ``run_allowed``)."""
+        return self.run_allowed(ALLOWED_TEST_CMDS, test_cmd, app_path)
+
+    def run_smoke_cmd(self, smoke_cmd: str, app_path: str = ".") -> Optional[dict]:
+        """Execute a declared smoke/healthcheck command under the contract."""
+        return self.run_allowed(ALLOWED_SMOKE_CMDS, smoke_cmd, app_path)
+
+    def run_build_cmd(self, build_cmd: str, app_path: str = ".") -> Optional[dict]:
+        """Execute an environment build command (e.g. devcontainer build) under the contract."""
+        return self.run_allowed(ALLOWED_BUILD_CMDS, build_cmd, app_path)
 
     def _default_runner(self, argv, app_path) -> dict:  # pragma: no cover - subprocess boundary
         with tempfile.TemporaryDirectory(prefix="ra1-exec-") as tmp:

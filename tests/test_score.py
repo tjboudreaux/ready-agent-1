@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from readiness import score
+from readiness import judgments, score
 from readiness.collectors.git import GitCollector
 from readiness.collectors.github import GithubCollector
 from readiness.collectors.static import StaticCollector
@@ -427,6 +427,79 @@ class TestRecommendationSelector(unittest.TestCase):
         self.assertEqual(ids[1], "b")            # L1 manual
         self.assertEqual(ids[2], "a")            # L2 before L3
 
+
+
+class TestJudgmentsDecide(unittest.TestCase):
+    def test_no_judgments_config(self):
+        self.assertEqual(judgments.decide({}, "judgment.naming_consistency"), ("advisory", ""))
+
+    def test_judgments_not_dict(self):
+        self.assertEqual(judgments.decide({"judgments": "nope"}, "judgment.x"), ("advisory", ""))
+
+    def test_off_and_advisory(self):
+        cfg = {"judgments": {"naming_consistency": "off", "code_modularization": "advisory"}}
+        self.assertEqual(judgments.decide(cfg, "judgment.naming_consistency"), ("off", ""))
+        self.assertEqual(judgments.decide(cfg, "judgment.code_modularization"), ("advisory", ""))
+
+    def test_star_default(self):
+        self.assertEqual(judgments.decide({"judgments": {"*": "off"}}, "judgment.readme_quality")[0], "off")
+
+    def test_dict_entry_with_reason(self):
+        cfg = {"judgments": {"pii_handling": {"severity": "off", "reason": "no PII"}}}
+        self.assertEqual(judgments.decide(cfg, "judgment.pii_handling"), ("off", "no PII"))
+
+    def test_error_severity_downgraded(self):
+        self.assertEqual(judgments.decide({"judgments": {"naming_consistency": "error"}},
+                                          "judgment.naming_consistency"), ("advisory", ""))
+
+    def test_short_id_without_prefix(self):
+        self.assertEqual(judgments.decide({"judgments": {"naming_consistency": "off"}},
+                                          "naming_consistency")[0], "off")
+
+    def test_path_override(self):
+        cfg = {"judgments": {"naming_consistency": "advisory"},
+               "judgment_overrides": [{"paths": ["legacy/**"], "judgments": {"naming_consistency": "off"}}]}
+        self.assertEqual(judgments.decide(cfg, "judgment.naming_consistency", path="legacy/x.py")[0], "off")
+        self.assertEqual(judgments.decide(cfg, "judgment.naming_consistency", path="src/x.py")[0], "advisory")
+
+    def test_path_override_malformed_entries(self):
+        cfg = {"judgments": {}, "judgment_overrides": ["bad", {"paths": ["x/**"]},
+                                                        {"judgments": {"a": "off"}}]}
+        self.assertEqual(judgments.decide(cfg, "judgment.naming_consistency", path="x/y")[0], "advisory")
+
+
+class TestAgentJudgments(unittest.TestCase):
+    def test_advisory_judgment_is_unknown_nongating(self):
+        root, results, _ = _evaluate({"README.md": "# x"})
+        self.addCleanup(rmtree, root)
+        by = {r.id: r for r in results}
+        self.assertEqual(by["judgment.naming_consistency"].status, Status.UNKNOWN)
+        self.assertFalse(by["judgment.naming_consistency"].gating)
+
+    def test_off_judgment_is_waived_with_reason(self):
+        cfg = {"judgments": {"naming_consistency": {"severity": "off", "reason": "n/a"}}}
+        root, results, _ = _evaluate({"README.md": "# x"}, options={"readiness_config": cfg})
+        self.addCleanup(rmtree, root)
+        by = {r.id: r for r in results}
+        self.assertEqual(by["judgment.naming_consistency"].status, Status.WAIVED)
+        self.assertIn("ignored by judgments config", by["judgment.naming_consistency"].rationale)
+        self.assertIn("n/a", by["judgment.naming_consistency"].rationale)
+        self.assertEqual(by["judgment.code_modularization"].status, Status.UNKNOWN)
+
+    def test_off_judgment_without_reason(self):
+        cfg = {"judgments": {"naming_consistency": "off"}}
+        root, results, _ = _evaluate({"README.md": "# x"}, options={"readiness_config": cfg})
+        self.addCleanup(rmtree, root)
+        by = {r.id: r for r in results}
+        self.assertEqual(by["judgment.naming_consistency"].rationale, "ignored by judgments config")
+
+    def test_agent_row_never_gates_even_if_flagged(self):
+        b = score._base({"id": "judgment.x", "title": "X", "pillar": "P", "level": 2,
+                         "decide": "agent", "gating": True})
+        self.assertFalse(b["gating"])
+        b2 = score._base({"id": "docs.readme", "title": "R", "pillar": "D", "level": 1,
+                          "decide": "deterministic", "gating": True})
+        self.assertTrue(b2["gating"])
 
 
 if __name__ == "__main__":

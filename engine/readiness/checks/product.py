@@ -63,3 +63,29 @@ def experiment_config(ctx):
             return passed("Experiment registry with owner, variants, and a success metric.",
                           [ev("experiment config", source=f)])
     return failed("No owned experiment registry (variants + success metric + owner).")
+
+
+# --- Factory-parity product depth (advisory; T0) ------------------------------------
+
+_ERROR_TRACKER = ["@sentry/node", "@sentry/browser", "sentry-sdk", "bugsnag", "@bugsnag/js",
+                  "rollbar", "@honeybadger-io/js"]
+
+
+def error_to_insight(ctx):
+    """Errors must flow to tracked work: an error tracker AND an issue-tracker integration."""
+    tracker = adep(ctx, _ERROR_TRACKER)
+    integ = ""
+    for f in ctx.static.glob([".github/workflows/*.yml", ".github/workflows/*.yaml"]):
+        low = (ctx.static.read(f) or "").lower()
+        if "getsentry/action" in low or ("sentry" in low and any(
+                k in low for k in ("jira", "linear", "create-issue", "issues"))):
+            integ = f
+            break
+    if tracker and integ:
+        return passed("Error-to-insight pipeline: error tracker plus issue integration.",
+                      [ev("error tracker", source=str(tracker)), ev("issue integration", source=integ)])
+    if not tracker and not integ:
+        return failed("No error-to-insight pipeline (error tracker + issue-tracker integration).")
+    if not tracker:
+        return failed("Issue integration referenced but no error tracker configured.")
+    return failed("Error tracker present but no issue-tracker integration (errors not routed to work).")

@@ -62,6 +62,39 @@ def tests_pass(ctx):
     return failed(f"'{cmd}' exited {res['returncode']} on an isolated copy.")
 
 
+def _smoke_cmd(ctx):
+    pkg = ctx.app_static().manifests().get("package.json", (None, None))[1]
+    if isinstance(pkg, dict):
+        scripts = pkg.get("scripts") or {}
+        if "smoke" in scripts:
+            return "npm run smoke"
+        if "healthcheck" in scripts:
+            return "npm run healthcheck"
+    if "smoke:" in (ctx.app_static().read("Makefile") or ctx.static.read("Makefile") or ""):
+        return "make smoke"
+    return ""
+
+
+def behavioral_smoke(ctx):
+    """T3 (advisory): a declared smoke/healthcheck command succeeds on an isolated copy.
+
+    Skips unless the user opted in (``--exec``); CI status from T2 substitutes by default.
+    """
+    ex = ctx.exec
+    if ex is None or not ex.enabled:
+        return skipped("T3 execution disabled (opt in with --exec); CI status (T2) substitutes.")
+    cmd = _smoke_cmd(ctx)
+    if not cmd:
+        return skipped("No declared smoke/healthcheck command (npm run smoke / make smoke).")
+    res = ex.run_smoke_cmd(cmd, ctx.app.path)  # cmd is allowlisted by construction
+    if res["timed_out"]:
+        return failed(f"'{cmd}' smoke check timed out after {ex.timeout}s on an isolated copy.")
+    if res["returncode"] == 0:
+        return passed(f"'{cmd}' smoke check succeeded on an isolated copy.",
+                      [ev(f"T3 smoke run: {' '.join(res['argv'])}", tier="T3")])
+    return failed(f"'{cmd}' smoke check exited {res['returncode']} on an isolated copy.")
+
+
 def _coverage_config(ctx):
     for f in (".coveragerc", "codecov.yml", ".codecov.yml"):
         if ctx.static.glob([f]):

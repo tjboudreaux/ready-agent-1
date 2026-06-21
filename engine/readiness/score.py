@@ -79,7 +79,8 @@ def _ctx(root, detection, static, git, github, app, options):
 def _base(crit):
     return dict(
         id=crit["id"], title=crit["title"], pillar=crit["pillar"], level=crit["level"],
-        scope=crit.get("scope", "repository"), gating=crit.get("gating", True),
+        scope=crit.get("scope", "repository"),
+        gating=crit.get("gating", True) and crit.get("decide") != "agent",
         fixable=bool((crit.get("fix") or {}).get("autofixable")),
         fix_kind=(crit.get("fix") or {}).get("kind", ""),
     )
@@ -102,6 +103,14 @@ def _eval_criterion(crit, root, detection, static, git, github, waivers, options
     if cid in waivers:
         reason = waivers[cid].get("reason", "")
         return CriterionResult(status=Status.WAIVED, rationale=f"Waived: {reason}".strip(), app_path=".", **base)
+
+    if crit.get("decide") == "agent":
+        from .detect import load_readiness_config
+        from .judgments import decide as _judgment_decide
+        sev, reason = _judgment_decide(load_readiness_config(root, options), cid)
+        if sev == "off":
+            msg = "ignored by judgments config" + (f": {reason}" if reason else "")
+            return CriterionResult(status=Status.WAIVED, rationale=msg, app_path=".", **base)
 
     for req in requires:
         if done.get(req) != Status.PASS:

@@ -6,6 +6,13 @@ from readiness.checks.testing import tests_pass
 from readiness.collectors.exec import ALLOWED_TEST_CMDS, ExecCollector
 from readiness.run import analyze
 from tests._util import make_repo, rmtree
+from readiness.checks.testing import behavioral_smoke
+from readiness.checks.devenv import devcontainer_runnable
+from readiness.collectors.static import StaticCollector
+from readiness.collectors.git import GitCollector
+from readiness.collectors.github import GithubCollector
+from readiness.context import Context
+from readiness.detect import detect
 
 
 def _counting_runner(result=None):
@@ -116,6 +123,105 @@ class TestGateUnchangedByExec(unittest.TestCase):
         self.assertEqual(by_id_off["testing.tests_pass"].status.value, "skipped")
         self.assertEqual(by_id_on["testing.tests_pass"].status.value, "fail")
         self.assertFalse(by_id_on["testing.tests_pass"].gating)
+
+
+def _real_ctx(files, ex):
+    root = make_repo(files)
+    static = StaticCollector(root)
+    det = detect(root, static)
+    ctx = Context(root=root, detection=det, static=static,
+                  git=GitCollector(root, runner=lambda a: None),
+                  github=GithubCollector(root, runner=lambda a: None),
+                  app=det.apps[0], exec=ex)
+    return root, ctx
+
+
+def _ex(result=None, enabled=True):
+    opts = {"exec": True} if enabled else {}
+    return ExecCollector(".", options=opts, runner=_counting_runner(result))
+
+
+class TestBehavioralSmoke(unittest.TestCase):
+    def test_skips_when_exec_absent(self):
+        root, ctx = _real_ctx({"package.json": '{"scripts":{"smoke":"node smoke.js"}}'}, None)
+        self.addCleanup(rmtree, root)
+        self.assertEqual(behavioral_smoke(ctx).status.value, "skipped")
+
+    def test_skips_when_disabled(self):
+        root, ctx = _real_ctx({"package.json": '{"scripts":{"smoke":"node s.js"}}'}, _ex(enabled=False))
+        self.addCleanup(rmtree, root)
+        self.assertEqual(behavioral_smoke(ctx).status.value, "skipped")
+
+    def test_skips_without_smoke_command(self):
+        root, ctx = _real_ctx({"package.json": '{"name":"x"}'}, _ex())
+        self.addCleanup(rmtree, root)
+        v = behavioral_smoke(ctx)
+        self.assertEqual(v.status.value, "skipped")
+        self.assertIn("smoke", v.rationale)
+
+    def test_passes_via_npm_smoke(self):
+        root, ctx = _real_ctx({"package.json": '{"scripts":{"smoke":"node s.js"}}'}, _ex())
+        self.addCleanup(rmtree, root)
+        self.assertEqual(behavioral_smoke(ctx).status.value, "pass")
+
+    def test_passes_via_healthcheck(self):
+        root, ctx = _real_ctx({"package.json": '{"scripts":{"healthcheck":"node hc.js"}}'}, _ex())
+        self.addCleanup(rmtree, root)
+        self.assertEqual(behavioral_smoke(ctx).status.value, "pass")
+
+    def test_passes_via_make_smoke(self):
+        root, ctx = _real_ctx({"Makefile": "smoke:\n\t./smoke.sh\n"}, _ex())
+        self.addCleanup(rmtree, root)
+        self.assertEqual(behavioral_smoke(ctx).status.value, "pass")
+
+    def test_fails_on_nonzero(self):
+        root, ctx = _real_ctx({"package.json": '{"scripts":{"smoke":"x"}}'},
+                              _ex({"returncode": 1, "timed_out": False}))
+        self.addCleanup(rmtree, root)
+        v = behavioral_smoke(ctx)
+        self.assertEqual(v.status.value, "fail")
+        self.assertIn("exited 1", v.rationale)
+
+    def test_fails_on_timeout(self):
+        root, ctx = _real_ctx({"package.json": '{"scripts":{"smoke":"x"}}'},
+                              _ex({"returncode": None, "timed_out": True}))
+        self.addCleanup(rmtree, root)
+        v = behavioral_smoke(ctx)
+        self.assertEqual(v.status.value, "fail")
+        self.assertIn("timed out", v.rationale)
+
+
+class TestDevcontainerRunnable(unittest.TestCase):
+    def test_skips_when_disabled(self):
+        root, ctx = _real_ctx({".devcontainer/devcontainer.json": "{}"}, _ex(enabled=False))
+        self.addCleanup(rmtree, root)
+        self.assertEqual(devcontainer_runnable(ctx).status.value, "skipped")
+
+    def test_skips_without_config(self):
+        root, ctx = _real_ctx({"README.md": "# x"}, _ex())
+        self.addCleanup(rmtree, root)
+        v = devcontainer_runnable(ctx)
+        self.assertEqual(v.status.value, "skipped")
+        self.assertIn("devcontainer", v.rationale)
+
+    def test_passes_on_zero_exit(self):
+        root, ctx = _real_ctx({".devcontainer/devcontainer.json": "{}"}, _ex())
+        self.addCleanup(rmtree, root)
+        self.assertEqual(devcontainer_runnable(ctx).status.value, "pass")
+
+    def test_fails_on_nonzero(self):
+        root, ctx = _real_ctx({".devcontainer/devcontainer.json": "{}"},
+                              _ex({"returncode": 3, "timed_out": False}))
+        self.addCleanup(rmtree, root)
+        v = devcontainer_runnable(ctx)
+        self.assertEqual(v.status.value, "fail")
+        self.assertIn("exited 3", v.rationale)
+
+    def test_fails_on_timeout(self):
+        root, ctx = _real_ctx({".devcontainer/devcontainer.json": "{}"},
+                              _ex({"returncode": None, "timed_out": True}))
+        self.addCleanup(rmtree, root)
+        self.assertEqual(devcontainer_runnable(ctx).status.value, "fail")
 
 
 if __name__ == "__main__":

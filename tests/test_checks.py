@@ -1,6 +1,6 @@
 import unittest
 
-from readiness.checks import build, devenv, docs, loop, security, style, taskdisc, testing
+from readiness.checks import build, devenv, docs, loop, observability, product, security, style, taskdisc, testing
 from readiness.collectors.git import GitCollector
 from readiness.collectors.github import GithubCollector
 from readiness.collectors.static import StaticCollector
@@ -140,6 +140,21 @@ class TestDocsChecks(CheckCase):
             ("log", "-1", "--format=%cI", "--", "README.md"): "2024-01-01T00:00:00+00:00\n",
         }
         self.assertEqual(self.s(docs.doc_freshness(self.ctx({"README.md": "# x"}, git=stale_git))), Status.FAIL)
+
+    def test_doc_freshness_edge_branches(self):
+        # agents_md_validation: AGENTS.md absent/unreadable
+        self.assertEqual(self.s(docs.agents_md_validation(self.ctx({"README.md": "# x"}))), Status.FAIL)
+        # doc exists but no per-file commit date -> skipped in loop -> nothing tracked
+        git_no_file_date = {("log", "-1", "--format=%cI"): "2026-06-01T00:00:00+00:00\n"}
+        self.assertEqual(self.s(docs.doc_freshness(
+            self.ctx({"README.md": "# x"}, git=git_no_file_date))), Status.UNKNOWN)
+        # unparseable per-file commit date -> ValueError path
+        git_bad_date = {
+            ("log", "-1", "--format=%cI"): "2026-06-01T00:00:00+00:00\n",
+            ("log", "-1", "--format=%cI", "--", "README.md"): "not-a-date\n",
+        }
+        self.assertEqual(self.s(docs.doc_freshness(
+            self.ctx({"README.md": "# x"}, git=git_bad_date))), Status.UNKNOWN)
 
     def test_api_schema_via_dep(self):
         self.assertEqual(self.s(docs.api_schema_docs(self.ctx({"pyproject.toml": '[project]\nname="x"\ndependencies=["fastapi"]\n'}))), Status.PASS)
@@ -369,6 +384,245 @@ class TestPhase5TaskdiscChecks(CheckCase):
             self.ctx({}, gh=_gh_available({key: issues_good})))), Status.PASS)
         self.assertEqual(self.s(taskdisc.actionable_backlog_items(
             self.ctx({}, gh=_gh_available({key: issues_bad})))), Status.FAIL)
+
+
+class TestG1CodeHealth(CheckCase):
+    def test_naming_convention_rule(self):
+        self.assertEqual(self.s(style.naming_convention_rule(self.ctx(
+            {".eslintrc.json": '{"rules":{"@typescript-eslint/naming-convention":"error"}}'}))), Status.PASS)
+        self.assertEqual(self.s(style.naming_convention_rule(self.ctx(
+            {"ruff.toml": 'select = ["N", "E"]\n'}))), Status.PASS)
+        self.assertEqual(self.s(style.naming_convention_rule(self.ctx(
+            {"pyproject.toml": '[tool.ruff.lint]\nselect = ["N"]\n'}))), Status.PASS)
+        self.assertEqual(self.s(style.naming_convention_rule(self.ctx(
+            {"ruff.toml": 'select = "N"\n'}))), Status.FAIL)  # non-list select -> no codes
+        self.assertEqual(self.s(style.naming_convention_rule(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
+
+    def test_complexity_budget(self):
+        self.assertEqual(self.s(style.complexity_budget(self.ctx(
+            {".eslintrc.json": '{"rules":{"complexity":["error",10]}}'}))), Status.PASS)
+        self.assertEqual(self.s(style.complexity_budget(self.ctx(
+            {"ruff.toml": 'extend-select = ["C901"]\n'}))), Status.PASS)
+        self.assertEqual(self.s(style.complexity_budget(self.ctx(
+            {"pyproject.toml": "[tool.ruff.lint.mccabe]\nmax-complexity = 10\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.complexity_budget(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
+
+    def test_dead_code_detection(self):
+        self.assertEqual(self.s(style.dead_code_detection(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
+        self.assertEqual(self.s(style.dead_code_detection(self.ctx(
+            {"package.json": '{"devDependencies":{"knip":"^5"},"scripts":{"deadcode":"knip"}}'}))), Status.PASS)
+        self.assertEqual(self.s(style.dead_code_detection(self.ctx(
+            {"knip.json": "{}", "package.json": '{"name":"x"}'}))), Status.FAIL)
+
+    def test_duplicate_code_detection(self):
+        self.assertEqual(self.s(style.duplicate_code_detection(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
+        self.assertEqual(self.s(style.duplicate_code_detection(self.ctx(
+            {".jscpd.json": "{}", ".github/workflows/ci.yml": "name: ci\nrun: npx jscpd src\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.duplicate_code_detection(self.ctx(
+            {"package.json": '{"devDependencies":{"jscpd":"^4"}}'}))), Status.FAIL)
+
+    def test_large_file_guard(self):
+        self.assertEqual(self.s(style.large_file_guard(self.ctx(
+            {".pre-commit-config.yaml": "repos:\n  - hooks:\n      - id: check-added-large-files\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.large_file_guard(self.ctx(
+            {".gitattributes": "*.psd filter=lfs diff=lfs merge=lfs -text\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.large_file_guard(self.ctx(
+            {".eslintrc.json": '{"rules":{"max-lines":["error",300]}}'}))), Status.PASS)
+        self.assertEqual(self.s(style.large_file_guard(self.ctx(
+            {"Makefile": "lint:\n\tgit-sizer\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.large_file_guard(self.ctx(
+            {".pre-commit-config.yaml": "repos: []\n"}))), Status.FAIL)
+
+    def test_tech_debt_tracking(self):
+        self.assertEqual(self.s(style.tech_debt_tracking(self.ctx(
+            {"TECH_DEBT.md": "# Debt\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.tech_debt_tracking(self.ctx(
+            {".eslintrc.json": '{"rules":{"no-warning-comments":["error"]}}'}))), Status.PASS)
+        self.assertEqual(self.s(style.tech_debt_tracking(self.ctx(
+            {".github/workflows/debt.yml": "name: debt\nrun: npx leasot src\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.tech_debt_tracking(self.ctx(
+            {"README.md": "# x"}))), Status.FAIL)
+
+    def test_cfg_texts_monorepo_root_fallback(self):
+        files = {
+            "package.json": '{"workspaces":["packages/*"]}',
+            ".eslintrc.json": '{"rules":{"@typescript-eslint/naming-convention":"error"}}',
+            "packages/a/package.json": '{"name":"a"}',
+            "packages/b/package.json": '{"name":"b"}',
+        }
+        ctx = self.ctx(files, app_path="packages/a")
+        self.assertEqual(self.s(style.naming_convention_rule(ctx)), Status.PASS)  # root config via fallback
+
+
+class TestG2Depth(CheckCase):
+    def test_error_tracking(self):
+        self.assertEqual(self.s(observability.error_tracking(self.ctx(
+            {"package.json": '{"dependencies":{"@sentry/node":"^7"}}', "src/i.js": "Sentry.init({dsn:'x'})\n"}))), Status.PASS)
+        self.assertEqual(self.s(observability.error_tracking(self.ctx(
+            {"package.json": '{"dependencies":{"@sentry/node":"^7"}}'}))), Status.FAIL)  # import-only
+
+    def test_runbooks(self):
+        rb = "# Runbook\n\n## Restart procedure\n\n" + "Follow the operational steps carefully. " * 8
+        self.assertEqual(self.s(observability.runbooks(self.ctx({"RUNBOOK.md": rb}))), Status.PASS)
+        self.assertEqual(self.s(observability.runbooks(self.ctx({"docs/RUNBOOK.md": "# tiny\n"}))), Status.FAIL)
+        prose = "Runbook " * 40  # >=200 chars but no sections/steps
+        self.assertEqual(self.s(observability.runbooks(self.ctx({"RUNBOOK.md": prose}))), Status.FAIL)
+        self.assertEqual(self.s(observability.runbooks(self.ctx({}))), Status.FAIL)
+
+    def test_profiling(self):
+        self.assertEqual(self.s(observability.profiling(self.ctx(
+            {"package.json": '{"dependencies":{"@pyroscope/nodejs":"^0.3"}}', "src/p.js": "pyroscope.start()\n"}))), Status.PASS)
+        self.assertEqual(self.s(observability.profiling(self.ctx({}))), Status.FAIL)
+
+    def test_circuit_breakers(self):
+        self.assertEqual(self.s(observability.circuit_breakers(self.ctx(
+            {"package.json": '{"dependencies":{"opossum":"^8"}}', "src/cb.js": "const b = new Opossum(fn)\n"}))), Status.PASS)
+        self.assertEqual(self.s(observability.circuit_breakers(self.ctx({}))), Status.FAIL)
+
+    def test_deployment_markers(self):
+        self.assertEqual(self.s(observability.deployment_markers(self.ctx(
+            {".github/workflows/deploy.yml": "name: deploy\nsteps:\n  - uses: sentry/action-release@v1\n"}))), Status.PASS)
+        self.assertEqual(self.s(observability.deployment_markers(self.ctx(
+            {".github/workflows/ci.yml": "name: ci\nrun: echo hi\n"}))), Status.FAIL)  # entered, no marker
+        self.assertEqual(self.s(observability.deployment_markers(self.ctx({}))), Status.FAIL)  # no workflows
+
+    def test_dependency_min_age(self):
+        self.assertEqual(self.s(security.dependency_min_age(self.ctx(
+            {"renovate.json": '{"minimumReleaseAge":"3 days"}'}))), Status.PASS)
+        self.assertEqual(self.s(security.dependency_min_age(self.ctx(
+            {"package.json": '{"renovate":{"stabilityDays":3}}'}))), Status.PASS)
+        self.assertEqual(self.s(security.dependency_min_age(self.ctx(
+            {"renovate.json": '{"extends":["config:base"]}'}))), Status.FAIL)  # renovate w/o age policy
+        self.assertEqual(self.s(security.dependency_min_age(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
+
+    def test_log_scrubbing(self):
+        self.assertEqual(self.s(security.log_scrubbing(self.ctx(
+            {"src/log.js": "logger.redact(['password'])\n"}))), Status.PASS)
+        self.assertEqual(self.s(security.log_scrubbing(self.ctx(
+            {"src/log.js": "console.log('hi')\n"}))), Status.FAIL)
+
+    def test_secrets_management(self):
+        self.assertEqual(self.s(security.secrets_management(self.ctx(
+            {".github/workflows/ci.yml": "env:\n  T: ${{ secrets.TOKEN }}\n"}))), Status.PASS)
+        self.assertEqual(self.s(security.secrets_management(self.ctx(
+            {"package.json": '{"dependencies":{"@google-cloud/secret-manager":"^5"}}'}))), Status.PASS)
+        self.assertEqual(self.s(security.secrets_management(self.ctx(
+            {".github/workflows/ci.yml": "name: ci\nrun: echo hi\n"}))), Status.FAIL)  # entered, no secret ref
+        self.assertEqual(self.s(security.secrets_management(self.ctx({}))), Status.FAIL)
+
+    def test_dast(self):
+        self.assertEqual(self.s(security.dast(self.ctx(
+            {".github/workflows/sec.yml": "steps:\n  - uses: zaproxy/action-baseline@v0\n"}))), Status.PASS)
+        self.assertEqual(self.s(security.dast(self.ctx(
+            {".github/workflows/ci.yml": "name: ci\nrun: echo\n"}))), Status.FAIL)  # entered, no dast
+        self.assertEqual(self.s(security.dast(self.ctx({}))), Status.FAIL)
+
+
+class TestG3Hygiene(CheckCase):
+    def test_unused_dependencies(self):
+        self.assertEqual(self.s(build.unused_dependencies(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
+        self.assertEqual(self.s(build.unused_dependencies(self.ctx(
+            {"package.json": '{"devDependencies":{"depcheck":"^1"},"scripts":{"deps":"depcheck"}}'}))), Status.PASS)
+        self.assertEqual(self.s(build.unused_dependencies(self.ctx(
+            {"knip.json": "{}", "package.json": '{"name":"x"}'}))), Status.FAIL)  # tool, no wiring
+
+    def test_version_drift(self):
+        self.assertEqual(self.s(build.version_drift(self.ctx(
+            {"package.json": '{"devDependencies":{"syncpack":"^12"}}'}))), Status.PASS)
+        self.assertEqual(self.s(build.version_drift(self.ctx(
+            {"pnpm-workspace.yaml": "catalog:\n  react: ^18\n"}))), Status.PASS)
+        self.assertEqual(self.s(build.version_drift(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
+
+    def test_monorepo_tooling(self):
+        self.assertEqual(self.s(build.monorepo_tooling(self.ctx({"turbo.json": "{}"}))), Status.PASS)
+        self.assertEqual(self.s(build.monorepo_tooling(self.ctx(
+            {"package.json": '{"devDependencies":{"nx":"^18"}}'}))), Status.PASS)
+        self.assertEqual(self.s(build.monorepo_tooling(self.ctx(
+            {"package.json": '{"workspaces":["packages/*"]}'}))), Status.PASS)
+        self.assertEqual(self.s(build.monorepo_tooling(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
+        self.assertEqual(self.s(build.monorepo_tooling(self.ctx({"README.md": "# x"}))), Status.FAIL)  # no manifest
+
+    def test_single_command_setup(self):
+        self.assertEqual(self.s(build.single_command_setup(self.ctx({"bin/setup": "#!/bin/sh\n"}))), Status.PASS)
+        self.assertEqual(self.s(build.single_command_setup(self.ctx(
+            {"Makefile": "setup:\n\tpip install -e .\n"}))), Status.PASS)
+        self.assertEqual(self.s(build.single_command_setup(self.ctx(
+            {".devcontainer/devcontainer.json": '{"postCreateCommand":"make setup"}'}))), Status.PASS)
+        self.assertEqual(self.s(build.single_command_setup(self.ctx(
+            {"package.json": '{"scripts":{"setup":"npm i"}}'}))), Status.PASS)
+        self.assertEqual(self.s(build.single_command_setup(self.ctx({"README.md": "# x"}))), Status.FAIL)
+
+    def test_release_notes_automation(self):
+        self.assertEqual(self.s(build.release_notes_automation(self.ctx({".releaserc": "{}"}))), Status.PASS)
+        self.assertEqual(self.s(build.release_notes_automation(self.ctx(
+            {"package.json": '{"devDependencies":{"@changesets/cli":"^2"}}'}))), Status.PASS)
+        self.assertEqual(self.s(build.release_notes_automation(self.ctx(
+            {"pyproject.toml": "[tool.towncrier]\npackage = \"x\"\n"}))), Status.PASS)
+        self.assertEqual(self.s(build.release_notes_automation(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
+
+    def test_dependency_weight_budget(self):
+        self.assertEqual(self.s(build.dependency_weight_budget(self.ctx(
+            {"package.json": '{"size-limit":[{"limit":"10 kb"}]}'}))), Status.PASS)
+        self.assertEqual(self.s(build.dependency_weight_budget(self.ctx(
+            {".size-limit.json": "[]", "package.json": '{"name":"x"}'}))), Status.PASS)
+        self.assertEqual(self.s(build.dependency_weight_budget(self.ctx(
+            {"package.json": '{"devDependencies":{"size-limit":"^11"},"scripts":{"size":"size-limit"}}'}))), Status.PASS)
+        self.assertEqual(self.s(build.dependency_weight_budget(self.ctx(
+            {"package.json": '{"devDependencies":{"webpack-bundle-analyzer":"^4"}}'}))), Status.FAIL)  # dep, no wiring
+        self.assertEqual(self.s(build.dependency_weight_budget(self.ctx({"README.md": "# x"}))), Status.FAIL)
+
+    def test_local_services(self):
+        self.assertEqual(self.s(devenv.local_services(self.ctx(
+            {"docker-compose.yml": "services:\n  db:\n    image: postgres\n"}))), Status.PASS)
+        self.assertEqual(self.s(devenv.local_services(self.ctx({"README.md": "# x"}))), Status.FAIL)
+
+    def test_database_schema(self):
+        self.assertEqual(self.s(devenv.database_schema(self.ctx(
+            {"migrations/001_init.sql": "CREATE TABLE x(id int);"}))), Status.PASS)
+        self.assertEqual(self.s(devenv.database_schema(self.ctx({"src/app.py": "x = 1\n"}))), Status.FAIL)
+
+
+class TestG4DocsProduct(CheckCase):
+    def test_auto_generation(self):
+        self.assertEqual(self.s(docs.auto_generation(self.ctx({"README.md": "# x"}))), Status.FAIL)
+        self.assertEqual(self.s(docs.auto_generation(self.ctx(
+            {"mkdocs.yml": "site_name: X\n", ".github/workflows/docs.yml": "name: docs\nrun: mkdocs build\n"}))), Status.PASS)
+        self.assertEqual(self.s(docs.auto_generation(self.ctx(
+            {"typedoc.json": "{}", "package.json": '{"name":"x"}'}))), Status.FAIL)  # tool, no wiring
+
+    def test_agents_md_ci_validation(self):
+        self.assertEqual(self.s(docs.agents_md_ci_validation(self.ctx({"README.md": "# x"}))), Status.FAIL)
+        self.assertEqual(self.s(docs.agents_md_ci_validation(self.ctx(
+            {"AGENTS.md": "# A\n", ".github/workflows/ci.yml": "name: ci\nrun: validate AGENTS.md commands\n"}))), Status.PASS)
+        self.assertEqual(self.s(docs.agents_md_ci_validation(self.ctx({"AGENTS.md": "# A\n"}))), Status.FAIL)  # no CI
+        self.assertEqual(self.s(docs.agents_md_ci_validation(self.ctx(
+            {"AGENTS.md": "# A\n", ".github/workflows/ci.yml": "name: ci\nrun: echo\n"}))), Status.FAIL)  # CI, no check
+
+    def test_architecture_doc(self):
+        self.assertEqual(self.s(docs.architecture_doc(self.ctx(
+            {"ARCHITECTURE.md": "# Architecture\n\n" + "Layered design described in depth. " * 8}))), Status.PASS)
+        self.assertEqual(self.s(docs.architecture_doc(self.ctx({"ARCHITECTURE.md": "# tiny\n"}))), Status.FAIL)
+        self.assertEqual(self.s(docs.architecture_doc(self.ctx({"README.md": "# x"}))), Status.FAIL)
+
+    def test_error_to_insight(self):
+        self.assertEqual(self.s(product.error_to_insight(self.ctx(
+            {"package.json": '{"dependencies":{"@sentry/node":"^7"}}',
+             ".github/workflows/sentry.yml": "name: s\nsteps:\n  - uses: getsentry/action-release@v1\n"}))), Status.PASS)
+        self.assertEqual(self.s(product.error_to_insight(self.ctx(
+            {".github/workflows/ci.yml": "name: ci\nrun: echo\n"}))), Status.FAIL)  # neither
+        self.assertEqual(self.s(product.error_to_insight(self.ctx(
+            {"package.json": '{"dependencies":{"@sentry/node":"^7"}}'}))), Status.FAIL)  # tracker only
+        self.assertEqual(self.s(product.error_to_insight(self.ctx(
+            {".github/workflows/s.yml": "name: s\nsteps:\n  - uses: getsentry/action-release@v1\n"}))), Status.FAIL)  # integ only
 
 
 if __name__ == "__main__":

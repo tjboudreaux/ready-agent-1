@@ -196,6 +196,34 @@ class TestRenderCoverage(unittest.TestCase):
         self.assertEqual(rule_ids.count("x.y"), 1)
         self.assertEqual(len(doc["runs"][0]["results"]), 2)
 
+    def test_judgment_disclosure_both(self):
+        results = [
+            CriterionResult(id="judgment.naming_consistency", title="Naming Consistency", pillar="Style",
+                            level=2, scope="repository", gating=False, status=Status.UNKNOWN),
+            CriterionResult(id="judgment.pii_handling", title="PII Handling", pillar="Security",
+                            level=3, scope="repository", gating=False, status=Status.WAIVED,
+                            rationale="ignored by judgments config"),
+        ]
+        md = report_mod.render_markdown(self._rep(results))
+        self.assertIn("## Agent Judgments", md)
+        self.assertIn("To assess: Naming Consistency", md)
+        self.assertIn("Ignored judgments (1): PII Handling", md)
+
+    def test_judgment_disclosure_assess_only(self):
+        results = [CriterionResult(id="judgment.x", title="X", pillar="P", level=2,
+                                   scope="repository", gating=False, status=Status.UNKNOWN)]
+        md = report_mod.render_markdown(self._rep(results))
+        self.assertIn("To assess: X", md)
+        self.assertNotIn("Ignored judgments", md)
+
+    def test_judgment_disclosure_ignored_only(self):
+        results = [CriterionResult(id="judgment.x", title="X", pillar="P", level=2,
+                                   scope="repository", gating=False, status=Status.WAIVED,
+                                   rationale="ignored by judgments config")]
+        md = report_mod.render_markdown(self._rep(results))
+        self.assertIn("Ignored judgments (1): X", md)
+        self.assertNotIn("To assess", md)
+
 
 class TestCliFormats(unittest.TestCase):
     def _run(self, argv):
