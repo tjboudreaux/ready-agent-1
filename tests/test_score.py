@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from readiness import score
+from readiness import judgments, score
 from readiness.collectors.git import GitCollector
 from readiness.collectors.github import GithubCollector
 from readiness.collectors.static import StaticCollector
@@ -275,6 +275,231 @@ class TestRegistryIntegrity(unittest.TestCase):
                     self.assertIn(key, aw)
             for req in aw.get("requires", []):
                 self.assertIn(req, ids, f"{crit['id']} requires unknown {req}")
+
+
+class TestAppCounts(unittest.TestCase):
+    def test_repository_scope_counts_by_status(self):
+        root, results, _ = _evaluate(RICH_FILES, RICH_GH, RICH_GIT)
+        self.addCleanup(rmtree, root)
+        by = {r.id: r for r in results}
+        # README passes -> 1/1
+        self.assertEqual((by["docs.readme"].passed_apps, by["docs.readme"].evaluated_apps), (1, 1))
+
+    def test_repository_scope_fail_and_skip_counts(self):
+        root, results, _ = _evaluate({"README.md": "# x"})  # bare: readme fails, T2 skipped
+        self.addCleanup(rmtree, root)
+        by = {r.id: r for r in results}
+        self.assertEqual((by["docs.readme"].passed_apps, by["docs.readme"].evaluated_apps), (0, 1))
+        self.assertEqual((by["security.branch_protection"].passed_apps,
+                          by["security.branch_protection"].evaluated_apps), (0, 0))  # skipped
+
+    def test_app_scope_counts_reflect_apps_not_rationale(self):
+        files = {
+            "package.json": '{"name":"root","workspaces":["packages/*"]}',
+            "packages/a/package.json": '{"name":"a"}',
+            "packages/a/.eslintrc.json": "{}",
+            "packages/b/package.json": '{"name":"b"}',
+        }
+        root, results, _ = _evaluate(files)
+        self.addCleanup(rmtree, root)
+        r = next(r for r in results if r.id == "style.linter_config")
+        self.assertEqual(r.evaluated_apps, 2)
+        self.assertEqual(r.passed_apps, 1)
+
+
+class TestEvalCriterionBranches(unittest.TestCase):
+    def _eval(self, crit, files):
+        root = make_repo(files)
+        self.addCleanup(rmtree, root)
+        static = StaticCollector(root)
+        det = detect(root, static)
+        git = GitCollector(root, runner=fake_runner({}))
+        gh = GithubCollector(root, runner=fake_runner({}))
+        return score._eval_criterion(crit, root, det, static, git, gh, {}, {}, {})
+
+    def _crit(self, scope="repository", types=None, langs=None, opt_in=None):
+        aw = {"project_types": types or ["*"], "languages": langs or ["*"], "requires": []}
+        if opt_in is not None:
+            aw["opt_in"] = opt_in
+        return {"id": "docs.readme", "title": "R", "pillar": "Docs", "level": 1,
+                "scope": scope, "gating": True, "check": "docs.readme", "applies_when": aw}
+
+    def test_unsupported_opt_in_is_unknown(self):
+        r = self._eval(self._crit(opt_in="bogus"), {"README.md": "# x"})
+        self.assertEqual(r.status, Status.UNKNOWN)
+
+    def test_repository_type_skip(self):
+        r = self._eval(self._crit(types=["service"]), {"pyproject.toml": '[project]\nname="lib"\n'})
+        self.assertEqual(r.status, Status.SKIPPED)
+        self.assertIn("project type", r.rationale)
+
+    def test_repository_language_skip(self):
+        r = self._eval(self._crit(langs=["rust"]), {"pyproject.toml": '[project]\nname="lib"\n'})
+        self.assertEqual(r.status, Status.SKIPPED)
+        self.assertIn("language", r.rationale)
+
+    def test_repository_unknown_type(self):
+        r = self._eval(self._crit(types=["service"]), {"README.md": "# x", "Makefile": "all:\n\techo\n"})
+        self.assertEqual(r.status, Status.UNKNOWN)
+
+    def test_app_scope_language_skip_yields_not_applicable(self):
+        files = {
+            "package.json": '{"name":"root","workspaces":["packages/*"]}',
+            "packages/a/package.json": '{"name":"a"}',
+            "packages/b/package.json": '{"name":"b"}',
+        }
+        r = self._eval(self._crit(scope="application", langs=["rust"]), files)
+        self.assertEqual(r.status, Status.SKIPPED)
+        self.assertEqual(r.evaluated_apps, 0)
+
+
+class TestAggregateProdFacing(unittest.TestCase):
+    def test_prod_facing_failing_note(self):
+        files = {
+            "package.json": '{"name":"root","workspaces":["packages/*"]}',
+            "packages/api/package.json": '{"name":"api","dependencies":{"express":"^4"}}',
+            "packages/api/Dockerfile": "FROM node\n",  # prod-facing service, no eslint -> fails
+            "packages/web/package.json": '{"name":"web","dependencies":{"express":"^4"}}',
+            "packages/web/.eslintrc.json": "{}",
+        }
+        root, results, _ = _evaluate(files)
+        self.addCleanup(rmtree, root)
+        r = next(r for r in results if r.id == "style.linter_config")
+        self.assertEqual(r.status, Status.FAIL)
+        self.assertIn("Production-facing failing", r.rationale)
+
+
+class TestWaiverEdgeCases(unittest.TestCase):
+    def test_waiver_without_id_ignored(self):
+        root, results, _ = _evaluate({"README.md": "# x"},
+                                     options={"waivers": [{"reason": "no id here"}]})
+        self.addCleanup(rmtree, root)
+        r = next(r for r in results if r.id == "docs.readme")
+        self.assertEqual(r.status, Status.FAIL)  # not waived
+
+    def test_waiver_malformed_expires_still_waives(self):
+        waivers = [{"id": "docs.readme", "reason": "x", "expires": "not-a-date"}]
+        root, results, _ = _evaluate({"README.md": "# x"},
+                                     options={"waivers": waivers, "now": "2026-06-01"})
+        self.addCleanup(rmtree, root)
+        r = next(r for r in results if r.id == "docs.readme")
+        self.assertEqual(r.status, Status.WAIVED)
+
+
+
+class TestAggregateUnknownAndWaiverFuture(unittest.TestCase):
+    def test_aggregate_unknown_app(self):
+        from readiness.model import App, Verdict
+        base = {"id": "x.y", "title": "t", "pillar": "P", "level": 3, "scope": "application",
+                "gating": False, "fixable": False, "fix_kind": ""}
+        per = [(App(path="a"), Verdict(Status.UNKNOWN, "undetermined", []))]
+        r = score._aggregate(base, per)
+        self.assertEqual(r.status, Status.UNKNOWN)
+        self.assertEqual(r.evaluated_apps, 1)
+        self.assertEqual(r.passed_apps, 0)
+
+    def test_future_waiver_still_waives(self):
+        waivers = [{"id": "docs.readme", "reason": "x", "expires": "2099-01-01"}]
+        root, results, _ = _evaluate({"README.md": "# x"},
+                                     options={"waivers": waivers, "now": "2026-06-01"})
+        self.addCleanup(rmtree, root)
+        r = next(r for r in results if r.id == "docs.readme")
+        self.assertEqual(r.status, Status.WAIVED)
+
+class TestRecommendationSelector(unittest.TestCase):
+    def _r(self, cid, level, status, gating=True, fix_kind=""):
+        return CriterionResult(id=cid, title=cid.upper(), pillar="P", level=level, scope="repository",
+                               gating=gating, status=status, fix_kind=fix_kind)
+
+    def test_next_level_first_lowest_effort_capped(self):
+        results = [
+            self._r("a", 2, Status.FAIL, fix_kind="scaffold"),
+            self._r("b", 1, Status.FAIL, fix_kind=""),
+            self._r("c", 1, Status.FAIL, fix_kind="scaffold"),
+            self._r("d", 3, Status.UNKNOWN),
+            self._r("e", 1, Status.FAIL, gating=False),  # advisory -> excluded
+        ]
+        recs = score._recommendations(results, level=0)  # next locked level is 1
+        ids = [r["id"] for r in recs]
+        self.assertEqual(len(ids), 3)            # capped at 3
+        self.assertNotIn("e", ids)               # advisory excluded
+        self.assertEqual(ids[0], "c")            # L1 scaffold (next level, lowest effort)
+        self.assertEqual(ids[1], "b")            # L1 manual
+        self.assertEqual(ids[2], "a")            # L2 before L3
+
+
+
+class TestJudgmentsDecide(unittest.TestCase):
+    def test_no_judgments_config(self):
+        self.assertEqual(judgments.decide({}, "judgment.naming_consistency"), ("advisory", ""))
+
+    def test_judgments_not_dict(self):
+        self.assertEqual(judgments.decide({"judgments": "nope"}, "judgment.x"), ("advisory", ""))
+
+    def test_off_and_advisory(self):
+        cfg = {"judgments": {"naming_consistency": "off", "code_modularization": "advisory"}}
+        self.assertEqual(judgments.decide(cfg, "judgment.naming_consistency"), ("off", ""))
+        self.assertEqual(judgments.decide(cfg, "judgment.code_modularization"), ("advisory", ""))
+
+    def test_star_default(self):
+        self.assertEqual(judgments.decide({"judgments": {"*": "off"}}, "judgment.readme_quality")[0], "off")
+
+    def test_dict_entry_with_reason(self):
+        cfg = {"judgments": {"pii_handling": {"severity": "off", "reason": "no PII"}}}
+        self.assertEqual(judgments.decide(cfg, "judgment.pii_handling"), ("off", "no PII"))
+
+    def test_error_severity_downgraded(self):
+        self.assertEqual(judgments.decide({"judgments": {"naming_consistency": "error"}},
+                                          "judgment.naming_consistency"), ("advisory", ""))
+
+    def test_short_id_without_prefix(self):
+        self.assertEqual(judgments.decide({"judgments": {"naming_consistency": "off"}},
+                                          "naming_consistency")[0], "off")
+
+    def test_path_override(self):
+        cfg = {"judgments": {"naming_consistency": "advisory"},
+               "judgment_overrides": [{"paths": ["legacy/**"], "judgments": {"naming_consistency": "off"}}]}
+        self.assertEqual(judgments.decide(cfg, "judgment.naming_consistency", path="legacy/x.py")[0], "off")
+        self.assertEqual(judgments.decide(cfg, "judgment.naming_consistency", path="src/x.py")[0], "advisory")
+
+    def test_path_override_malformed_entries(self):
+        cfg = {"judgments": {}, "judgment_overrides": ["bad", {"paths": ["x/**"]},
+                                                        {"judgments": {"a": "off"}}]}
+        self.assertEqual(judgments.decide(cfg, "judgment.naming_consistency", path="x/y")[0], "advisory")
+
+
+class TestAgentJudgments(unittest.TestCase):
+    def test_advisory_judgment_is_unknown_nongating(self):
+        root, results, _ = _evaluate({"README.md": "# x"})
+        self.addCleanup(rmtree, root)
+        by = {r.id: r for r in results}
+        self.assertEqual(by["judgment.naming_consistency"].status, Status.UNKNOWN)
+        self.assertFalse(by["judgment.naming_consistency"].gating)
+
+    def test_off_judgment_is_waived_with_reason(self):
+        cfg = {"judgments": {"naming_consistency": {"severity": "off", "reason": "n/a"}}}
+        root, results, _ = _evaluate({"README.md": "# x"}, options={"readiness_config": cfg})
+        self.addCleanup(rmtree, root)
+        by = {r.id: r for r in results}
+        self.assertEqual(by["judgment.naming_consistency"].status, Status.WAIVED)
+        self.assertIn("ignored by judgments config", by["judgment.naming_consistency"].rationale)
+        self.assertIn("n/a", by["judgment.naming_consistency"].rationale)
+        self.assertEqual(by["judgment.code_modularization"].status, Status.UNKNOWN)
+
+    def test_off_judgment_without_reason(self):
+        cfg = {"judgments": {"naming_consistency": "off"}}
+        root, results, _ = _evaluate({"README.md": "# x"}, options={"readiness_config": cfg})
+        self.addCleanup(rmtree, root)
+        by = {r.id: r for r in results}
+        self.assertEqual(by["judgment.naming_consistency"].rationale, "ignored by judgments config")
+
+    def test_agent_row_never_gates_even_if_flagged(self):
+        b = score._base({"id": "judgment.x", "title": "X", "pillar": "P", "level": 2,
+                         "decide": "agent", "gating": True})
+        self.assertFalse(b["gating"])
+        b2 = score._base({"id": "docs.readme", "title": "R", "pillar": "D", "level": 1,
+                          "decide": "deterministic", "gating": True})
+        self.assertTrue(b2["gating"])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,53 @@
+{
+  "name": "monorepo-mixed-app-lib",
+  "description": "npm-workspaces monorepo mixing a deployable Express service (packages/api, with a Dockerfile) and a pure utility library (packages/utils). Exercises app/library discrimination and app-scoped N/M aggregation without inflating the library into a deployable app.",
+  "detect": {
+    "project_type": "monorepo-root"
+  },
+  "files": {
+    "package.json": "{ \"name\": \"platform\", \"workspaces\": [\"packages/*\"] }\n",
+    "package-lock.json": "{ \"lockfileVersion\": 3 }\n",
+    "README.md": "# Platform monorepo\n\n## Overview\n\nA deployable Express API (packages/api) plus a pure utility library (packages/utils). Detailed maintainer documentation about layout and workflow. Detailed maintainer documentation about layout and workflow. Detailed maintainer documentation about layout and workflow. Detailed maintainer documentation about layout and workflow. Detailed maintainer documentation about layout and workflow.\n\n## Development\n\n```bash\nnpm install\n```\n",
+    ".gitignore": "node_modules/\n.env\ndist/\n",
+    "packages/api/package.json": "{ \"name\": \"api\", \"dependencies\": { \"express\": \"^4\" } }\n",
+    "packages/api/Dockerfile": "FROM node:20\n",
+    "packages/api/src/server.test.js": "test();\n",
+    "packages/utils/package.json": "{ \"name\": \"utils\", \"main\": \"index.js\" }\n",
+    "packages/utils/index.js": "module.exports = {};\n"
+  },
+  "expected": {
+    "build.ci_present": "fail",
+    "build.ci_runs_tests": "skipped",
+    "build.deps_pinned": "pass",
+    "build.release_automation": "fail",
+    "build.vcs_cli": "fail",
+    "devenv.devcontainer": "fail",
+    "devenv.env_template": "fail",
+    "docs.agents_md": "fail",
+    "docs.agents_md_validation": "skipped",
+    "docs.api_schema_docs": "fail",
+    "docs.doc_freshness": "unknown",
+    "docs.readme": "pass",
+    "docs.skills": "fail",
+    "security.automated_security_review": "fail",
+    "security.branch_protection": "skipped",
+    "security.codeowners": "fail",
+    "security.dependency_update_automation": "fail",
+    "security.gitignore_comprehensive": "pass",
+    "security.secret_scanning": "skipped",
+    "security.security_md": "fail",
+    "style.formatter": "fail",
+    "style.linter_config": "fail",
+    "style.precommit_hooks": "fail",
+    "style.strict_typing": "fail",
+    "style.type_check": "fail",
+    "taskdisc.backlog_health": "skipped",
+    "taskdisc.issue_labeling": "skipped",
+    "taskdisc.issue_templates": "fail",
+    "taskdisc.pr_templates": "fail",
+    "testing.integration_tests_exist": "fail",
+    "testing.test_naming": "pass",
+    "testing.unit_tests_exist": "pass"
+  },
+  "expected_level": 1
+}

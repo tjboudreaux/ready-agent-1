@@ -26,7 +26,7 @@ import tempfile
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
-if str(_REPO / "engine") not in sys.path:
+if str(_REPO / "engine") not in sys.path:  # pragma: no cover - engine already importable under tests
     sys.path.insert(0, str(_REPO / "engine"))
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -81,13 +81,60 @@ def compare(expected, actual):
     return out
 
 
+def build_fixture(name, files, *, expected=None, detect=None, expected_level=None,
+                  git_init=False, github=None):
+    """Construct an in-memory fixture manifest (same shape a loaded ``*.json`` fixture has).
+
+    This is the per-criterion pass/fail-shape helper: callers pass only the files and
+    expectations that matter, without repeating the manifest boilerplate.
+    """
+    fx = {"name": name, "files": dict(files)}
+    if expected is not None:
+        fx["expected"] = dict(expected)
+    if detect is not None:
+        fx["detect"] = dict(detect)
+    if expected_level is not None:
+        fx["expected_level"] = expected_level
+    if git_init:
+        fx["git_init"] = True
+    if github is not None:
+        fx["github"] = dict(github)
+    return fx
+
+
+def canned_github_runner(responses):
+    """Build a no-network ``gh`` runner from a map of canned responses.
+
+    Keys are the ``gh`` argument list (tuple/list) or the same args joined by spaces; values
+    are the canned stdout string (JSON-encoded where the collector parses JSON), or ``None``
+    to simulate a failed/absent call. Unknown calls return ``None``. This lets the fixture
+    corpus exercise T2 GitHub criteria deterministically in ``python3 -m evals.fixtures``.
+    """
+    table = {(k if isinstance(k, str) else " ".join(k)): v for k, v in responses.items()}
+
+    def run(args):
+        return table.get(" ".join(args))
+
+    return run
+
+
 def run_fixture(fixture):
-    """Materialize, run the deterministic engine (no GitHub), classify against expectations."""
+    """Materialize, run the deterministic engine, classify against expectations.
+
+    A fixture may carry a ``github`` map of canned ``gh`` responses; when present the engine
+    runs with that canned runner (no network) so T2 GitHub criteria can be exercised. Without
+    it GitHub is disabled and T2 criteria are skipped.
+    """
     from readiness.run import analyze
 
+    github = fixture.get("github")
+    if github is not None:
+        options = {"no_github": False, "github_runner": canned_github_runner(github)}
+    else:
+        options = {"no_github": True}
     with tempfile.TemporaryDirectory(prefix="ra1-eval-") as tmp:
         materialize(fixture, tmp)
-        report = analyze(tmp, {"no_github": True})
+        report = analyze(tmp, options)
     actual = {r.id: r.status.value for r in report.results}
     result = {
         "name": fixture["name"],

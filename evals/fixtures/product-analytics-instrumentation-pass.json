@@ -1,0 +1,14 @@
+{
+  "name": "product-analytics-instrumentation-pass",
+  "description": "product.analytics_instrumentation pass: two-part-evidence fixture proving no import-only/doc-only false positive.",
+  "detect": {
+    "project_type": "frontend"
+  },
+  "files": {
+    "package.json": "{\"name\":\"web\",\"dependencies\":{\"react\":\"^18\",\"react-dom\":\"^18\",\"@segment/analytics-node\":\"^1\"}}",
+    "src/track.js": "analytics.track('Signup Completed', {});\n"
+  },
+  "expected": {
+    "product.analytics_instrumentation": "pass"
+  }
+}

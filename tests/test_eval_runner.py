@@ -47,12 +47,20 @@ class TestParseJudge(unittest.TestCase):
 
     def test_invalid(self):
         self.assertIsNone(judge.parse_judge("not json"))
+        self.assertIsNone(judge.parse_judge("{not valid json}"))  # braces match but json.loads fails
         self.assertIsNone(judge.parse_judge('{"grounded": true}'))  # missing fabricated
 
     def test_verdict_ok(self):
         self.assertTrue(judge.verdict_ok({"grounded": True, "fabricated": False, "reason": ""}))
         self.assertFalse(judge.verdict_ok({"grounded": True, "fabricated": True, "reason": ""}))
         self.assertFalse(judge.verdict_ok(None))
+
+    def test_autonomy_overclaim_fails_verdict(self):
+        v = judge.parse_judge('{"grounded": true, "fabricated": false, "autonomy_overclaim": true}')
+        self.assertTrue(v["autonomy_overclaim"])
+        self.assertFalse(judge.verdict_ok(v))
+        ok = judge.parse_judge('{"grounded": true, "fabricated": false, "autonomy_overclaim": false}')
+        self.assertTrue(judge.verdict_ok(ok))
 
 
 class TestRunner(unittest.TestCase):

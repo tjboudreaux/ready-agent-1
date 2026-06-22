@@ -46,13 +46,14 @@ class TestMarkdown(unittest.TestCase):
                      registry_version="0.3.0", detector_version="0.3.0")
         rep.results = [
             CriterionResult(id="docs.readme", title="README", pillar="Documentation", level=1,
-                            scope="repository", gating=True, status=Status.FAIL, rationale="missing"),
+                            scope="repository", gating=True, status=Status.FAIL, rationale="missing",
+                            passed_apps=0, evaluated_apps=1),
             CriterionResult(id="loop.loop_runs_dir", title="Loop Run Log README", pillar="Documentation", level=2,
                             scope="repository", gating=False, status=Status.FAIL, rationale="missing loop log",
-                            fix_kind="scaffold"),
+                            fix_kind="scaffold", passed_apps=0, evaluated_apps=1),
         ]
         md = report_mod.render_markdown(rep)
-        self.assertIn("**Loop Run Log README** (**advisory**, L2): missing loop log", md)
+        self.assertIn("**Loop Run Log README** (**advisory**, L2, 0/1): missing loop log", md)
         self.assertIn("## Advisory Improvements", md)
         self.assertIn("- Loop Run Log README (L2, Documentation) — missing loop log", md)
         action_section = md.split("## Advisory Improvements")[0].split("## Action Items", 1)[1]
@@ -131,6 +132,99 @@ class TestRenderDispatch(unittest.TestCase):
         json.loads(report_mod.render(rep, "totally-unknown-format"))  # falls back to JSON
 
 
+class TestRecommendationsAndDisplay(unittest.TestCase):
+    def test_json_has_recommendations_and_counts(self):
+        root, rep = _report(BARE)
+        self.addCleanup(rmtree, root)
+        d = rep.to_dict()
+        recs = d["score"]["recommendations"]
+        self.assertGreater(len(recs), 0)
+        self.assertLessEqual(len(recs), 3)
+        self.assertIn("id", recs[0])
+        self.assertIn("passed_apps", d["results"][0])
+        self.assertIn("evaluated_apps", d["results"][0])
+
+    def test_markdown_renders_nm_and_action_items(self):
+        root, rep = _report(BARE)
+        self.addCleanup(rmtree, root)
+        md = report_mod.render_markdown(rep)
+        self.assertIn("## Criteria Results", md)
+        self.assertIn("/1):", md)  # repository-scope criteria render N/1
+        self.assertIn("## Action Items", md)
+        self.assertIn("highest-impact", md)
+
+
+class TestRenderCoverage(unittest.TestCase):
+    def _rep(self, results, advisory=None, score=None):
+        rep = Report(project_path=".", schema_version="2", engine_version="0.3.0",
+                     registry_version="0.3.0", detector_version="0.3.0")
+        rep.results = results
+        if advisory:
+            rep.advisory = advisory
+        rep.score = score
+        return rep
+
+    def test_no_action_items_when_all_pass(self):
+        rep = self._rep([CriterionResult(id="docs.readme", title="README", pillar="Docs", level=1,
+                         scope="repository", gating=True, status=Status.PASS,
+                         passed_apps=1, evaluated_apps=1)])
+        self.assertNotIn("## Action Items", report_mod.render_markdown(rep))
+
+    def test_agent_advisory_rendered(self):
+        md = report_mod.render_markdown(self._rep([], advisory=["Consider tightening X."]))
+        self.assertIn("## Advisory (non-gating, agent-authored)", md)
+        self.assertIn("Consider tightening X.", md)
+
+    def test_github_annotation_with_source_skips_non_file_evidence(self):
+        r = CriterionResult(id="docs.api_schema_docs", title="API Schema", pillar="Docs", level=3,
+                            scope="repository", gating=True, status=Status.FAIL, rationale="missing",
+                            evidence=[Evidence(summary="api", source="repos/o/r"),
+                                      Evidence(summary="schema", source="src/openapi.yaml")])
+        gh = report_mod.render_github(self._rep([r]))
+        self.assertIn("file=src/openapi.yaml", gh)
+
+    def test_sarif_dedups_rule_for_repeated_id(self):
+        ev = [Evidence(summary="x", source="src/a.py")]
+        results = [
+            CriterionResult(id="x.y", title="X", pillar="P", level=2, scope="application",
+                            gating=True, status=Status.FAIL, rationale="r", evidence=ev, app_path="a"),
+            CriterionResult(id="x.y", title="X", pillar="P", level=2, scope="application",
+                            gating=True, status=Status.FAIL, rationale="r", evidence=ev, app_path="b"),
+        ]
+        doc = json.loads(report_mod.render_sarif(self._rep(results)))
+        rule_ids = [ru["id"] for ru in doc["runs"][0]["tool"]["driver"]["rules"]]
+        self.assertEqual(rule_ids.count("x.y"), 1)
+        self.assertEqual(len(doc["runs"][0]["results"]), 2)
+
+    def test_judgment_disclosure_both(self):
+        results = [
+            CriterionResult(id="judgment.naming_consistency", title="Naming Consistency", pillar="Style",
+                            level=2, scope="repository", gating=False, status=Status.UNKNOWN),
+            CriterionResult(id="judgment.pii_handling", title="PII Handling", pillar="Security",
+                            level=3, scope="repository", gating=False, status=Status.WAIVED,
+                            rationale="ignored by judgments config"),
+        ]
+        md = report_mod.render_markdown(self._rep(results))
+        self.assertIn("## Agent Judgments", md)
+        self.assertIn("To assess: Naming Consistency", md)
+        self.assertIn("Ignored judgments (1): PII Handling", md)
+
+    def test_judgment_disclosure_assess_only(self):
+        results = [CriterionResult(id="judgment.x", title="X", pillar="P", level=2,
+                                   scope="repository", gating=False, status=Status.UNKNOWN)]
+        md = report_mod.render_markdown(self._rep(results))
+        self.assertIn("To assess: X", md)
+        self.assertNotIn("Ignored judgments", md)
+
+    def test_judgment_disclosure_ignored_only(self):
+        results = [CriterionResult(id="judgment.x", title="X", pillar="P", level=2,
+                                   scope="repository", gating=False, status=Status.WAIVED,
+                                   rationale="ignored by judgments config")]
+        md = report_mod.render_markdown(self._rep(results))
+        self.assertIn("Ignored judgments (1): X", md)
+        self.assertNotIn("To assess", md)
+
+
 class TestCliFormats(unittest.TestCase):
     def _run(self, argv):
         buf = io.StringIO()
@@ -160,6 +254,44 @@ class TestCliFormats(unittest.TestCase):
         self.addCleanup(rmtree, root)
         code, _ = self._run(["report", "--project", str(root), "--no-github", "--min-level", "1"])
         self.assertEqual(code, 1)  # bare repo is level 0
+
+class TestLocationRedaction(unittest.TestCase):
+    """Phase 1 invariant: no serialized report or markdown carries the raw absolute path."""
+
+    def _rep(self, repository=None, project_path="."):
+        return Report(project_path=project_path, schema_version="2", engine_version="0.4.0",
+                      registry_version="0.4.0", detector_version="0.4.0", repository=repository)
+
+    def test_to_dict_omits_raw_project_path(self):
+        rep = self._rep(project_path="/abs/secret/path")
+        d = rep.to_dict()
+        self.assertNotIn("project_path", d)
+        self.assertNotIn("/abs/secret/path", json.dumps(d))
+
+    def test_location_origin_shows_owner_name(self):
+        rep = self._rep(repository={"identity_kind": "origin", "owner": "acme", "name": "widget"})
+        self.assertEqual(report_mod._location(rep), "acme/widget")
+
+    def test_location_origin_without_owner_falls_back_to_name(self):
+        rep = self._rep(repository={"identity_kind": "origin", "name": "widget"})
+        self.assertEqual(report_mod._location(rep), "widget")
+
+    def test_location_local_path_shows_name_only(self):
+        rep = self._rep(repository={"identity_kind": "local_path", "name": "widget",
+                                    "project_path_hash": "abc"}, project_path="/home/user/widget")
+        self.assertEqual(report_mod._location(rep), "widget")
+
+    def test_location_no_repository_uses_basename_not_abspath(self):
+        rep = self._rep(repository=None, project_path="/home/user/secret-proj")
+        self.assertEqual(report_mod._location(rep), "secret-proj")
+
+    def test_markdown_subtitle_redacts_abspath(self):
+        rep = self._rep(repository={"identity_kind": "local_path", "name": "proj",
+                                    "project_path_hash": "h"}, project_path="/home/user/proj")
+        md = report_mod.render_markdown(rep)
+        self.assertNotIn("/home/user", md)
+        self.assertIn("· proj", md)
+
 
 
 if __name__ == "__main__":

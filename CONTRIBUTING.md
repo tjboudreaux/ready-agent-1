@@ -17,11 +17,15 @@ There is no build step (pure stdlib). Run the test suite:
 python3 -m unittest discover -s tests -t .
 ```
 
-With coverage (the project gates on >90%):
+With coverage (the project gates on >90% total **and** 100% branch coverage for every file you
+change in a PR):
 
 ```bash
-python3 -m coverage run --branch --source=engine/readiness,evals -m unittest discover -s tests -t .
+python3 -m coverage run --branch --source=engine/readiness,evals,scripts -m unittest discover -s tests -t .
+python3 -m coverage json -o .coverage.json
 python3 -m coverage report -m
+# Enforce 100% branch coverage on the files you touched (CI runs this against the PR diff):
+python3 scripts/coverage_gate.py --coverage .coverage.json --changed-files <your changed .py files>
 ```
 
 ## After changing the engine

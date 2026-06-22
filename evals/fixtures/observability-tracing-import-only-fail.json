@@ -1,0 +1,14 @@
+{
+  "name": "observability-tracing-import-only-fail",
+  "description": "observability.tracing fail: two-part-evidence fixture proving no import-only/doc-only false negative.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\",\"opentelemetry-sdk\"]\n",
+    "app/t.py": "y = 2\n"
+  },
+  "expected": {
+    "observability.tracing": "fail"
+  }
+}

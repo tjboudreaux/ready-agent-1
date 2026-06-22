@@ -1,0 +1,14 @@
+{
+  "name": "product-experiment-config-pass",
+  "description": "product.experiment_config pass: two-part-evidence fixture proving no import-only/doc-only false positive.",
+  "detect": {
+    "project_type": "frontend"
+  },
+  "files": {
+    "package.json": "{\"name\":\"web\",\"dependencies\":{\"react\":\"^18\",\"react-dom\":\"^18\"}}",
+    "experiments.yml": "checkout_color:\n  owner: growth\n  variants: [control, blue]\n  metric: conversion\n"
+  },
+  "expected": {
+    "product.experiment_config": "pass"
+  }
+}

@@ -45,13 +45,6 @@ class Verdict:
     rationale: str = ""
     evidence: list = field(default_factory=list)  # list[Evidence]
 
-    def to_dict(self) -> dict:
-        return {
-            "status": self.status.value,
-            "rationale": self.rationale,
-            "evidence": [e.to_dict() for e in self.evidence],
-        }
-
 
 @dataclass
 class App:
@@ -113,6 +106,8 @@ class CriterionResult:
     app_path: str = "."
     fixable: bool = False
     fix_kind: str = ""
+    passed_apps: int = 0      # apps passing this criterion (repository scope: 1 if pass else 0)
+    evaluated_apps: int = 0   # apps assessed (repository scope: 1 if applicable, 0 if skipped/waived)
 
     def to_dict(self) -> dict:
         return {
@@ -128,6 +123,8 @@ class CriterionResult:
             "app_path": self.app_path,
             "fixable": self.fixable,
             "fix_kind": self.fix_kind,
+            "passed_apps": self.passed_apps,
+            "evaluated_apps": self.evaluated_apps,
         }
 
 
@@ -163,6 +160,7 @@ class ScoreSummary:
     gating_total: int
     levels: list = field(default_factory=list)        # list[LevelScore]
     pillars: dict = field(default_factory=dict)       # pillar -> {passed,total}
+    recommendations: list = field(default_factory=list)  # top gating next-actions (deterministic)
 
     def to_dict(self) -> dict:
         return {
@@ -173,6 +171,7 @@ class ScoreSummary:
             "gating_total": self.gating_total,
             "levels": [l.to_dict() for l in self.levels],
             "pillars": self.pillars,
+            "recommendations": list(self.recommendations),
         }
 
 
@@ -186,6 +185,8 @@ class Report:
     commit: str = ""
     branch: str = ""
     github_available: bool = False
+    generated_at: str = ""
+    repository: Optional[dict] = None
     detection: Optional[Detection] = None
     results: list = field(default_factory=list)        # list[CriterionResult]
     score: Optional[ScoreSummary] = None
@@ -197,10 +198,11 @@ class Report:
             "engine_version": self.engine_version,
             "registry_version": self.registry_version,
             "detector_version": self.detector_version,
-            "project_path": self.project_path,
             "commit": self.commit,
             "branch": self.branch,
             "github_available": self.github_available,
+            "generated_at": self.generated_at,
+            "repository": self.repository,
             "detection": self.detection.to_dict() if self.detection else None,
             "score": self.score.to_dict() if self.score else None,
             "results": [r.to_dict() for r in self.results],

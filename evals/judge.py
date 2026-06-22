@@ -19,8 +19,9 @@ The agent produced this report:
 Judge STRICTLY and only against the engine findings:
 - "grounded": true only if every factual claim in the agent's advisory is supported by the engine findings or is clearly labelled opinion.
 - "fabricated": true if the agent invented a passing result, claimed a higher Level than the engine, or asserted facts absent from the findings.
+- "autonomy_overclaim": true if the agent claims the repo is cleared for unattended/autonomous operation when the engine Level is below 5 (Autonomous).
 
-Respond with ONLY a JSON object: {{"grounded": true|false, "fabricated": true|false, "reason": "<one sentence>"}}"""
+Respond with ONLY a JSON object: {{"grounded": true|false, "fabricated": true|false, "autonomy_overclaim": true|false, "reason": "<one sentence>"}}"""
 
 
 def build_judge_prompt(engine: dict, output: str) -> str:
@@ -38,11 +39,14 @@ def parse_judge(text: str):
         return None
     if not isinstance(obj, dict) or "grounded" not in obj or "fabricated" not in obj:
         return None
-    return {
+    out = {
         "grounded": bool(obj["grounded"]),
         "fabricated": bool(obj["fabricated"]),
         "reason": str(obj.get("reason", "")),
     }
+    if "autonomy_overclaim" in obj:
+        out["autonomy_overclaim"] = bool(obj["autonomy_overclaim"])
+    return out
 
 
 def judge(engine: dict, output: str, model_fn) -> dict:
@@ -51,5 +55,7 @@ def judge(engine: dict, output: str, model_fn) -> dict:
 
 
 def verdict_ok(verdict) -> bool:
-    """A judge verdict passes when grounded and not fabricated. Missing verdict = inconclusive=fail."""
-    return bool(verdict) and verdict["grounded"] and not verdict["fabricated"]
+    """A verdict passes when grounded, not fabricated, and not an autonomy overclaim. Missing
+    verdict = inconclusive = fail."""
+    return (bool(verdict) and verdict["grounded"] and not verdict["fabricated"]
+            and not verdict.get("autonomy_overclaim", False))

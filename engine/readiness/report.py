@@ -8,6 +8,7 @@ import json
 from xml.etree import ElementTree as ET
 
 from .model import Status
+from .score import _recommendations
 
 _SYMBOL = {
     "pass": "✓", "fail": "✗", "skipped": "–",
@@ -33,6 +34,13 @@ def render(report, fmt: str) -> str:
         return render_sarif(report)
     return json.dumps(report.to_dict(), indent=2)
 
+def _location(d) -> str:
+    """Redacted scan location for the human subtitle — never the raw absolute path."""
+    repo = d.repository or {}
+    if repo.get("identity_kind") == "origin" and repo.get("owner"):
+        return f"{repo['owner']}/{repo.get('name', '')}"
+    return repo.get("name") or d.project_path.rsplit("/", 1)[-1]
+
 
 # ---------------------------------------------------------------------------- markdown
 def render_markdown(report) -> str:
@@ -44,12 +52,12 @@ def render_markdown(report) -> str:
         lines.append(f"**Level {score.level} — {score.level_name}**  ·  "
                      f"{score.gating_passed}/{score.gating_total} gating criteria  ·  {pct}%")
     lines.append("")
-    lines.append(f"_{d.engine_version} · {d.project_path}"
+    lines.append(f"_{d.engine_version} · {_location(d)}"
                  + (f" · commit {d.commit[:8]}" if d.commit else "") + "_")
     lines.append("")
 
     if d.detection:
-        lines.append("## Applications")
+        lines.append("## Applications Discovered")
         for i, app in enumerate(d.detection.apps, 1):
             langs = ", ".join(app.languages) or "n/a"
             lines.append(f"{i}. `{app.path}` — {app.deploy_surface}; languages: {langs}")
@@ -66,24 +74,25 @@ def render_markdown(report) -> str:
             lines.append(f"- **L{lv.level} {lv.name}**: {lv.passed}/{lv.total} ({round(lv.ratio*100)}%) — {mark}")
         lines.append("")
 
-    lines.append("## Criteria")
+    lines.append("## Criteria Results")
     for pillar in _pillars_in_order(d.results):
         lines.append("")
         lines.append(f"### {pillar}")
         for r in [x for x in d.results if x.pillar == pillar]:
             sym = _SYMBOL.get(r.status.value, "?")
             gate_label = "gating" if r.gating else "**advisory**"
-            lines.append(f"- {sym} **{r.title}** ({gate_label}, L{r.level}): {r.rationale}")
+            lines.append(f"- {sym} **{r.title}** ({gate_label}, L{r.level}, {_display_score(r)}): {r.rationale}")
 
-    actions = _action_items(d.results)
-    if actions:
+    recs = _recommendations(d.results, score.level if score else 0)
+    if recs:
         lines.append("")
         lines.append("## Action Items")
-        for group, items in actions:
-            lines.append("")
-            lines.append(f"**{group}**")
-            for r in items:
-                lines.append(f"- {r.title} (L{r.level}, {r.pillar}) — {r.rationale}")
+        lines.append("")
+        lines.append(f"_Top {len(recs)} highest-impact gating next steps (clear the next level first)._")
+        for rec in recs:
+            effort = _EFFORT.get(rec.get("fix_kind", ""), _EFFORT[""])
+            lines.append(f"- **{rec['title']}** ({rec['id']}, L{rec['level']}, {rec['pillar']}) "
+                         f"— {effort} — {rec['rationale']}")
 
     advisory_actions = _advisory_items(d.results)
     if advisory_actions:
@@ -94,6 +103,20 @@ def render_markdown(report) -> str:
             lines.append(f"**{group}**")
             for r in items:
                 lines.append(f"- {r.title} (L{r.level}, {r.pillar}) — {r.rationale}")
+
+    judgments = [r for r in d.results if r.id.startswith("judgment.")]
+    if judgments:
+        assess = [r for r in judgments if r.status == Status.UNKNOWN]
+        ignored = [r for r in judgments if r.status == Status.WAIVED]
+        lines.append("")
+        lines.append("## Agent Judgments (advisory, never scored)")
+        if assess:
+            lines.append("")
+            lines.append("To assess: " + ", ".join(r.title for r in assess) + ".")
+        if ignored:
+            lines.append("")
+            lines.append(f"Ignored judgments ({len(ignored)}): " + ", ".join(r.title for r in ignored)
+                         + " — silenced via .agents/readiness/config.json `judgments`.")
 
     if d.advisory:
         lines.append("")
@@ -116,6 +139,11 @@ def _pillars_in_order(results):
     return seen
 
 
+def _display_score(r):
+    """N/M shown next to each criterion: passed vs evaluated apps (repository scope is 1 unit)."""
+    return f"{r.passed_apps}/{r.evaluated_apps}"
+
+
 def _group_by_effort(items):
     groups = {}
     for r in items:
@@ -124,16 +152,6 @@ def _group_by_effort(items):
     for label in _EFFORT.values():
         if label in groups:
             ordered.append((label, sorted(groups[label], key=lambda r: r.level)))
-    return ordered
-
-
-def _action_items(results):
-    failing = [r for r in results if r.gating and r.status == Status.FAIL]
-    ordered = _group_by_effort(failing)
-    unknowns = [r for r in results if r.gating and r.status == Status.UNKNOWN]
-    if unknowns:
-        ordered.append(("Resolve unknowns (clarify project type / enable gh)",
-                        sorted(unknowns, key=lambda r: r.level)))
     return ordered
 
 
@@ -217,3 +235,36 @@ def render_sarif(report) -> str:
         }],
     }
     return json.dumps(doc, indent=2)
+
+
+# ---------------------------------------------------------------------------- history
+def render_history_list(payload) -> str:
+    repo = payload.get("repository") or {}
+    lines = ["# Readiness History", "",
+             f"_{repo.get('identity_kind', '?')}: {repo.get('name', '')}_", "",
+             "| id | timestamp | level | pass_rate | gating | registry |",
+             "|---|---|---|---|---|---|"]
+    for e in payload.get("entries", []):
+        lines.append(f"| {e.get('id', '')} | {e.get('timestamp', '')} | {e.get('level', '')} | "
+                     f"{e.get('pass_rate', '')} | {e.get('gating_passed', '')}/{e.get('gating_total', '')} | "
+                     f"{e.get('registry_version', '')} |")
+    if not payload.get("entries"):
+        lines.append("| _(none)_ | | | | | |")
+    return "\n".join(lines) + "\n"
+
+
+def render_history_diff(payload) -> str:
+    lines = ["# Readiness Delta", "", f"_{payload.get('from')} → {payload.get('to')}_", ""]
+    if not payload.get("comparable", False):
+        lines.append(f"Not comparable: {payload.get('reason', '')}")
+        return "\n".join(lines) + "\n"
+    lvl = (payload.get("score_delta") or {}).get("level", {})
+    lines.append(f"- Level: {lvl.get('from')} → {lvl.get('to')}")
+    if payload.get("detector_changed"):
+        lines.append("- ⚠️ detector version changed: application N/M deltas are suppressed.")
+    for label, key in (("Newly passing", "newly_passing"), ("Newly failing", "newly_failing"),
+                       ("Newly unknown", "newly_unknown")):
+        items = payload.get(key) or []
+        if items:
+            lines.append(f"- {label}: {', '.join(items)}")
+    return "\n".join(lines) + "\n"

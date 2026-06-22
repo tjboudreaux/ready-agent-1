@@ -1,7 +1,9 @@
 """Security & Governance checks."""
 from __future__ import annotations
 
-from ._helpers import adep, atool, ev, failed, passed, skipped
+import json
+
+from ._helpers import adep, agrep, atool, ev, failed, passed, skipped
 
 
 def branch_protection(ctx):
@@ -71,3 +73,63 @@ def security_md(ctx):
     if files:
         return passed(f"SECURITY.md present: {files[0]}", [ev("SECURITY.md", source=files[0])])
     return failed("Missing SECURITY.md.")
+
+
+# --- Factory-parity security depth (advisory; T0) ------------------------------------
+
+_RENOVATE_FILES = ["renovate.json", "renovate.json5", ".renovaterc", ".renovaterc.json",
+                   ".github/renovate.json", ".gitlab/renovate.json"]
+
+
+def dependency_min_age(ctx):
+    for f in ctx.static.glob(_RENOVATE_FILES):
+        low = (ctx.static.read(f) or "").lower()
+        if "minimumreleaseage" in low or "stabilitydays" in low:
+            return passed("Dependency minimum release age configured (Renovate).",
+                          [ev("minimumReleaseAge", source=f)])
+    pkg = ctx.static.manifests().get("package.json", (None, None))[1]
+    if isinstance(pkg, dict):
+        blob = json.dumps(pkg.get("renovate") or {}).lower()
+        if "minimumreleaseage" in blob or "stabilitydays" in blob:
+            return passed("Dependency minimum release age configured (package.json renovate).",
+                          [ev("minimumReleaseAge", source="package.json")])
+    return failed("No dependency minimum-release-age policy (Renovate minimumReleaseAge/stabilityDays).")
+
+
+_SCRUB_WIRING = [r"redact\s*[:(]|redaction|sanitize_?(log|message|event|data)|maskFields|"
+                 r"mask_fields|before_?[Ss]end|filter_sensitive|scrub_?(log|data|event)"]
+
+
+def log_scrubbing(ctx):
+    wiring = agrep(ctx, _SCRUB_WIRING)
+    if wiring:
+        return passed("Sensitive-data log scrubbing wired.", [ev("log scrubbing", source=str(wiring))])
+    return failed("No sensitive-data log scrubbing (redaction/sanitizer wired into logging).")
+
+
+_SECRET_MGR_DEPS = ["@aws-sdk/client-secrets-manager", "hvac", "doppler-sdk",
+                    "@azure/keyvault-secrets", "@google-cloud/secret-manager"]
+
+
+def secrets_management(ctx):
+    for f in ctx.static.glob([".github/workflows/*.yml", ".github/workflows/*.yaml"]):
+        low = (ctx.static.read(f) or "").lower()
+        if "${{ secrets." in low or "vault" in low or "doppler" in low \
+                or "secretsmanager" in low or "secret-manager" in low or "keyvault" in low:
+            return passed(f"Managed secrets referenced in CI: {f}", [ev("CI secrets / manager", source=f)])
+    dep = adep(ctx, _SECRET_MGR_DEPS)
+    if dep:
+        return passed(f"Secrets-manager SDK configured: {dep}", [ev("secrets-manager SDK")])
+    return failed("No managed-secrets usage (vault/doppler/cloud secret manager / CI secrets).")
+
+
+_DAST_TOKENS = ("zaproxy", "owasp/zap", "zap-baseline", "zap-full-scan",
+                "stackhawk", "nuclei", "dastardly")
+
+
+def dast(ctx):
+    for f in ctx.static.glob([".github/workflows/*.yml", ".github/workflows/*.yaml"]):
+        low = (ctx.static.read(f) or "").lower()
+        if any(t in low for t in _DAST_TOKENS):
+            return passed(f"DAST scanning workflow: {f}", [ev("DAST workflow", source=f)])
+    return failed("No DAST scanning workflow (OWASP ZAP/StackHawk/Nuclei).")

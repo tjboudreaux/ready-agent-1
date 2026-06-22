@@ -48,3 +48,21 @@ def backlog_health(ctx):
     if ratio >= 0.7:
         return passed(f"{int(ratio * 100)}% of open issues are labeled.", [ev("backlog hygiene", tier="T2")])
     return failed(f"Only {int(ratio * 100)}% of open issues are labeled (<70%).")
+
+
+def actionable_backlog_items(ctx):
+    """Pass when most open issues are actionable: labeled or milestoned AND carrying a body.
+
+    Stricter than backlog_health (labels only): an actionable item also needs context to work on."""
+    if not ctx.github.available:
+        return skipped("No GitHub API; cannot read backlog items.")
+    issues = ctx.github.open_issues()
+    if not issues:
+        return passed("No open issues to assess.")
+    actionable = [i for i in issues
+                  if (i.get("labels") or i.get("milestone")) and (i.get("body") or "").strip()]
+    ratio = len(actionable) / len(issues)
+    if ratio >= 0.6:
+        return passed(f"{int(ratio * 100)}% of open issues are actionable (labeled/milestoned + body).",
+                      [ev("actionable backlog", tier="T2")])
+    return failed(f"Only {int(ratio * 100)}% of open issues are actionable (<60%).")

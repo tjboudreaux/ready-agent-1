@@ -54,9 +54,10 @@ No runtime dependencies — **Python 3.11+** (an authenticated `gh` unlocks the 
 
 ```bash
 ra1 report --project .                    # readiness scan (Level + cited checks)
-ra1 report --project . --format markdown,json --out .agents/readiness
-ra1 fix --project .                       # dry-run: what the loadout would change
-ra1 fix --project . --apply               # write safe scaffolds to a local branch
+ra1 report --project . --format markdown,json --out .agents/readiness --store-history
+ra1 history list --project .              # local progression over past runs
+ra1 fix --project . --latest              # dry-run: what the loadout would change
+ra1 fix --project . --latest --apply      # write safe scaffolds to a local branch
 ```
 
 (Or, through an agent: *"run a readiness report on this repo."*)
@@ -66,7 +67,7 @@ ra1 fix --project . --apply               # write safe scaffolds to a local bran
 Levels **1 Functional → 2 Documented → 3 Standardized → 4 Optimized → 5 Autonomous**. A gate clears when
 ≥80% of its checks pass *and* every gate below it is cleared. Checks that don't apply to your project are
 `skipped` (visibly, with a reason); when the project type can't be determined they're `unknown` rather than
-waved through. *(Ready Agent 1 clears Gate 3 on its own repo. Working on Gate 4.)*
+waved through. *(Ready Agent 1 clears Gate 4 — Optimized — on its own repo.)*
 
 ## Clear-to-merge (CI)
 

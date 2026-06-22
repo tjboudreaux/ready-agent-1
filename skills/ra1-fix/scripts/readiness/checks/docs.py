@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ._helpers import adep, aglob, ev, failed, passed, skipped, unknown
+from ._helpers import adep, aglob, ev, failed, passed, skipped, tool_invoked, unknown
 
 
 def readme(ctx):
@@ -82,3 +82,45 @@ def api_schema_docs(ctx):
     if dep:
         return passed(f"API framework with schema generation: {dep}")
     return failed("No API schema docs (OpenAPI/Swagger/GraphQL).")
+
+
+# --- Factory-parity documentation depth (advisory; T0) ------------------------------
+
+_DOCGEN_DEPS = ["typedoc", "sphinx", "mkdocs", "mkdocs-material", "docusaurus",
+                "@docusaurus/core", "redoc-cli", "@redocly/cli", "pdoc", "jsdoc", "compodoc"]
+_DOCGEN_CFG = ["mkdocs.yml", "mkdocs.yaml", "docusaurus.config.*", "typedoc.json",
+               "docs/conf.py", "**/conf.py", ".redocly.yaml", "redocly.yaml"]
+
+
+def auto_generation(ctx):
+    cfg = ctx.static.glob(_DOCGEN_CFG)
+    tool = adep(ctx, _DOCGEN_DEPS) or (cfg[0] if cfg else None)
+    if not tool:
+        return failed("No documentation generator (typedoc/sphinx/mkdocs/docusaurus).")
+    wiring = tool_invoked(ctx, _DOCGEN_DEPS)
+    if wiring:
+        return passed(f"Documentation generation wired: {tool}.",
+                      [ev("doc generator", source=str(tool)), ev("invocation", source=wiring)])
+    return failed(f"Doc generator present ({tool}) but not wired into CI/build.")
+
+
+def agents_md_ci_validation(ctx):
+    if not ctx.static.glob(["AGENTS.md"]):
+        return failed("No AGENTS.md to validate.")
+    for f in ctx.static.glob([".github/workflows/*.yml", ".github/workflows/*.yaml",
+                              ".pre-commit-config.yaml", ".pre-commit-config.yml"]):
+        if "agents.md" in (ctx.static.read(f) or "").lower():
+            return passed(f"AGENTS.md validated in CI: {f}", [ev("AGENTS.md CI check", source=f)])
+    return failed("AGENTS.md present but no CI job validates its commands.")
+
+
+_ARCH_FILES = ["docs/architecture*.md", "ARCHITECTURE.md", "docs/adr/**", "docs/decisions/**",
+               "doc/architecture*.md", "CONTEXT.md", "docs/design*.md"]
+
+
+def architecture_doc(ctx):
+    """Architecture documentation must be substantive (>=200 chars), not an empty stub."""
+    for f in ctx.static.glob(_ARCH_FILES):
+        if len(ctx.static.read(f) or "") >= 200:
+            return passed(f"Architecture documentation present: {f}", [ev("architecture doc", source=f)])
+    return failed("No architecture documentation (ARCHITECTURE.md / docs/architecture / ADRs).")

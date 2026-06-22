@@ -1,0 +1,14 @@
+{
+  "name": "product-experiment-events-only-fail",
+  "description": "product.experiment_config fail: two-part-evidence fixture proving no import-only/doc-only false negative.",
+  "detect": {
+    "project_type": "frontend"
+  },
+  "files": {
+    "package.json": "{\"name\":\"web\",\"dependencies\":{\"react\":\"^18\",\"react-dom\":\"^18\"}}",
+    "experiments.yml": "checkout_color:\n  variants: [control, blue]\n"
+  },
+  "expected": {
+    "product.experiment_config": "fail"
+  }
+}

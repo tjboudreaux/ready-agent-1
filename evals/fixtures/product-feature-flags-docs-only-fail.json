@@ -1,0 +1,14 @@
+{
+  "name": "product-feature-flags-docs-only-fail",
+  "description": "product.feature_flags fail: two-part-evidence fixture proving no import-only/doc-only false negative.",
+  "detect": {
+    "project_type": "frontend"
+  },
+  "files": {
+    "package.json": "{\"name\":\"web\",\"dependencies\":{\"react\":\"^18\",\"react-dom\":\"^18\",\"launchdarkly-node-server-sdk\":\"^7\"}}",
+    "src/x.js": "const a = 1;\n"
+  },
+  "expected": {
+    "product.feature_flags": "fail"
+  }
+}

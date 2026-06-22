@@ -1,0 +1,14 @@
+{
+  "name": "observability-health-docs-only-fail",
+  "description": "observability.health_endpoints fail: two-part-evidence fixture proving no import-only/doc-only false negative.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "README.md": "# svc\n\nWe run health checks in prod.\n"
+  },
+  "expected": {
+    "observability.health_endpoints": "fail"
+  }
+}

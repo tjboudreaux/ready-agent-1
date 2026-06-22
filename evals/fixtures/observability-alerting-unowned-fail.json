@@ -1,0 +1,14 @@
+{
+  "name": "observability-alerting-unowned-fail",
+  "description": "observability.alerting_rules fail: two-part-evidence fixture proving no import-only/doc-only false negative.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "alerts.yml": "groups:\n- name: a\n  rules:\n  - alert: HighErrorRate\n"
+  },
+  "expected": {
+    "observability.alerting_rules": "fail"
+  }
+}

@@ -79,7 +79,8 @@ def _ctx(root, detection, static, git, github, app, options):
 def _base(crit):
     return dict(
         id=crit["id"], title=crit["title"], pillar=crit["pillar"], level=crit["level"],
-        scope=crit.get("scope", "repository"), gating=crit.get("gating", True),
+        scope=crit.get("scope", "repository"),
+        gating=crit.get("gating", True) and crit.get("decide") != "agent",
         fixable=bool((crit.get("fix") or {}).get("autofixable")),
         fix_kind=(crit.get("fix") or {}).get("kind", ""),
     )
@@ -102,6 +103,14 @@ def _eval_criterion(crit, root, detection, static, git, github, waivers, options
     if cid in waivers:
         reason = waivers[cid].get("reason", "")
         return CriterionResult(status=Status.WAIVED, rationale=f"Waived: {reason}".strip(), app_path=".", **base)
+
+    if crit.get("decide") == "agent":
+        from .detect import load_readiness_config
+        from .judgments import decide as _judgment_decide
+        sev, reason = _judgment_decide(load_readiness_config(root, options), cid)
+        if sev == "off":
+            msg = "ignored by judgments config" + (f": {reason}" if reason else "")
+            return CriterionResult(status=Status.WAIVED, rationale=msg, app_path=".", **base)
 
     for req in requires:
         if done.get(req) != Status.PASS:
@@ -137,9 +146,19 @@ def _eval_criterion(crit, root, detection, static, git, github, waivers, options
     return CriterionResult(status=v.status, rationale=v.rationale, evidence=list(v.evidence), app_path=".", **base)
 
 
+def _status_counts(status):
+    """Repository-scope N/M: one assessable unit, counted only when applicable."""
+    if status == Status.PASS:
+        return 1, 1
+    if status in (Status.FAIL, Status.UNKNOWN):
+        return 0, 1
+    return 0, 0  # skipped / waived -> not applicable
+
+
 def _aggregate(base, per):
     if not per:
-        return CriterionResult(status=Status.SKIPPED, rationale="Not applicable to any application.", app_path=".", **base)
+        return CriterionResult(status=Status.SKIPPED, rationale="Not applicable to any application.",
+                               app_path=".", passed_apps=0, evaluated_apps=0, **base)
     evidence, fails, unknown_apps = [], [], []
     passes = skips = 0
     multi = len(per) > 1
@@ -160,18 +179,42 @@ def _aggregate(base, per):
             evidence.append(Evidence(summary=label, tier=e.tier, source=e.source, detail=e.detail))
     total = len(per)
     app_path = per[0][0].path if total == 1 else "*"
+    counts = {"passed_apps": passes, "evaluated_apps": total}
 
     if fails:
         crit = [a.path for a in fails if a.prod_facing is True]
         note = f"{passes}/{total} application(s) pass."
         note += (" Production-facing failing: " + ", ".join(crit) + ".") if crit else \
                 (" Failing: " + ", ".join(a.path for a in fails) + ".")
-        return CriterionResult(status=Status.FAIL, rationale=note, evidence=evidence, app_path=app_path, **base)
+        return CriterionResult(status=Status.FAIL, rationale=note, evidence=evidence,
+                               app_path=app_path, **counts, **base)
     if unknown_apps and passes == 0:
-        return CriterionResult(status=Status.UNKNOWN, rationale=f"Undetermined for {', '.join(unknown_apps)}.", evidence=evidence, app_path=app_path, **base)
+        return CriterionResult(status=Status.UNKNOWN, rationale=f"Undetermined for {', '.join(unknown_apps)}.",
+                               evidence=evidence, app_path=app_path, **counts, **base)
     if passes > 0:
-        return CriterionResult(status=Status.PASS, rationale=f"{passes}/{total} application(s) pass.", evidence=evidence, app_path=app_path, **base)
-    return CriterionResult(status=Status.SKIPPED, rationale="Skipped for all applications.", evidence=evidence, app_path=app_path, **base)
+        return CriterionResult(status=Status.PASS, rationale=f"{passes}/{total} application(s) pass.",
+                               evidence=evidence, app_path=app_path, **counts, **base)
+    return CriterionResult(status=Status.SKIPPED, rationale="Skipped for all applications.",
+                           evidence=evidence, app_path=app_path, **counts, **base)
+
+
+_EFFORT_RANK = {"scaffold": 0, "github_setting": 1, "propose": 2, "": 3}
+
+
+def _recommendations(results, level, limit=3):
+    """Deterministic top next-actions: gating failures/unknowns, the next locked level first,
+    then ascending level and lowest effort. Capped at ``limit``.
+    """
+    candidates = [r for r in results if r.gating and r.status in (Status.FAIL, Status.UNKNOWN)]
+    next_level = (level or 0) + 1
+
+    def key(r):
+        at_next = 0 if r.level == next_level else 1
+        return (at_next, r.level, _EFFORT_RANK.get(r.fix_kind, 9), r.id)
+
+    return [{"id": r.id, "title": r.title, "pillar": r.pillar, "level": r.level,
+             "status": r.status.value, "fix_kind": r.fix_kind, "rationale": r.rationale}
+            for r in sorted(candidates, key=key)[:limit]]
 
 
 def summarize(results, registry=None):
@@ -211,6 +254,7 @@ def summarize(results, registry=None):
         gating_total=len(applicable_all),
         levels=levels,
         pillars=pillars,
+        recommendations=_recommendations(results, overall),
     )
 
 
@@ -221,6 +265,8 @@ def evaluate(root, detection, static, git, github, options=None):
     results, done = [], {}
     for crit in registry:
         result = _eval_criterion(crit, root, detection, static, git, github, waivers, options, done)
+        if result.scope != "application":
+            result.passed_apps, result.evaluated_apps = _status_counts(result.status)
         done[result.id] = result.status
         results.append(result)
     return results, summarize(results, registry)

@@ -48,8 +48,14 @@ def _render(report, fmt: str) -> str:
 
 
 def cmd_report(args) -> int:
+    from readiness import history
+    identity = history.repo_identity(args.project, require_origin=args.require_origin)
+    if args.require_origin and identity is None:
+        sys.stderr.write("ra1 report: no 'origin' remote found; --require-origin needs one.\n")
+        return 1
     report = analyze(args.project, {"no_github": args.no_github,
-                                    "exec": args.exec_t3, "exec_timeout": args.exec_timeout})
+                                    "exec": args.exec_t3, "exec_timeout": args.exec_timeout,
+                                    "repository": identity})
     formats = [f.strip() for f in args.format.split(",") if f.strip()] or ["json"]
     out_dir = Path(args.out) if args.out else None
     if out_dir:
@@ -63,9 +69,11 @@ def cmd_report(args) -> int:
         if primary is None:
             primary = text
         if out_dir:
-            name = "report." + _ext.get(fmt, fmt)
-            (out_dir / name).write_text(text, encoding="utf-8")
-    if out_dir:
+            (out_dir / ("report." + _ext.get(fmt, fmt))).write_text(text, encoding="utf-8")
+    if args.store_history:
+        history.store_history(report.to_dict(), args.project,
+                              out=args.out, history_dir=args.history_dir)
+    elif out_dir:
         (out_dir / "latest.json").write_text(_render(report, "json"), encoding="utf-8")
     print(primary if primary is not None else "")
 
@@ -104,6 +112,34 @@ def cmd_formats(args) -> int:
     return 0
 
 
+def cmd_history_list(args) -> int:
+    from readiness import history, report as report_mod
+    payload, reason = history.list_history(args.project, history_dir=args.history_dir)
+    if payload is None:  # pragma: no cover - unreachable: list has no --require-origin, local id always resolves
+        sys.stderr.write(f"ra1 history: {reason}\n")
+        return 1
+    if args.format == "markdown":
+        print(report_mod.render_history_list(payload))
+    else:
+        print(json.dumps(payload, indent=2))
+    return 0
+
+
+def cmd_history_diff(args) -> int:
+    from readiness import history, report as report_mod
+    old = history.load_snapshot(args.project, args.from_id, history_dir=args.history_dir)
+    new = history.load_snapshot(args.project, args.to_id, history_dir=args.history_dir)
+    if old is None or new is None:
+        sys.stderr.write("ra1 history: could not resolve --from/--to snapshots.\n")
+        return 1
+    payload = {"from": args.from_id, "to": args.to_id, **history.delta(old, new)}
+    if args.format == "markdown":
+        print(report_mod.render_history_diff(payload))
+    else:
+        print(json.dumps(payload, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ra1",
@@ -124,6 +160,12 @@ def build_parser() -> argparse.ArgumentParser:
                           help="T3 execution timeout in seconds (default 120)")
     p_report.add_argument("--min-level", type=int, default=None, help="Exit non-zero if below this level")
     p_report.add_argument("--fail-on", nargs="*", default=None, help="Exit non-zero if these criterion ids fail")
+    p_report.add_argument("--require-origin", action="store_true",
+                          help="Fail if the repo has no 'origin' remote (Droid prerequisite)")
+    p_report.add_argument("--store-history", action="store_true",
+                          help="Write timestamped local history keyed by repository identity")
+    p_report.add_argument("--history-dir", default=None,
+                          help="History root (default <out>/history, else <project>/.agents/readiness/history)")
     p_report.set_defaults(func=cmd_report)
 
     p_detect = sub.add_parser("detect", help="Print project-type detection")
@@ -135,7 +177,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_fix.add_argument("--apply", action="store_true", help="Write changes (default is dry-run)")
     p_fix.add_argument("--force", action="store_true", help="Apply even if the worktree is dirty")
     p_fix.add_argument("--report", default=None, help="Path to a latest.json report")
+    p_fix.add_argument("--latest", action="store_true",
+                       help="Resolve the latest stored report by repository identity")
+    p_fix.add_argument("--history-dir", default=None,
+                       help="History root for --latest (default <project>/.agents/readiness/history)")
+    p_fix.add_argument("--include", nargs="*", default=None,
+                       help="Only remediate these criterion ids (authoritative filter)")
+    p_fix.add_argument("--exclude", nargs="*", default=None,
+                       help="Never remediate these criterion ids (authoritative filter)")
+    p_fix.add_argument("--instructions", default=None,
+                       help="Focus grammar, e.g. 'prioritize security' or 'do not touch CI'")
     p_fix.set_defaults(func=_cmd_fix)
+
+    p_hist = sub.add_parser("history", help="Local readiness history (list/diff)")
+    hsub = p_hist.add_subparsers(dest="history_op")
+    h_list = hsub.add_parser("list", help="List stored reports for this repo")
+    h_list.add_argument("--project", default=".")
+    h_list.add_argument("--history-dir", default=None)
+    h_list.add_argument("--format", default="json", help="json or markdown")
+    h_list.set_defaults(func=cmd_history_list)
+    h_diff = hsub.add_parser("diff", help="Diff two stored reports")
+    h_diff.add_argument("--project", default=".")
+    h_diff.add_argument("--from", dest="from_id", required=True, help="history id or 'latest'")
+    h_diff.add_argument("--to", dest="to_id", default="latest", help="history id or 'latest'")
+    h_diff.add_argument("--history-dir", default=None)
+    h_diff.add_argument("--format", default="json", help="json or markdown")
+    h_diff.set_defaults(func=cmd_history_diff)
 
     sub.add_parser("version", help="Print version stamps").set_defaults(func=cmd_version)
     sub.add_parser("formats", help="List supported report formats").set_defaults(func=cmd_formats)
@@ -157,5 +224,5 @@ def main(argv=None) -> int:
     return args.func(args)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - module entrypoint
     raise SystemExit(main())

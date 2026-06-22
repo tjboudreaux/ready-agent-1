@@ -13,15 +13,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Install dev tools (coverage is dev-only; runtime is pure stdlib)
         run: python3 -m pip install coverage
-      - name: Tests with coverage (gate >90%)
+      - name: Tests with coverage (gate >90% total + 100% on touched files)
         run: |
-          python3 -m coverage run --branch --source=engine/readiness,evals -m unittest discover -s tests -t .
+          python3 -m coverage run --branch --source=engine/readiness,evals,scripts -m unittest discover -s tests -t .
+          python3 -m coverage json -o .coverage.json
           python3 -m coverage report --fail-under=90
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -n "$base" ]; then
+            changed=$(git diff --name-only "$base" HEAD -- '*.py' ':!tests/**' ':!skills/**' | tr '\n' ' ')
+          else
+            changed=$(git diff --name-only HEAD~1 HEAD -- '*.py' ':!tests/**' ':!skills/**' 2>/dev/null | tr '\n' ' ')
+          fi
+          echo "Changed Python files (excluding tests + vendored skills): $changed"
+          python3 scripts/coverage_gate.py --coverage .coverage.json --changed-files $changed --thin-wrapper scripts/coverage_gate.py
       - name: Vendored skills byte-parity
         run: python3 scripts/vendor.py --check
       - name: Labeled-fixture evals (per-criterion FP/FN gate)

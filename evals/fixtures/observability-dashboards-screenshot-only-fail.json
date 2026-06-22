@@ -1,0 +1,14 @@
+{
+  "name": "observability-dashboards-screenshot-only-fail",
+  "description": "observability.dashboards_as_code fail: two-part-evidence fixture proving no import-only/doc-only false negative.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "README.md": "# svc\n\nSee dashboards screenshot in docs/dash.png.\n"
+  },
+  "expected": {
+    "observability.dashboards_as_code": "fail"
+  }
+}

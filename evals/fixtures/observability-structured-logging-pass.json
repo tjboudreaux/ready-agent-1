@@ -1,0 +1,14 @@
+{
+  "name": "observability-structured-logging-pass",
+  "description": "observability.structured_logging pass: two-part-evidence fixture proving no import-only/doc-only false positive.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\",\"structlog\"]\n",
+    "app/main.py": "import structlog\nlog = structlog.get_logger()\nlog.info(\"up\")\n"
+  },
+  "expected": {
+    "observability.structured_logging": "pass"
+  }
+}

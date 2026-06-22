@@ -1,0 +1,14 @@
+{
+  "name": "observability-metrics-pass",
+  "description": "observability.metrics pass: two-part-evidence fixture proving no import-only/doc-only false positive.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\",\"prometheus-client\"]\n",
+    "app/m.py": "from prometheus_client import Counter\nc = Counter(\"x\",\"d\")\n"
+  },
+  "expected": {
+    "observability.metrics": "pass"
+  }
+}
