@@ -15,7 +15,7 @@ jobs:
   readiness:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # Dogfood the action from main; the user-facing template pins @v1.
       - uses: tjboudreaux/ready-agent-1/ci@main
         with:
