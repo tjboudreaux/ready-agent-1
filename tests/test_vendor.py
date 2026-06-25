@@ -1,4 +1,5 @@
 import json
+import runpy
 import shutil
 import sys
 import tempfile
@@ -62,6 +63,31 @@ class TestVendor(unittest.TestCase):
                                                                        encoding="utf-8")
         drift = vendor.vendor(tmp, write=False)
         self.assertIn("skills/ra1-report/manifest.json", drift)
+        (tmp / "skills" / "ra1-report" / "manifest.json").unlink()
+        drift = vendor.vendor(tmp, write=False)
+        self.assertIn("skills/ra1-report/manifest.json", drift)
+
+    def test_main_reports_drift_and_writes(self):
+        tmp = self._mk()
+        self.addCleanup(rmtree, tmp)
+        old_root = vendor.ROOT
+        try:
+            vendor.ROOT = tmp
+            self.assertEqual(vendor.main([]), 0)
+            (tmp / "skills" / "ra1-report" / "manifest.json").unlink()
+            self.assertEqual(vendor.main(["--check"]), 1)
+        finally:
+            vendor.ROOT = old_root
+
+    def test_script_entrypoint_checks_sync(self):
+        old_argv = sys.argv[:]
+        try:
+            sys.argv = [str(REPO / "scripts" / "vendor.py"), "--check"]
+            with self.assertRaises(SystemExit) as cm:
+                runpy.run_path(str(REPO / "scripts" / "vendor.py"), run_name="__main__")
+            self.assertEqual(cm.exception.code, 0)
+        finally:
+            sys.argv = old_argv
 
     def test_loop_template_drift_detected(self):
         tmp = self._mk()

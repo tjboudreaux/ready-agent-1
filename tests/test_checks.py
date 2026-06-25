@@ -435,6 +435,12 @@ class TestG1CodeHealth(CheckCase):
             "packages/b/package.json": '{"name":"b"}',
         }
         self.assertEqual(self.s(style.dead_code_detection(self.ctx(files, app_path="packages/a"))), Status.PASS)
+        files = {
+            "package.json": '{"workspaces":["packages/*"],"scripts":{"deadcode":"knip"}}',
+            "packages/a/package.json": '{"devDependencies":{"knip":"^5"}}',
+            "packages/b/package.json": '{"name":"b"}',
+        }
+        self.assertEqual(self.s(style.dead_code_detection(self.ctx(files, app_path="packages/a"))), Status.PASS)
         self.assertEqual(self.s(style.dead_code_detection(self.ctx(
             {"knip.json": "{}", "package.json": '{"name":"x"}'}))), Status.FAIL)
 
