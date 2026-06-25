@@ -54,6 +54,15 @@ class TestVendor(unittest.TestCase):
         drift = vendor.vendor(tmp, write=False)
         self.assertTrue(any("version.py" in d for d in drift))
 
+    def test_check_detects_manifest_drift(self):
+        tmp = self._mk()
+        self.addCleanup(rmtree, tmp)
+        vendor.vendor(tmp, write=True)
+        (tmp / "skills" / "ra1-report" / "manifest.json").write_text('{"stale": true}\n',
+                                                                       encoding="utf-8")
+        drift = vendor.vendor(tmp, write=False)
+        self.assertIn("skills/ra1-report/manifest.json", drift)
+
     def test_loop_template_drift_detected(self):
         tmp = self._mk()
         self.addCleanup(rmtree, tmp)

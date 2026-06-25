@@ -17,7 +17,7 @@ def _gh_available(extra=None):
 
 
 class CheckCase(unittest.TestCase):
-    def ctx(self, files, gh=None, git=None, app_path="."):
+    def ctx(self, files, gh=None, git=None, app_path=".", options=None):
         root = make_repo(files)
         self.addCleanup(rmtree, root)
         static = StaticCollector(root)
@@ -28,6 +28,7 @@ class CheckCase(unittest.TestCase):
             git=GitCollector(root, runner=fake_runner(git or {})),
             github=GithubCollector(root, runner=fake_runner(gh or {})),
             app=app,
+            options=options or {},
         )
 
     def s(self, verdict):
@@ -77,6 +78,16 @@ class TestStyleChecks(CheckCase):
         }
         ctx = self.ctx(files, app_path="packages/a")
         self.assertEqual(self.s(style.linter_config(ctx)), Status.PASS)  # via root [tool.ruff] fallback
+
+    def test_strict_typing_uses_root_mypy_config_in_monorepo(self):
+        files = {
+            "package.json": '{"workspaces":["packages/*"]}',
+            "pyproject.toml": "[tool.mypy]\nstrict=true\n",
+            "packages/a/package.json": '{"name":"a"}',
+            "packages/b/package.json": '{"name":"b"}',
+        }
+        ctx = self.ctx(files, app_path="packages/a")
+        self.assertEqual(self.s(style.strict_typing(ctx)), Status.PASS)
 
 
 class TestBuildChecks(CheckCase):
@@ -331,6 +342,10 @@ class TestPhase5BuildChecks(CheckCase):
         # github but no budget -> unknown
         self.assertEqual(self.s(build.ci_duration_budget(
             self.ctx({}, gh=_gh_available({runs_key: runs_fast})))), Status.UNKNOWN)
+        # injected budget option -> pass
+        self.assertEqual(self.s(build.ci_duration_budget(
+            self.ctx({}, gh=_gh_available({runs_key: runs_fast}),
+                     options={"readiness_config": {"ci_budget_minutes": 15}}))), Status.PASS)
         # budget but no timed runs -> unknown
         self.assertEqual(self.s(build.ci_duration_budget(
             self.ctx(cfg, gh=_gh_available({runs_key: runs_untimed})))), Status.UNKNOWN)
@@ -414,6 +429,12 @@ class TestG1CodeHealth(CheckCase):
             {"package.json": '{"name":"x"}'}))), Status.FAIL)
         self.assertEqual(self.s(style.dead_code_detection(self.ctx(
             {"package.json": '{"devDependencies":{"knip":"^5"},"scripts":{"deadcode":"knip"}}'}))), Status.PASS)
+        files = {
+            "package.json": '{"workspaces":["packages/*"]}',
+            "packages/a/package.json": '{"devDependencies":{"knip":"^5"},"scripts":{"deadcode":"knip"}}',
+            "packages/b/package.json": '{"name":"b"}',
+        }
+        self.assertEqual(self.s(style.dead_code_detection(self.ctx(files, app_path="packages/a"))), Status.PASS)
         self.assertEqual(self.s(style.dead_code_detection(self.ctx(
             {"knip.json": "{}", "package.json": '{"name":"x"}'}))), Status.FAIL)
 
@@ -529,6 +550,12 @@ class TestG3Hygiene(CheckCase):
             {"package.json": '{"name":"x"}'}))), Status.FAIL)
         self.assertEqual(self.s(build.unused_dependencies(self.ctx(
             {"package.json": '{"devDependencies":{"depcheck":"^1"},"scripts":{"deps":"depcheck"}}'}))), Status.PASS)
+        files = {
+            "package.json": '{"workspaces":["packages/*"]}',
+            "packages/a/package.json": '{"devDependencies":{"depcheck":"^1"},"scripts":{"deps":"depcheck"}}',
+            "packages/b/package.json": '{"name":"b"}',
+        }
+        self.assertEqual(self.s(build.unused_dependencies(self.ctx(files, app_path="packages/a"))), Status.PASS)
         self.assertEqual(self.s(build.unused_dependencies(self.ctx(
             {"knip.json": "{}", "package.json": '{"name":"x"}'}))), Status.FAIL)  # tool, no wiring
 
