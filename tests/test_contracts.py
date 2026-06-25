@@ -41,6 +41,18 @@ class TestChecks(unittest.TestCase):
         # ensure the replacement happened then assert mismatch
         self.assertFalse(contracts.score_matches(self.score, bad))
 
+    def test_score_matches_rejects_altered_pass_rate(self):
+        score = dict(self.score)
+        score["pass_rate"] = score.get("pass_rate", 0) + 0.01
+        bad = "# Agent Readiness Report\n\n```json\n" + json.dumps(score) + "\n```\n"
+        self.assertFalse(contracts.score_matches(self.score, bad))
+
+    def test_score_matches_rejects_extra_key(self):
+        score = dict(self.score)
+        score["extra"] = True
+        bad = "# Agent Readiness Report\n\n```json\n" + json.dumps(score) + "\n```\n"
+        self.assertFalse(contracts.score_matches(self.score, bad))
+
     def test_score_matches_missing_block(self):
         self.assertFalse(contracts.score_matches(self.score, "no block"))
 

@@ -61,6 +61,13 @@ def _plan(repo_root: Path):
     return pairs
 
 
+def _manifest_content() -> str:
+    manifest = dict(version.version_stamp())
+    manifest["vendored"] = "engine/readiness + templates"
+    return json.dumps(manifest, indent=2) + "\n"
+
+
+
 def vendor(repo_root, write=True):
     """Sync (write=True) or check (write=False, returns list of drifted dst paths)."""
     repo_root = Path(repo_root)
@@ -75,13 +82,18 @@ def vendor(repo_root, write=True):
     if write:
         for skill in SKILLS:
             _write_manifest(repo_root / "skills" / skill)
+    else:
+        content = _manifest_content()
+        for skill in SKILLS:
+            rel = Path("skills") / skill / "manifest.json"
+            dst = repo_root / rel
+            if not dst.exists() or dst.read_text(encoding="utf-8") != content:
+                drift.append(rel.as_posix())
     return drift
 
 
 def _write_manifest(skill_dir: Path):
-    manifest = dict(version.version_stamp())
-    manifest["vendored"] = "engine/readiness + templates"
-    (skill_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    (skill_dir / "manifest.json").write_text(_manifest_content(), encoding="utf-8")
 
 
 def main(argv=None):

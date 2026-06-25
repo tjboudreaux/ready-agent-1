@@ -68,6 +68,22 @@ class TestGithub(unittest.TestCase):
         self.assertIn("::warning", gh)
         self.assertIn("::notice::Agent Readiness Level", gh)
 
+    def test_located_annotation_uses_comma_separated_escaped_properties(self):
+        rep = Report(project_path=".", schema_version="1", engine_version="0.3.0",
+                     registry_version="0.3.0", detector_version="0.3.0")
+        rep.results = [CriterionResult(id="style.large_file_guard", title="Large File",
+                                       pillar="Style", level=1, scope="repository",
+                                       gating=True, status=Status.FAIL,
+                                       rationale="src/big,file.py is huge",
+                                       evidence=[Evidence(summary="large",
+                                                          source="src/big,file.py")])]
+        gh = report_mod.render_github(rep)
+        self.assertIn(
+            "::warning title=Readiness%3A Large File,file=src/big%2Cfile.py::src/big,file.py is huge",
+            gh,
+        )
+
+
 
     def test_non_gating_failures_omit_annotations(self):
         rep = Report(project_path=".", schema_version="1", engine_version="0.3.0",

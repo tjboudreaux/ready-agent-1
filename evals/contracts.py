@@ -32,11 +32,7 @@ def score_matches(engine_score: dict, text: str) -> bool:
     block = extract_score_block(text)
     if not block:
         return False
-    return (
-        block.get("level") == engine_score.get("level")
-        and block.get("gating_passed") == engine_score.get("gating_passed")
-        and block.get("gating_total") == engine_score.get("gating_total")
-    )
+    return block == engine_score
 
 
 def advisory_present(text: str) -> bool:

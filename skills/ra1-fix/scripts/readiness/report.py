@@ -160,15 +160,21 @@ def _advisory_items(results):
 
 
 # ---------------------------------------------------------------------------- github
+def _gha_escape_property(value) -> str:
+    return (str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            .replace(":", "%3A").replace(",", "%2C"))
+
+
 def render_github(report) -> str:
     out = []
     for r in report.results:
         if r.gating and r.status == Status.FAIL:
             src = _first_source(r)
-            prefix = f"::warning title=Readiness: {r.title}"
+            title = _gha_escape_property(f"Readiness: {r.title}")
+            props = [f"title={title}"]
             if src:
-                prefix += f" file={src}"
-            out.append(f"{prefix}::{r.rationale}")
+                props.append(f"file={_gha_escape_property(src)}")
+            out.append(f"::warning {','.join(props)}::{r.rationale}")
     if report.score:
         out.append(f"::notice::Agent Readiness Level {report.score.level} "
                    f"({report.score.gating_passed}/{report.score.gating_total} gating criteria)")

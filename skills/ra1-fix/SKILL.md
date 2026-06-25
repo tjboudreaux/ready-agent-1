@@ -4,7 +4,7 @@ description: Ready Agent 1 gears up your repo (the Loadout) — remediate agent-
 license: MIT
 compatibility: Python 3.11+; git for branch/commit; run ra1-report first
 metadata:
-  version: 0.4.0
+  version: 0.5.0
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 

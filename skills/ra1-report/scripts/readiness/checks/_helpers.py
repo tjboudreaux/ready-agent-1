@@ -91,6 +91,29 @@ _INVOKE_SOURCES = [".github/workflows/*.yml", ".github/workflows/*.yaml",
 _INVOKE_FILES = ["Makefile", "Taskfile.yml", "Taskfile.yaml"]
 
 
+def _source(prefix, rel):
+    return rel if prefix in ("", ".") else f"{prefix.rstrip('/')}/{rel}"
+
+
+def _scripts_invoked(pkg, needles):
+    if not isinstance(pkg, dict):
+        return False
+    scripts = " ".join(str(v) for v in (pkg.get("scripts") or {}).values()).lower()
+    return any(n in scripts for n in needles)
+
+
+def _invocation_source(static, needles, prefix="."):
+    for f in list(static.glob(_INVOKE_SOURCES)) + _INVOKE_FILES:
+        text = (static.read(f) or "").lower()
+        if text and any(n in text for n in needles):
+            return _source(prefix, f)
+    pkg = static.manifests().get("package.json", (None, None))[1]
+    if _scripts_invoked(pkg, needles):
+        return _source(prefix, "package.json")
+    return ""
+
+
+
 def tool_invoked(ctx, names):
     """Path of a CI/pre-commit/script source that invokes any of ``names`` (lowercased), else ''.
 
@@ -99,13 +122,8 @@ def tool_invoked(ctx, names):
     a Make/Task target, or a package.json ``scripts`` entry. package.json is read as parsed
     ``scripts`` only — never raw text — so a name in ``devDependencies`` is not mistaken for use."""
     needles = [n.lower() for n in names]
-    for f in list(ctx.static.glob(_INVOKE_SOURCES)) + _INVOKE_FILES:
-        text = (ctx.static.read(f) or "").lower()
-        if text and any(n in text for n in needles):
-            return f
-    pkg = ctx.static.manifests().get("package.json", (None, None))[1]
-    if isinstance(pkg, dict):
-        scripts = " ".join(str(v) for v in (pkg.get("scripts") or {}).values()).lower()
-        if any(n in scripts for n in needles):
-            return "package.json"
-    return ""
+    if ctx.app.path != ".":
+        hit = _invocation_source(ctx.app_static(), needles, ctx.app.path)
+        if hit:
+            return hit
+    return _invocation_source(ctx.static, needles)
