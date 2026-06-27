@@ -1,4 +1,5 @@
 import re
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -35,6 +36,17 @@ class TestSkillManifests(unittest.TestCase):
                 # self-contained: vendored engine + templates present for single-skill installs
                 self.assertTrue((d / "scripts" / "readiness" / "cli.py").exists())
                 self.assertTrue((d / "manifest.json").exists())
+
+    def test_project_version_matches_engine_version(self):
+        project = tomllib.loads((REPO / "pyproject.toml").read_text())
+        self.assertEqual(project["project"]["version"], readiness.ENGINE_VERSION)
+
+    def test_skill_metadata_versions_match_engine_version(self):
+        for name in ("ra1-report", "ra1-fix"):
+            text = (REPO / "skills" / name / "SKILL.md").read_text()
+            match = re.search(r"(?m)^  version:\s*(\S+)\s*$", text)
+            self.assertIsNotNone(match)
+            self.assertEqual(match.group(1), readiness.ENGINE_VERSION)
 
 
 if __name__ == "__main__":
