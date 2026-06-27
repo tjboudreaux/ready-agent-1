@@ -188,8 +188,12 @@ def _aggregate(base, per):
                 (" Failing: " + ", ".join(a.path for a in fails) + ".")
         return CriterionResult(status=Status.FAIL, rationale=note, evidence=evidence,
                                app_path=app_path, **counts, **base)
-    if unknown_apps and passes == 0:
-        return CriterionResult(status=Status.UNKNOWN, rationale=f"Undetermined for {', '.join(unknown_apps)}.",
+    if unknown_apps:
+        if passes > 0:
+            rationale = f"{passes}/{total} application(s) pass; undetermined for {', '.join(unknown_apps)}."
+        else:
+            rationale = f"Undetermined for {', '.join(unknown_apps)}."
+        return CriterionResult(status=Status.UNKNOWN, rationale=rationale,
                                evidence=evidence, app_path=app_path, **counts, **base)
     if passes > 0:
         return CriterionResult(status=Status.PASS, rationale=f"{passes}/{total} application(s) pass.",

@@ -103,7 +103,7 @@ def build_command_documented(ctx):
 
 def _ci_budget_minutes(ctx):
     from ..detect import load_readiness_config
-    v = load_readiness_config(ctx.root).get("ci_budget_minutes")
+    v = load_readiness_config(ctx.root, ctx.options).get("ci_budget_minutes")
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else None
 
 

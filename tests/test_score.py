@@ -398,6 +398,20 @@ class TestAggregateUnknownAndWaiverFuture(unittest.TestCase):
         self.assertEqual(r.evaluated_apps, 1)
         self.assertEqual(r.passed_apps, 0)
 
+    def test_aggregate_pass_and_unknown_is_unknown(self):
+        from readiness.model import App, Verdict
+        base = {"id": "x.y", "title": "t", "pillar": "P", "level": 3, "scope": "application",
+                "gating": False, "fixable": False, "fix_kind": ""}
+        per = [(App(path="known"), Verdict(Status.PASS, "ok", [])),
+               (App(path="unknown"), None)]
+        r = score._aggregate(base, per)
+        self.assertEqual(r.status, Status.UNKNOWN)
+        self.assertEqual(r.passed_apps, 1)
+        self.assertEqual(r.evaluated_apps, 2)
+        self.assertEqual(r.app_path, "*")
+        self.assertIn("1/2", r.rationale)
+        self.assertIn("undetermined for unknown", r.rationale)
+
     def test_future_waiver_still_waives(self):
         waivers = [{"id": "docs.readme", "reason": "x", "expires": "2099-01-01"}]
         root, results, _ = _evaluate({"README.md": "# x"},

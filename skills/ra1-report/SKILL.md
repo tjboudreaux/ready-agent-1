@@ -4,7 +4,7 @@ description: Ready Agent 1 scans your repo for agent-readiness — a determinist
 license: MIT
 compatibility: Python 3.11+; optional authenticated gh CLI for GitHub (T2) checks
 metadata:
-  version: 0.4.0
+  version: 0.5.0
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 

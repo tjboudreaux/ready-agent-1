@@ -67,9 +67,11 @@ def strict_typing(ctx):
             return passed("tsconfig has strict:true.", [ev("tsconfig strict", source=rel)])
         return failed("tsconfig present but strict mode not enabled.")
     if atool(ctx, "mypy"):
-        py = parsers.load_toml(ctx.app_static().root / "pyproject.toml") or {}
+        path, rel = _read_first(ctx, "pyproject.toml")
+        py = parsers.load_toml(path) if path is not None else {}
         if (py.get("tool", {}).get("mypy", {}) or {}).get("strict") is True:
-            return passed("mypy strict enabled.")
+            evidence = [ev("mypy strict", source=rel)] if rel else []
+            return passed("mypy strict enabled.", evidence)
         return failed("mypy present but strict not enabled.")
     return failed("No strict typing configuration.")
 
