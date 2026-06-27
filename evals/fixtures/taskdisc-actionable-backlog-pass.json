@@ -1,0 +1,14 @@
+{
+  "name": "taskdisc-actionable-backlog-pass",
+  "description": "T2 canned-runner fixture: open issues are labeled or milestoned and carry real bodies, so taskdisc.actionable_backlog_items passes (>=60% actionable). Exercises the T2 pass shape end-to-end through the real engine with a no-network gh runner.",
+  "files": {
+    "pyproject.toml": "[project]\nname = \"backlog-pass\"\nversion = \"0.1.0\"\nrequires-python = \">=3.11\"\n"
+  },
+  "github": {
+    "repo view --json nameWithOwner": "{\"nameWithOwner\": \"o/r\"}",
+    "api repos/o/r/issues?state=open&per_page=50": "[{\"number\": 1, \"labels\": [{\"name\": \"bug\"}], \"body\": \"Steps to reproduce the crash on startup.\"}, {\"number\": 2, \"milestone\": {\"title\": \"v1\"}, \"body\": \"Implement the CSV export endpoint behind the flag.\"}, {\"number\": 3, \"labels\": [{\"name\": \"enhancement\"}], \"body\": \"Add pagination to the issues list view.\"}]"
+  },
+  "expected": {
+    "taskdisc.actionable_backlog_items": "pass"
+  }
+}
