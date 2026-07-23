@@ -138,3 +138,37 @@ class GithubCollector:
         if isinstance(data, list):
             return [i for i in data if isinstance(i, dict) and "pull_request" not in i]
         return []
+
+    def recent_merged_prs(self, n: int = 20) -> List[dict]:
+        """Up to ``n`` recently updated closed PRs that were merged."""
+        if not self.available:
+            return []
+        merged: List[dict] = []
+        for page in range(1, 4):
+            data = self._api(
+                f"repos/{self.slug}/pulls?state=closed&sort=updated&direction=desc&per_page=50&page={page}"
+            )
+            if not isinstance(data, list):
+                break
+            if not data:
+                break
+            for pr in data:
+                if isinstance(pr, dict) and pr.get("merged_at"):
+                    merged.append(pr)
+                    if len(merged) >= n:
+                        return merged
+        return merged
+
+    def pr_first_review_iso(self, number: int) -> Optional[str]:
+        """Earliest review ``submitted_at`` for a PR (any reviewer, including bots)."""
+        if not self.available:
+            return None
+        data = self._api(f"repos/{self.slug}/pulls/{number}/reviews")
+        if not isinstance(data, list) or not data:
+            return None
+        times = [
+            rev.get("submitted_at")
+            for rev in data
+            if isinstance(rev, dict) and rev.get("submitted_at")
+        ]
+        return min(times) if times else None

@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from statistics import median
 
-from ._helpers import adep, aglob, ev, failed, passed, skipped, tool_invoked, unknown
+from ._helpers import adep, aglob, ev, failed, parse_iso, passed, skipped, tool_invoked, unknown
 
 
 def deps_pinned(ctx):
@@ -239,3 +240,85 @@ def dependency_weight_budget(ctx):
     if adep(ctx, _WEIGHT_DEPS) and tool_invoked(ctx, _WEIGHT_DEPS):
         return passed("Bundle analyzer/size tool wired.", [ev("bundle tool wired")])
     return failed("No dependency-weight budget (size-limit/bundlesize/bundle-analyzer with a budget).")
+
+
+# --- DORA / AI-capability build proxies (advisory) ------------------------------------
+
+
+def small_batches(ctx):
+    """Pass when median LOC churn across recent non-merge commits is ≤ 400.
+
+    RA1 LOC heuristic — squash-merge workflows may inflate per-commit churn.
+    """
+    if not ctx.git.available():
+        return unknown("No git history available.")
+    churn = ctx.git.recent_churn(50)
+    if not churn:
+        return unknown("No git history available.")
+    if len(churn) < 10:
+        return skipped("insufficient history (<10 non-merge commits)")
+    med = median(churn)
+    evidence = [ev(f"median churn {med} LOC (n={len(churn)})", tier="T1")]
+    if med <= 400:
+        return passed(f"Median commit churn {med} ≤ 400 LOC (n={len(churn)}).", evidence)
+    return failed(
+        f"Median commit churn {med} > 400 LOC (n={len(churn)}); "
+        "RA1 LOC heuristic — squash-merge may inflate churn.",
+        evidence,
+    )
+
+
+def integration_frequency(ctx):
+    """Pass when commits land in ≥4 distinct ISO weeks of the trailing 8 weeks
+    anchored at the most recent commit (activity-anchored)."""
+    if not ctx.git.available():
+        return unknown("No git history available.")
+    dates = ctx.git.commit_dates(200)
+    if not dates:
+        return unknown("No git history available.")
+    anchor = parse_iso(dates[0])
+    if not anchor:
+        return unknown("Could not parse recent commit dates.")
+    now = datetime.now(timezone.utc)
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=timezone.utc)
+    if (now - anchor).days > 90:
+        return skipped("inactive repository")
+    window_start = anchor - timedelta(weeks=8)
+    weeks = set()
+    for d in dates:
+        dt = parse_iso(d)
+        if not dt:
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if window_start <= dt <= anchor:
+            weeks.add(dt.isocalendar()[:2])
+    evidence = [ev(f"{len(weeks)} active ISO weeks in trailing 8 (n={len(dates)} dates)", tier="T1")]
+    if len(weeks) >= 4:
+        return passed(f"Commits in {len(weeks)} distinct ISO weeks of the trailing 8.", evidence)
+    return failed(
+        f"Only {len(weeks)} distinct ISO week(s) with commits in the trailing 8 weeks (need ≥4).",
+        evidence,
+    )
+
+
+def agent_config_versioned(ctx):
+    """Pass when at least one agent-config path has ≥2 commits of history."""
+    if not ctx.git.available():
+        return unknown("No git history available.")
+    candidates = ["AGENTS.md", "CLAUDE.md", ".claude", ".cursor", "skills", ".agents"]
+    existing = [p for p in candidates if (ctx.root / p).exists()]
+    if not existing:
+        return skipped("no agent configuration present")
+    for path in existing:
+        count = ctx.git.commit_count_for(path)
+        if count >= 2:
+            return passed(
+                f"Agent configuration versioned: {path} has {count} commits.",
+                [ev("agent config history", source=path, tier="T1")],
+            )
+    return failed(
+        "Agent configuration present but none have ≥2 commits of history "
+        f"(checked: {', '.join(existing)})."
+    )

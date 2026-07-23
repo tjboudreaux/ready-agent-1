@@ -8,32 +8,13 @@ from __future__ import annotations
 
 import re
 
-from ._helpers import ev, failed, passed
+from ._helpers import _filled, ev, failed, passed
 
 LOOP_SKILL_MIN = 3
-_PLACEHOLDER_RE = re.compile(
-    r"(?i)(TODO|FIXME|TBD|<!--|\[(?:TODO|FIXME|TBD|project|owner|path[^\]]*|command[^\]]*|describe[^\]]*|replace[^\]]*|bracketed[^\]]*)\])"
-)
-
 
 def _first(ctx, patterns) -> str | None:
     hits = ctx.static.glob(patterns)
     return sorted(hits)[0] if hits else None
-
-
-def _filled(ctx, path, label, min_chars=40) -> tuple[bool, str]:
-    text = ctx.static.read(path)
-    if text is None:
-        return False, f"{label} unreadable: {path}."
-    stripped = text.strip()
-    if not stripped:
-        return False, f"{label} is empty: {path}."
-    if len(stripped) < min_chars:
-        return False, f"{label} too thin ({len(stripped)} chars): {path}."
-    if _PLACEHOLDER_RE.search(text):
-        return False, f"{label} contains placeholder text: {path}."
-    return True, f"{label} present and filled: {path}."
-
 
 def _pass_filled(ctx, patterns, label, min_chars=40):
     path = _first(ctx, patterns)
@@ -45,16 +26,13 @@ def _pass_filled(ctx, patterns, label, min_chars=40):
         return failed(rationale)
     return passed(rationale, [ev(label, source=path, tier="T0")])
 
-
 def _contains_terms(text, terms):
     lower = text.lower()
     return all(term.lower() in lower for term in terms)
 
-
 def _contains_any(text, terms):
     lower = text.lower()
     return any(term.lower() in lower for term in terms)
-
 
 def _contains_artifact_language(text, terms):
     lower = text.lower()
@@ -69,10 +47,8 @@ def _contains_artifact_language(text, terms):
             return True
     return False
 
-
 def loop_runs_dir(ctx):
     return _pass_filled(ctx, ["loop-runs/README.md", "loop-runs/readme.md"], "loop-runs/README.md")
-
 
 def rules_index(ctx):
     path = _first(ctx, [".omp/rules/README.md"])
@@ -86,7 +62,6 @@ def rules_index(ctx):
         return failed(".omp/rules/README.md must mention rules or denylist.")
     return passed(".omp/rules/README.md documents loop rules or denylist.", [ev("loop rules index", source=path, tier="T0")])
 
-
 def denylist(ctx):
     path = _first(ctx, [".omp/rules/denylist.md"])
     if not path:
@@ -99,7 +74,6 @@ def denylist(ctx):
     if not (has_bullet or _contains_any(text, ["deny", "block", "never"])):
         return failed(".omp/rules/denylist.md must include a deny/block/never policy term or bullet.")
     return passed(".omp/rules/denylist.md contains a starter blocked-action policy.", [ev("loop denylist", source=path, tier="T0")])
-
 
 def signal_schema(ctx):
     path = _first(ctx, ["signals/README.md"])
@@ -116,7 +90,6 @@ def signal_schema(ctx):
         missing = [term for term in required if term.lower() not in text.lower()]
         return failed(f"signals/README.md missing schema term(s): {', '.join(missing)}.")
     return passed("signals/README.md documents the minimal signal schema.", [ev("signal schema", source=path, tier="T0")])
-
 
 def pr_artifact_template(ctx):
     primary = _first(ctx, [".omp/commands/pr-artifact-template.md"])
@@ -139,7 +112,6 @@ def pr_artifact_template(ctx):
         return failed("GitHub PR template lacks artifact/evidence-specific language.")
     return passed("GitHub PR template includes artifact evidence language.", [ev("artifact-specific PR template", source=fallback, tier="T0")])
 
-
 def skills_present(ctx):
     paths = ctx.static.glob([".omp/skills/*/SKILL.md"])
     filled = []
@@ -150,7 +122,6 @@ def skills_present(ctx):
     if len(filled) < LOOP_SKILL_MIN:
         return failed(f"Only {len(filled)} OMP loop skill artifact(s) found (<3).")
     return passed(f"Found {len(filled)} filled OMP loop skill artifacts.", [ev("OMP loop skill", source=path, tier="T0") for path in filled])
-
 
 def prompt_contracts(ctx):
     required = [".omp/commands/goal.md", ".omp/commands/loop.md"]
@@ -169,10 +140,8 @@ def prompt_contracts(ctx):
         return failed(f"Missing or unfilled loop prompt contract(s): {', '.join(missing_or_unfilled)}.")
     return passed("Loop goal and loop prompt contracts are filled.", evidence)
 
-
 def architecture_doc(ctx):
     return _pass_filled(ctx, ["ARCHITECTURE.md", "docs/ARCHITECTURE.md", "docs/architecture.md"], "architecture doc")
-
 
 def domain_docs(ctx):
     paths = ctx.static.glob(["domains/*/README.md"])

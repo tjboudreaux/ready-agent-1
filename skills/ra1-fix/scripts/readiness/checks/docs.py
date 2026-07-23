@@ -1,9 +1,11 @@
 """Documentation checks (mostly repository-scoped)."""
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
-from ._helpers import adep, aglob, ev, failed, passed, skipped, tool_invoked, unknown
+from ..parsers import load_jsonc
+from ._helpers import PLACEHOLDER_RE, adep, aglob, ev, failed, filled, passed, skipped, tool_invoked, unknown
 
 
 def readme(ctx):
@@ -124,3 +126,127 @@ def architecture_doc(ctx):
         if len(ctx.static.read(f) or "") >= 200:
             return passed(f"Architecture documentation present: {f}", [ev("architecture doc", source=f)])
     return failed("No architecture documentation (ARCHITECTURE.md / docs/architecture / ADRs).")
+
+
+# --- DORA / AI-capability documentation proxies (advisory) ---------------------------
+
+_AI_HEADING_RE = re.compile(
+    r"(?im)^#{1,4}\s.*\b(AI (policy|usage|stance)|agent policy)\b"
+)
+_AI_TOOL_RE = re.compile(r"(?i)\b(copilot|claude|cursor|codex|gemini|agent)\b")
+_AI_PERM_RE = re.compile(r"(?i)\b(allowed|prohibited|must not|may use|approved)\b")
+
+
+def _text_filled(text, min_chars=40) -> bool:
+    stripped = (text or "").strip()
+    if not stripped or len(stripped) < min_chars:
+        return False
+    if PLACEHOLDER_RE.search(text or ""):
+        return False
+    return True
+
+
+def _ai_signal(text) -> bool:
+    return bool(_AI_TOOL_RE.search(text or "") or _AI_PERM_RE.search(text or ""))
+
+
+def _heading_sections(text, heading_re):
+    for m in heading_re.finditer(text):
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        line_end = text.find("\n", m.start())
+        if line_end < 0:
+            line_end = len(text)
+        line = text[line_start:line_end]
+        level = len(line) - len(line.lstrip("#"))
+        body_start = line_end + 1 if line_end < len(text) else len(text)
+        rest = text[body_start:]
+        next_h = re.compile(rf"(?m)^#{{1,{level}}}\s")
+        m2 = next_h.search(rest)
+        body = rest[: m2.start()] if m2 else rest
+        yield body
+
+
+def ai_stance(ctx):
+    """Pass on a filled AI policy artifact or AGENTS/CONTRIBUTING heading section
+    that includes a tool/agent or permission signal."""
+    accepted = ("AI_POLICY.md", "docs/ai-policy.md", "AGENTS.md", "CONTRIBUTING.md")
+    seen_invalid = []
+    for path in ("AI_POLICY.md", "docs/ai-policy.md"):
+        if not ctx.static.glob([path]):
+            continue
+        ok, rationale = filled(ctx, path, "AI policy")
+        text = ctx.static.read(path) or ""
+        if ok and _ai_signal(text):
+            return passed(rationale, [ev("AI stance", source=path, tier="T0")])
+        seen_invalid.append(path)
+    for path in ("AGENTS.md", "CONTRIBUTING.md"):
+        text = ctx.static.read(path)
+        if not text:
+            continue
+        for body in _heading_sections(text, _AI_HEADING_RE):
+            if _text_filled(body) and _ai_signal(body):
+                return passed(
+                    f"AI stance section present in {path}.",
+                    [ev("AI stance", source=path, tier="T0")],
+                )
+            seen_invalid.append(path)
+            break
+    if seen_invalid:
+        return failed(
+            "AI stance artifact present but thin/empty or missing tool/permission signal: "
+            f"{', '.join(seen_invalid)}. Accepted locations: {', '.join(accepted)}."
+        )
+    return failed(
+        "No filled AI stance policy "
+        f"(accepted: {', '.join(accepted)})."
+    )
+
+
+def _mcp_servers_ok(data) -> bool:
+    if not isinstance(data, dict):
+        return False
+    servers = data.get("mcpServers")
+    if not isinstance(servers, dict) or not servers:
+        return False
+    for cfg in servers.values():
+        if not isinstance(cfg, dict):
+            continue
+        if str(cfg.get("command") or "").strip() or str(cfg.get("url") or "").strip():
+            return True
+    return False
+
+
+def _llms_has_ref(text) -> bool:
+    for line in (text or "").splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if re.search(r"https?://", s) or "/" in s or s.endswith(".md"):
+            return True
+    return False
+
+
+def machine_context(ctx):
+    """Pass on MCP config with a real server entry, or a filled root llms.txt with URLs/paths.
+
+    AGENTS.md alone does not pass.
+    """
+    mcp_paths = [".mcp.json", ".cursor/mcp.json", ".vscode/mcp.json", ".gemini/settings.json"]
+    for path in mcp_paths:
+        if not ctx.static.glob([path]):
+            continue
+        data = load_jsonc(ctx.root / path)
+        if _mcp_servers_ok(data):
+            return passed(
+                f"MCP machine context configured: {path}.",
+                [ev("MCP config", source=path, tier="T0")],
+            )
+    if ctx.static.glob(["llms.txt"]):
+        ok, rationale = filled(ctx, "llms.txt", "llms.txt")
+        text = ctx.static.read("llms.txt") or ""
+        if ok and _llms_has_ref(text):
+            return passed(rationale, [ev("llms.txt", source="llms.txt", tier="T0")])
+    return failed(
+        "No machine-readable context (MCP config with command/url server, or filled llms.txt "
+        "with URL/path lines). AGENTS.md alone does not pass."
+    )
