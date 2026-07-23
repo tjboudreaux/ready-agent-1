@@ -1,0 +1,15 @@
+{
+  "name": "build-ci-duration-budget-pass",
+  "description": "T2 canned-runner fixture: recent GitHub Actions run timings stay within the configured ci_budget_minutes, so build.ci_duration_budget passes. Exercises the T2 pass shape end-to-end through the real engine with a no-network gh runner.",
+  "files": {
+    "pyproject.toml": "[project]\nname = \"ci-budget-pass\"\nversion = \"0.1.0\"\nrequires-python = \">=3.11\"\n",
+    ".agents/readiness/config.json": "{\n  \"schema_version\": \"2\",\n  \"ci_budget_minutes\": 15\n}\n"
+  },
+  "github": {
+    "repo view --json nameWithOwner": "{\"nameWithOwner\": \"o/r\"}",
+    "api repos/o/r/actions/runs?per_page=20": "{\"workflow_runs\": [{\"run_started_at\": \"2026-06-01T00:00:00Z\", \"updated_at\": \"2026-06-01T00:05:00Z\"}, {\"run_started_at\": \"2026-06-01T01:00:00Z\", \"updated_at\": \"2026-06-01T01:08:00Z\"}]}"
+  },
+  "expected": {
+    "build.ci_duration_budget": "pass"
+  }
+}

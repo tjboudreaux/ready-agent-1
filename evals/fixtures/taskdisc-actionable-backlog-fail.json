@@ -1,0 +1,14 @@
+{
+  "name": "taskdisc-actionable-backlog-fail",
+  "description": "T2 canned-runner fixture: most open issues lack labels/milestones or bodies, so taskdisc.actionable_backlog_items fails (<60% actionable). Exercises the T2 fail shape end-to-end through the real engine with a no-network gh runner.",
+  "files": {
+    "pyproject.toml": "[project]\nname = \"backlog-fail\"\nversion = \"0.1.0\"\nrequires-python = \">=3.11\"\n"
+  },
+  "github": {
+    "repo view --json nameWithOwner": "{\"nameWithOwner\": \"o/r\"}",
+    "api repos/o/r/issues?state=open&per_page=50": "[{\"number\": 1, \"labels\": [], \"body\": \"\"}, {\"number\": 2, \"body\": \"   \"}, {\"number\": 3, \"labels\": [{\"name\": \"bug\"}], \"body\": \"The only actionable item in the backlog.\"}]"
+  },
+  "expected": {
+    "taskdisc.actionable_backlog_items": "fail"
+  }
+}
