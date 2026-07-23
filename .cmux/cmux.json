@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json",
+  "schemaVersion": 1,
+  "commands": [
+    {
+      "name": "GH Dash + OMP",
+      "description": "gh-dash (PRs/issues) on the left, omp on the right",
+      "keywords": ["dash", "omp", "gh", "workspace"],
+      "restart": "ignore",
+      "workspace": {
+        "name": "GH Dash + OMP",
+        "cwd": ".",
+        "layout": {
+          "direction": "horizontal",
+          "split": 0.5,
+          "children": [
+            {
+              "pane": {
+                "surfaces": [
+                  { "type": "terminal", "name": "GH Dash", "command": "gh dash" }
+                ]
+              }
+            },
+            {
+              "pane": {
+                "surfaces": [
+                  { "type": "terminal", "name": "OMP", "command": "omp", "focus": true }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

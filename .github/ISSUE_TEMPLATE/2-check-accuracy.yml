@@ -1,0 +1,41 @@
+name: Check accuracy (false pass/fail)
+description: A criterion produced the wrong verdict on a repo
+title: "[check]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Accuracy reports feed the evals (`evals/`) that gate whether a criterion may be **gating**.
+        A public repo we can add as a labeled fixture is the most useful evidence.
+  - type: input
+    id: criterion
+    attributes:
+      label: Criterion id
+      description: As printed in the report, e.g. `taskdisc.issue_templates`.
+    validations:
+      required: true
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Wrong in which direction
+      options:
+        - "False pass (passed but shouldn't)"
+        - "False fail (failed but shouldn't)"
+        - "Wrong applicability (shouldn't apply to this repo at all)"
+    validations:
+      required: true
+  - type: textarea
+    id: repo
+    attributes:
+      label: Repo it misfired on
+      description: Public repo link, or a description of the layout that triggers it (enough to build a test fixture).
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: The report excerpt (citation lines) plus why the verdict is wrong. Redact private code.
+    validations:
+      required: true

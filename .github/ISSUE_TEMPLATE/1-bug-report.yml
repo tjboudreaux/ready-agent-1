@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in the engine, CLI, skills, or CI action is broken
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports may contain code excerpts from scanned repos — redact anything you can't share publicly.
+        For check verdicts you believe are *wrong* (false pass/fail), use the "Check accuracy" template instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, including the full error output if any.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact command(s) you ran and, if possible, a link to or description of the repo being scanned.
+      placeholder: |
+        1. ra1 report --project .
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `ra1 version` (or the commit SHA you ran from).
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and Python version (3.11+ required).
+      placeholder: "macOS 15.5, Python 3.11.4"
+    validations:
+      required: true

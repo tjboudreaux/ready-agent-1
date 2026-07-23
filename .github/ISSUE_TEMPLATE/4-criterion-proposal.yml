@@ -1,0 +1,58 @@
+name: New criterion proposal
+description: Propose a new readiness check for the criteria registry
+title: "[criterion]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New criteria start **advisory** (`gating: false`) and graduate to gating only after passing
+        the evals. See docs/extending.md before proposing.
+  - type: dropdown
+    id: pillar
+    attributes:
+      label: Pillar
+      options:
+        - Style & Validation
+        - Build System
+        - Testing
+        - Documentation
+        - Dev Environment
+        - Security
+        - Task Discovery
+    validations:
+      required: true
+  - type: textarea
+    id: signal
+    attributes:
+      label: What it checks
+      description: The concrete, citable signal in a repo (files, config keys, git/gh data) and the pass/fail rule.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters for agent readiness
+      description: How an agent's success rate changes when this passes vs fails.
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Data tier required
+      options:
+        - T0 (static files only)
+        - T1 (git history)
+        - T2 (GitHub API via gh)
+    validations:
+      required: true
+  - type: dropdown
+    id: autofixable
+    attributes:
+      label: Safely autofixable by ra1-fix?
+      description: Only scaffold-style fixes qualify (never overwrites, refuses dirty worktree).
+      options:
+        - "Yes — a scaffold can remediate it"
+        - "No — advisory guidance only"
+    validations:
+      required: true
