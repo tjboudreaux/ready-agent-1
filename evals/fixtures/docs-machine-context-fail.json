@@ -1,0 +1,14 @@
+{
+  "name": "docs-machine-context-fail",
+  "description": "docs.machine_context fail: AGENTS.md alone does not satisfy machine context.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "AGENTS.md": "# Agents\n\n## Build & test\n\n- pytest\n"
+  },
+  "expected": {
+    "docs.machine_context": "fail"
+  }
+}

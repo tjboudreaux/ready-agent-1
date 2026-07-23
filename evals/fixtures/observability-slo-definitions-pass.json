@@ -1,0 +1,15 @@
+{
+  "name": "observability-slo-definitions-pass",
+  "description": "observability.slo_definitions pass: openslo artifact plus CI wiring mentioning sloth/openslo.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "openslo/availability.yaml": "apiVersion: openslo/v1\nkind: SLO\nmetadata:\n  name: availability\nspec:\n  budgetingMethod: Occurrences\n",
+    ".github/workflows/ci.yml": "name: ci\non: [push]\njobs:\n  slo:\n    runs-on: ubuntu-latest\n    steps:\n      - run: sloth generate -i openslo/availability.yaml\n"
+  },
+  "expected": {
+    "observability.slo_definitions": "pass"
+  }
+}

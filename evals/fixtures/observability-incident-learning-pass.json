@@ -1,0 +1,14 @@
+{
+  "name": "observability-incident-learning-pass",
+  "description": "observability.incident_learning pass: filled docs/postmortems markdown.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "docs/postmortems/2024-outage.md": "# 2024 Outage Postmortem\n\n## Summary\n\nThe API was down for 40 minutes due to a bad deploy. We rolled back and added a canary gate.\n"
+  },
+  "expected": {
+    "observability.incident_learning": "pass"
+  }
+}

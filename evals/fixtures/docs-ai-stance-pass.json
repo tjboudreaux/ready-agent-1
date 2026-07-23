@@ -1,0 +1,14 @@
+{
+  "name": "docs-ai-stance-pass",
+  "description": "docs.ai_stance pass: filled AI_POLICY.md with tool/permission signal.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "AI_POLICY.md": "# AI Policy\n\nEngineers may use Claude and Copilot. Secrets are prohibited from prompts.\n"
+  },
+  "expected": {
+    "docs.ai_stance": "pass"
+  }
+}

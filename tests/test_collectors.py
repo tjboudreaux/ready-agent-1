@@ -89,6 +89,38 @@ class TestGitCollector(unittest.TestCase):
         self.assertFalse(g.has_agent_coauthorship())
 
 
+
+    def test_recent_churn_filters_binary_and_lockfiles(self):
+        blob = (
+            "abc123\n"
+            "10\t5\tsrc/a.py\n"
+            "-\t-\timg.png\n"
+            "100\t50\tpackage-lock.json\n"
+            "20\t10\tnode_modules/pkg/index.js\n"
+            "15\t5\tsrc/b.py\n"
+            "def456\n"
+            "30\t10\tsrc/c.py\n"
+        )
+        g = GitCollector("/tmp/whatever", runner=fake_runner({
+            ("log", "-50", "--no-merges", "--numstat", "--format=%H"): blob,
+        }))
+        self.assertEqual(g.recent_churn(50), [35, 40])
+
+    def test_commit_count_for_follow_and_dir(self):
+        root = make_repo({"AGENTS.md": "# Agents\n"})
+        self.addCleanup(rmtree, root)
+        g_file = GitCollector(root, runner=fake_runner({
+            ("rev-list", "--count", "--follow", "HEAD", "--", "AGENTS.md"): "7\n",
+        }))
+        self.assertEqual(g_file.commit_count_for("AGENTS.md"), 7)
+        g_dir = GitCollector(root, runner=fake_runner({
+            ("rev-list", "--count", "HEAD", "--", ".claude"): "4\n",
+        }))
+        self.assertEqual(g_dir.commit_count_for(".claude"), 4)
+        g_fail = GitCollector(root, runner=fake_runner({}))
+        self.assertEqual(g_fail.commit_count_for("AGENTS.md"), 0)
+
+
 class TestGithubCollector(unittest.TestCase):
     def _gh(self, extra=None):
         responses = {
@@ -136,6 +168,161 @@ class TestGithubCollector(unittest.TestCase):
         gh = self._gh()
         gh._cache[("api", "repos/o/r/branches/main/protection")] = None
         self.assertFalse(gh.branch_protected())
+
+
+    def test_recent_merged_prs_filters_and_paginates(self):
+        import json
+
+        page1 = [
+            {"number": 1, "merged_at": "2026-06-01T00:00:00Z", "title": "m1"},
+            {"number": 2, "merged_at": None, "title": "closed unmerged"},
+            {"number": 3, "merged_at": "2026-06-02T00:00:00Z", "title": "m2"},
+        ]
+        page2 = [
+            {"number": 4, "merged_at": "2026-06-03T00:00:00Z", "title": "m3"},
+        ]
+        gh = self._gh({
+            ("api", "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=1"):
+                json.dumps(page1),
+            ("api", "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=2"):
+                json.dumps(page2),
+            ("api", "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=3"):
+                "[]",
+        })
+        merged = gh.recent_merged_prs(20)
+        self.assertEqual([p["number"] for p in merged], [1, 3, 4])
+
+        empty = GithubCollector("/tmp/x", runner=fake_runner({}))
+        self.assertEqual(empty.recent_merged_prs(), [])
+        err = self._gh()  # available but no pulls API payload
+        self.assertEqual(err.recent_merged_prs(), [])
+
+    def test_pr_first_review_iso(self):
+        import json
+
+        gh = self._gh({
+            ("api", "repos/o/r/pulls/1/reviews"): json.dumps([
+                {"submitted_at": "2026-06-02T00:00:00Z"},
+                {"submitted_at": "2026-06-01T12:00:00Z"},
+            ]),
+        })
+        self.assertEqual(gh.pr_first_review_iso(1), "2026-06-01T12:00:00Z")
+
+        empty = GithubCollector("/tmp/x", runner=fake_runner({}))
+        self.assertIsNone(empty.pr_first_review_iso(1))
+        err = self._gh()
+        self.assertIsNone(err.pr_first_review_iso(9))
+        no_reviews = self._gh({
+            ("api", "repos/o/r/pulls/2/reviews"): "[]",
+        })
+        self.assertIsNone(no_reviews.pr_first_review_iso(2))
+
+
+
+
+class TestGitCollectorCoverageGaps(unittest.TestCase):
+    def test_commit_count_value_error(self):
+        g = GitCollector("/tmp/whatever", runner=fake_runner({
+            ("rev-list", "--count", "HEAD"): "not-an-int\n",
+        }))
+        self.assertEqual(g.commit_count(), 0)
+
+    def test_recent_churn_edge_branches(self):
+        from readiness.collectors import git as gitmod
+
+        blob = (
+            "10\t5\tsrc/before_hash.py\n"  # numstat before hash → current is None path
+            "abc123\n"
+            "1\t2\n"  # parts < 3
+            "foo\tbar\tsrc/bad.py\n"  # non-int added/deleted
+            "3\t4\tsrc/ok.py\n"
+        )
+        g = GitCollector("/tmp/whatever", runner=fake_runner({
+            ("log", "-50", "--no-merges", "--numstat", "--format=%H"): blob,
+        }))
+        self.assertEqual(g.recent_churn(50), [15, 7])
+        self.assertTrue(gitmod._churn_path_excluded("vendor/x.py"))
+        self.assertTrue(gitmod._churn_path_excluded("pkg/yarn.lock"))
+        self.assertFalse(gitmod._churn_path_excluded("src/a.py"))
+
+        # No hash and only skipped rows → current stays None (false branch before return).
+        skipped_only = (
+            "\n"
+            "1\t2\n"
+            "-\t-\timg.png\n"
+            "100\t50\tpackage-lock.json\n"
+        )
+        g2 = GitCollector("/tmp/whatever", runner=fake_runner({
+            ("log", "-50", "--no-merges", "--numstat", "--format=%H"): skipped_only,
+        }))
+        self.assertEqual(g2.recent_churn(50), [])
+
+    def test_commit_count_for_value_error(self):
+        root = make_repo({"AGENTS.md": "# Agents\n"})
+        self.addCleanup(rmtree, root)
+        g = GitCollector(root, runner=fake_runner({
+            ("rev-list", "--count", "--follow", "HEAD", "--", "AGENTS.md"): "nope\n",
+        }))
+        self.assertEqual(g.commit_count_for("AGENTS.md"), 0)
+
+
+class TestGithubCollectorCoverageGaps(unittest.TestCase):
+    def test_api_and_available_bad_json(self):
+        gh = GithubCollector("/tmp/x", runner=fake_runner({
+            ("repo", "view", "--json", "nameWithOwner"): "not-json",
+        }))
+        self.assertFalse(gh.available)
+        self.assertIsNone(gh.slug)
+        self.assertIsNone(gh.repo())
+        self.assertEqual(gh.recent_runs(), [])
+        self.assertEqual(gh.labels(), [])
+
+        bad_api = GithubCollector("/tmp/x", runner=fake_runner({
+            ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner":"o/r"}',
+            ("api", "repos/o/r"): "not-json{",
+        }))
+        self.assertTrue(bad_api.available)
+        self.assertIsNone(bad_api.repo())
+
+    def test_topics_fallback_empty(self):
+        gh = GithubCollector("/tmp/x", runner=fake_runner({
+            ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner":"o/r"}',
+            ("api", "repos/o/r/topics"): "{}",
+            ("api", "repos/o/r"): "{}",
+        }))
+        self.assertEqual(gh.topics(), [])
+
+    def test_recent_merged_prs_early_return(self):
+        import json
+
+        page1 = [
+            {"number": i, "merged_at": "2026-06-01T00:00:00Z"}
+            for i in range(1, 6)
+        ]
+        gh = GithubCollector("/tmp/x", runner=fake_runner({
+            ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner":"o/r"}',
+            ("api", "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=1"):
+                json.dumps(page1),
+            ("api", "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=2"):
+                "SHOULD_NOT_BE_READ",
+        }))
+        merged = gh.recent_merged_prs(3)
+        self.assertEqual([p["number"] for p in merged], [1, 2, 3])
+
+        # Exhaust all three pages without early return or empty-page break.
+        page2 = [{"number": 10, "merged_at": "2026-06-02T00:00:00Z"}, {"number": 11, "merged_at": None}]
+        page3 = [{"number": 12, "merged_at": "2026-06-03T00:00:00Z"}, "skip"]
+        gh2 = GithubCollector("/tmp/x", runner=fake_runner({
+            ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner":"o/r"}',
+            ("api", "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=1"):
+                json.dumps(page1),
+            ("api", "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=2"):
+                json.dumps(page2),
+            ("api", "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=3"):
+                json.dumps(page3),
+        }))
+        merged2 = gh2.recent_merged_prs(20)
+        self.assertEqual([p["number"] for p in merged2], [1, 2, 3, 4, 5, 10, 12])
 
 
 if __name__ == "__main__":

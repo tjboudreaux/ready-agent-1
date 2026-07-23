@@ -1,0 +1,14 @@
+{
+  "name": "docs-ai-stance-fail",
+  "description": "docs.ai_stance fail: no AI stance policy artifact.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "README.md": "# svc\n\nA minimal service without an AI stance policy.\n"
+  },
+  "expected": {
+    "docs.ai_stance": "fail"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "docs-machine-context-pass",
+  "description": "docs.machine_context pass: .mcp.json with a real server command.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    ".mcp.json": "{\n  \"mcpServers\": {\n    \"filesystem\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@modelcontextprotocol/server-filesystem\", \".\"]\n    }\n  }\n}\n"
+  },
+  "expected": {
+    "docs.machine_context": "pass"
+  }
+}
