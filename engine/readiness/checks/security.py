@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import re
 
+from ..parsers import load_jsonc, strip_jsonc
 from ._helpers import adep, agrep, atool, ev, failed, passed, skipped
 
 
@@ -133,3 +135,87 @@ def dast(ctx):
         if any(t in low for t in _DAST_TOKENS):
             return passed(f"DAST scanning workflow: {f}", [ev("DAST workflow", source=f)])
     return failed("No DAST scanning workflow (OWASP ZAP/StackHawk/Nuclei).")
+
+
+# --- Agent least-privilege config (advisory) -----------------------------------------
+
+
+def _is_unbounded_perm(entry) -> bool:
+    if not isinstance(entry, str):
+        return False
+    return entry == "*" or entry.endswith("(*)") or entry.endswith(":*")
+
+
+def _permissions_policy_ok(data) -> bool:
+    if not isinstance(data, dict):
+        return False
+    if isinstance(data.get("permissions"), dict):
+        perms = data["permissions"]
+    elif "allow" in data or "deny" in data:
+        perms = data
+    else:
+        return False
+    deny = perms.get("deny") if isinstance(perms.get("deny"), list) else []
+    allow = perms.get("allow") if isinstance(perms.get("allow"), list) else []
+    if deny:
+        return True
+    if allow and not any(_is_unbounded_perm(e) for e in allow):
+        return True
+    return False
+
+
+def _parse_permissions_markdown(text):
+    """Extract a JSON/JSONC object from a fenced code block in a permissions markdown file."""
+    if not text:
+        return None
+    m = re.search(r"```(?:jsonc?|JSONC?)?\s*\n(.*?)```", text, re.DOTALL)
+    if not m:
+        return None
+    try:
+        return json.loads(strip_jsonc(m.group(1)))
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def agent_permissions(ctx):
+    """Pass when shared agent permissions define a deny list or a non-unbounded allow list.
+
+    Accepts ``.claude/settings.json`` (never ``settings.local.json``) or
+    ``.agents/**/permissions*.{json,md}``.
+    """
+    candidates = []
+    if ctx.static.glob([".claude/settings.json"]):
+        candidates.append(".claude/settings.json")
+    candidates.extend(ctx.static.glob([".agents/**/permissions*.json"]))
+    candidates.extend(ctx.static.glob([".agents/**/permissions*.md"]))
+    candidates = [
+        c for c in candidates
+        if not c.endswith("settings.local.json") and c != ".claude/settings.local.json"
+    ]
+    if not candidates:
+        return failed(
+            "Missing agent permissions config "
+            "(.claude/settings.json or .agents/**/permissions*)."
+        )
+    saw_parse_failure = False
+    for path in candidates:
+        if path.endswith(".md"):
+            data = _parse_permissions_markdown(ctx.static.read(path) or "")
+            if data is None:
+                saw_parse_failure = True
+                continue
+        else:
+            data = load_jsonc(ctx.root / path)
+            if data is None:
+                saw_parse_failure = True
+                continue
+        if _permissions_policy_ok(data):
+            return passed(
+                f"Agent permissions policy present: {path}.",
+                [ev("agent permissions", source=path, tier="T0")],
+            )
+    if saw_parse_failure:
+        return failed("Agent permissions file(s) present but could not be parsed.")
+    return failed(
+        "Agent permissions present but missing non-empty deny or non-unbounded allow list."
+    )

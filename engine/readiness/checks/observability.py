@@ -7,7 +7,9 @@ quality of the telemetry.
 """
 from __future__ import annotations
 
-from ._helpers import adep, aglob, agrep, ev, failed, passed
+from pathlib import Path
+
+from ._helpers import adep, aglob, agrep, ev, failed, filled, passed
 
 
 def _two_part(kind, cfg, wiring):
@@ -167,3 +169,79 @@ def deployment_markers(ctx):
         if any(t in low for t in _DEPLOY_MARKER_TOKENS):
             return passed(f"Deployment markers wired in CI: {f}", [ev("deploy marker", source=f)])
     return failed("No deployment markers (release annotations to Sentry/Datadog/New Relic/GitHub).")
+
+
+# --- DORA reliability / learning proxies (advisory) ----------------------------------
+
+_SLO_TOOL_NAMES = ("openslo", "sloth", "nobl9", "sloctl", "pyrra")
+_SLO_WIRING_GLOBS = [
+    ".github/workflows/*.yml", ".github/workflows/*.yaml",
+    "Dockerfile", "**/Dockerfile", "**/Dockerfile.*",
+    "docker-compose.yml", "docker-compose.yaml", "**/docker-compose*.yml", "**/docker-compose*.yaml",
+    "**/Chart.yaml", "**/kustomization.yaml",
+    "deploy/**", "k8s/**", "kubernetes/**", "helm/**",
+    "Makefile", "Taskfile.yml", "Taskfile.yaml",
+    ".circleci/config.yml", "cloudbuild.yaml", "**/cloudbuild.yaml",
+]
+
+
+def _find_slo_artifacts(ctx):
+    found = []
+    for pat in ("**/*.yml", "**/*.yaml"):
+        for f in ctx.static.glob([pat]):
+            text = ctx.static.read(f) or ""
+            if "apiVersion: openslo" in text or "record: slo:" in text:
+                found.append(f)
+    for f in ctx.static.glob(["sloth.yml", "sloth.yaml", ".sloth.yaml"]):
+        found.append(f)
+    for f in ctx.static.glob(["**/*.nobl9.yaml"]):
+        found.append(f)
+    for f in ctx.static.glob(["**/*.tf"]):
+        if '_slo"' in (ctx.static.read(f) or ""):
+            found.append(f)
+    # stable unique order
+    return sorted(dict.fromkeys(found))
+
+
+def _slo_wiring(ctx, artifacts):
+    basenames = {Path(a).name.lower() for a in artifacts}
+    artifact_set = set(artifacts)
+    for f in ctx.static.glob(_SLO_WIRING_GLOBS):
+        if f in artifact_set:
+            continue
+        low = (ctx.static.read(f) or "").lower()
+        if not low:
+            continue
+        if any(bn in low for bn in basenames):
+            return f
+        if any(name in low for name in _SLO_TOOL_NAMES):
+            return f
+    return None
+
+
+def slo_definitions(ctx):
+    """Pass when an SLO artifact exists and is referenced from CI/deploy wiring."""
+    artifacts = _find_slo_artifacts(ctx)
+    cfg = artifacts[0] if artifacts else None
+    wiring = _slo_wiring(ctx, artifacts) if artifacts else None
+    return _two_part("SLO definitions", cfg, wiring)
+
+
+_POSTMORTEM_GLOBS = [
+    "docs/postmortems/*.md",
+    "docs/incidents/*.md",
+    "docs/incident-reviews/*.md",
+    "postmortems/*.md",
+]
+
+
+def incident_learning(ctx):
+    """Pass when a postmortem/incident-review home has ≥1 filled markdown file."""
+    for path in ctx.static.glob(_POSTMORTEM_GLOBS):
+        ok, rationale = filled(ctx, path, "incident learning doc")
+        if ok:
+            return passed(rationale, [ev("incident learning", source=path, tier="T0")])
+    return failed(
+        "No filled incident-learning docs "
+        "(docs/postmortems/, docs/incidents/, docs/incident-reviews/, or postmortems/)."
+    )
