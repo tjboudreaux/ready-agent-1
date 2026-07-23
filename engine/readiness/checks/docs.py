@@ -5,7 +5,10 @@ import re
 from datetime import datetime
 
 from ..parsers import load_jsonc
-from ._helpers import PLACEHOLDER_RE, adep, aglob, ev, failed, filled, passed, skipped, tool_invoked, unknown
+from ._helpers import (
+    PLACEHOLDER_RE, acdc_config, adep, aglob, check_needles, ev, failed, filled, passed,
+    skipped, tool_invoked, unknown,
+)
 
 
 def readme(ctx):
@@ -114,6 +117,83 @@ def agents_md_ci_validation(ctx):
         if "agents.md" in (ctx.static.read(f) or "").lower():
             return passed(f"AGENTS.md validated in CI: {f}", [ev("AGENTS.md CI check", source=f)])
     return failed("AGENTS.md present but no CI job validates its commands.")
+
+
+_AGENT_INSTRUCTION_FILES = [
+    "AGENTS.md", "CLAUDE.md", ".claude/CLAUDE.md", "GEMINI.md",
+    ".github/copilot-instructions.md", ".cursorrules", ".cursor/rules/*.md",
+    ".cursor/rules/*.mdc", ".windsurfrules",
+]
+_VERIFY_HEADING_RE = re.compile(
+    r"(?im)^#{1,6}[^\n]*\b(verif\w*|test\w*|check\w*|validat\w*|lint\w*)\b"
+)
+_VERIFY_IMPERATIVE_RE = re.compile(
+    r"(?i)\b(run|execute)\b[^.\n]{0,120}\b(tests?|lint\w*|checks?|verif\w*|type-?check\w*)"
+)
+_RUNNABLE_PHRASES = (
+    "make ", "npm test", "npm run check", "npm run verify", "npm run validate",
+    "npm run lint", "npm run test", "yarn test", "yarn lint", "pnpm test",
+    "pnpm lint", "python3 -m", "python -m", "go test", "go vet", "cargo test",
+    "cargo clippy", "ra1 report", "sonar analyze",
+)
+
+
+def _line_number(text, offset):
+    return text.count("\n", 0, offset)
+
+
+def _runnable_command_spans(text):
+    spans = []
+    patterns = (re.compile(r"(?ms)```[^\n]*\n(.*?)```"), re.compile(r"(?<!`)`([^`\n]+)`(?!`)"))
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            command = match.group(1)
+            low = command.lower()
+            if check_needles(command) or any(phrase in low for phrase in _RUNNABLE_PHRASES):
+                spans.append((_line_number(text, match.start()), _line_number(text, match.end())))
+    return spans
+
+
+def _has_local_verify_contract(text):
+    spans = _runnable_command_spans(text)
+    if not spans:
+        return False
+    for heading in _VERIFY_HEADING_RE.finditer(text):
+        heading_line = _line_number(text, heading.start())
+        if any(heading_line < start <= heading_line + 10 for start, _ in spans):
+            return True
+    lines = text.splitlines()
+    for imperative in _VERIFY_IMPERATIVE_RE.finditer(text):
+        line = _line_number(text, imperative.start())
+        next_nonblank = None
+        for index in range(line + 1, len(lines)):
+            if lines[index].strip():
+                next_nonblank = index
+                break
+        allowed = {line}
+        if next_nonblank is not None:
+            allowed.add(next_nonblank)
+        if any(start in allowed for start, _ in spans):
+            return True
+    return False
+
+
+def agent_verify_contract(ctx):
+    configured = acdc_config(ctx).get("instruction_files")
+    configured_patterns = [item for item in configured if isinstance(item, str)] if isinstance(configured, list) else []
+    configured_files = set(ctx.static.glob(configured_patterns))
+    files = ctx.static.glob(_AGENT_INSTRUCTION_FILES + configured_patterns)
+    if not files:
+        return failed("No agent instruction file (AGENTS.md/CLAUDE.md/.cursor rules) to carry a verification contract.")
+    for path in files:
+        if _has_local_verify_contract(ctx.static.read(path) or ""):
+            evidence = [ev("verification contract", source=path)]
+            if path in configured_files:
+                evidence.append(ev("acdc.instruction_files", source=".agents/readiness/config.json"))
+            return passed(f"{path} instructs agents to verify with a runnable command.", evidence)
+    return failed(
+        "Agent instruction files never direct the agent to verify its changes with a runnable command (AC/DC Guide stage)."
+    )
 
 
 _ARCH_FILES = ["docs/architecture*.md", "ARCHITECTURE.md", "docs/adr/**", "docs/decisions/**",

@@ -1,0 +1,11 @@
+{
+  "name": "docs-agent-verify-contract-pass",
+  "description": "docs.agent_verify_contract pass: an agent instruction heading locally pairs with a runnable verify command.",
+  "detect": {"project_type": "service"},
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "app/main.py": "x = 1\n",
+    "AGENTS.md": "## Verification\n\n```sh\nmake check\n```\n"
+  },
+  "expected": {"docs.agent_verify_contract": "pass"}
+}

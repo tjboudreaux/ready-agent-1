@@ -1,0 +1,11 @@
+{
+  "name": "devenv-agent-hooks-pass",
+  "description": "devenv.agent_hooks pass: a Claude Code PostToolUse hook executes a recognized check command.",
+  "detect": {"project_type": "service"},
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "app/main.py": "x = 1\n",
+    ".claude/settings.json": "{\"hooks\":{\"PostToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"ruff check .\"}]}]}}"
+  },
+  "expected": {"devenv.agent_hooks": "pass"}
+}

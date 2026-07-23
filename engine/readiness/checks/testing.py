@@ -1,7 +1,9 @@
 """Testing checks."""
 from __future__ import annotations
 
-from ._helpers import adep, aglob, ev, failed, passed, skipped
+import re
+
+from ._helpers import adep, aglob, ev, failed, passed, skipped, tool_invoked
 
 _UNIT_PATTERNS = [
     "**/*_test.go", "**/test_*.py", "**/*_test.py", "**/*.test.ts", "**/*.test.js",
@@ -129,6 +131,69 @@ def coverage_threshold(ctx):
         return failed(f"Coverage configured ({cfg}) but not enforced in CI.")
     return passed(f"Coverage configured ({cfg}) and enforced in CI ({enforced}).",
                   [ev("coverage config", source=cfg), ev("CI enforcement", source=enforced)])
+
+
+
+def _workflow_with(ctx, needle):
+    for path in ctx.static.glob([".github/workflows/*.yml", ".github/workflows/*.yaml"]):
+        if needle in (ctx.static.read(path) or "").lower():
+            return path
+    return ""
+
+
+def new_code_quality_gate(ctx):
+    missing_wiring = []
+
+    for path in ("codecov.yml", ".codecov.yml"):
+        text = ctx.static.read(path)
+        if text and re.search(r"(?m)^\s*patch\s*:", text):
+            workflow = _workflow_with(ctx, "codecov")
+            if workflow:
+                return passed(
+                    "New-code quality gate (codecov patch) configured and wired for enforcement.",
+                    [ev("new-code gate", source=path)],
+                )
+            missing_wiring.append("codecov patch")
+            break
+
+    diff_cover = tool_invoked(ctx, ["diff-cover", "diff_cover"])
+    if diff_cover:
+        return passed(
+            "New-code quality gate (diff-cover) configured and wired for enforcement.",
+            [ev("new-code gate", source=diff_cover)],
+        )
+
+    sonar_config = next(
+        (path for path in ("sonar-project.properties", ".sonarcloud.properties") if ctx.static.glob([path])),
+        "",
+    )
+    if sonar_config:
+        workflow = _workflow_with(ctx, "sonar")
+        if workflow:
+            return passed(
+                "New-code quality gate (sonar) configured and wired for enforcement.",
+                [ev("new-code gate", source=sonar_config)],
+            )
+        missing_wiring.append("sonar")
+
+    qodana_config = next(
+        (path for path in ("qodana.yaml", "qodana.yml") if ctx.static.glob([path])),
+        "",
+    )
+    if qodana_config:
+        workflow = _workflow_with(ctx, "qodana")
+        if workflow:
+            return passed(
+                "New-code quality gate (qodana) configured and wired for enforcement.",
+                [ev("new-code gate", source=qodana_config)],
+            )
+        missing_wiring.append("qodana")
+
+    if missing_wiring:
+        return failed(f"New-code gate config present ({missing_wiring[0]}) but no enforcement wiring found.")
+    return failed(
+        "No new-code quality gate; nothing bounds the quality of an agent's next code payload (AC/DC outer loop)."
+    )
 
 
 def flake_quarantine(ctx):

@@ -83,6 +83,42 @@ These criteria are **not** L0-L3 loop-autonomy clearance, behavioral smoke/gate 
 proof that a denylist/schema is semantically correct or enforced. They only say that a
 maintainer-owned contract exists and is not obviously empty or placeholder text.
 
+
+### Verification loop advisory cluster (AC/DC-derived)
+
+Engine/registry 0.6.0 adds four always-on T0 criteria that operationalize Sonar's
+Guide → Verify → Solve model across the fast inner loop and the task/PR outer loop:
+
+- `build.check_command` (L2) — a single `check`/`verify` entrypoint chains lint, type, and test tools,
+  or resolves from a maintainer-designated `acdc.verify_command`.
+- `docs.agent_verify_contract` (L3) — one agent instruction file locally pairs an instruction to
+  verify with a runnable command (Guide).
+- `devenv.agent_hooks` (L4) — a machine-enforced post-edit hook executes a recognized check command
+  (inner-loop Verify), rather than merely telling the agent what to do.
+- `testing.new_code_quality_gate` (L4) — codecov patch, diff-cover, Sonar, or Qodana is configured and
+  wired to bound changed-code quality (outer-loop Verify).
+
+All four are `gating: false`; they appear as advisory improvements and graduate only under the
+standard fixture and evidence rules. `testing.coverage_threshold` measures an absolute repository
+coverage floor, while `testing.new_code_quality_gate` measures only new or changed code. Likewise,
+`docs.agent_verify_contract` credits persistent guidance, while `devenv.agent_hooks` requires an
+executed hook.
+
+The optional `acdc` block in `.agents/readiness/config.json` supports `verify_command`,
+`instruction_files`, and `hook_files`. Declarations are still resolved against repository files or
+recognized commands, and every config-driven pass cites `.agents/readiness/config.json`. A declared
+hook file is presence- and command-checked but not executed by T0; that residual maintainer trust is
+visible in its config-cited evidence. The vendor-agnostic adoption pack under `templates/acdc/`
+contains a workflow directive plus Guide, Verify, and Solve skill templates.
+
+Known limit: `testing.new_code_quality_gate` detects only codecov patch status, diff-cover, Sonar,
+and Qodana. Custom gates such as this repo's `scripts/coverage_gate.py` remain an intentional false-
+negative class until a follow-up adds a verified schema.
+
+Sources: [Sonar AC/DC overview](https://www.sonarsource.com/blog/the-future-is-ac-dc-the-agent-centric-development-cycle/),
+[AC/DC documentation](https://docs.sonarsource.com/agent-centric-development-cycle), and the
+[downloadable workflow pack](https://www.sonarsource.com/agent-centric-development/).
+
 ### Build System (deterministic candidates)
 - **Agentic Development** (`build.agentic_development`, T1) — shipped advisory in 0.4.0: agent
   co-authorship trailers in recent history. Graduates only after the fixture corpus covers

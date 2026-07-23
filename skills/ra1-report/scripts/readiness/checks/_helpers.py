@@ -89,6 +89,32 @@ def atool(ctx, name):
 
 _SOURCE_EXTS = ("py", "js", "ts", "tsx", "jsx", "go", "java", "rb", "cs")
 
+CHECK_TOOL_NEEDLES = (
+    "pytest", "unittest", "ruff", "flake8", "eslint", "biome", "mypy", "pyright",
+    "tsc", "go vet", "go test", "cargo test", "cargo clippy", "golangci-lint",
+    "vitest", "jest", "rspec", "rubocop",
+)
+
+
+def check_needles(text) -> set[str]:
+    """Return distinct recognized verification tools mentioned in ``text``."""
+    text_lower = text.lower()
+    return {
+        needle
+        for needle in CHECK_TOOL_NEEDLES
+        if re.search(
+            r"(?<![\w-])" + re.escape(needle) + r"(?![\w-])", text_lower
+        )
+    }
+
+
+def acdc_config(ctx):
+    """Return the optional vendor-agnostic AC/DC readiness config block."""
+    from ..detect import load_readiness_config
+
+    value = load_readiness_config(ctx.root, ctx.options).get("acdc")
+    return value if isinstance(value, dict) else {}
+
 
 def agrep(ctx, patterns, exts=_SOURCE_EXTS, limit=400):
     """Return the first app source file whose text matches any regex in ``patterns``, else None.
@@ -144,7 +170,6 @@ def _invocation_source(static, needles, prefix="."):
     if _scripts_invoked(pkg, needles):
         return _source(prefix, "package.json")
     return ""
-
 
 
 def tool_invoked(ctx, names):

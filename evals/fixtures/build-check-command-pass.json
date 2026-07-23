@@ -1,0 +1,11 @@
+{
+  "name": "build-check-command-pass",
+  "description": "build.check_command pass: a named Make target chains lint and tests.",
+  "detect": {"project_type": "service"},
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "app/main.py": "x = 1\n",
+    "Makefile": "check:\n\truff check . && python3 -m pytest\n"
+  },
+  "expected": {"build.check_command": "pass"}
+}

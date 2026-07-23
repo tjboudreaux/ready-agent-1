@@ -1,6 +1,8 @@
 import unittest
+from unittest import mock
 
 from readiness.checks import build, devenv, docs, loop, observability, product, security, style, taskdisc, testing
+from readiness.checks._helpers import acdc_config, check_needles
 from readiness.collectors.git import GitCollector
 from readiness.collectors.github import GithubCollector
 from readiness.collectors.static import StaticCollector
@@ -656,6 +658,290 @@ class TestG4DocsProduct(CheckCase):
             {"package.json": '{"dependencies":{"@sentry/node":"^7"}}'}))), Status.FAIL)  # tracker only
         self.assertEqual(self.s(product.error_to_insight(self.ctx(
             {".github/workflows/s.yml": "name: s\nsteps:\n  - uses: getsentry/action-release@v1\n"}))), Status.FAIL)  # integ only
+
+
+class TestAcdcVerificationLoop(CheckCase):
+    def test_shared_helpers(self):
+        self.assertEqual(check_needles("ESLint . && TSC"), {"eslint", "tsc"})
+        self.assertEqual(check_needles("node scripts/gen-tsconfig.js"), set())
+        self.assertEqual(check_needles("jest --coverage"), {"jest"})
+        self.assertEqual(check_needles("cargo test"), {"cargo test"})
+        valid = self.ctx({".agents/readiness/config.json": '{"acdc":{"verify_command":"make check"}}'})
+        self.assertEqual(acdc_config(valid), {"verify_command": "make check"})
+        invalid = self.ctx({".agents/readiness/config.json": '{"acdc":[]}'})
+        self.assertEqual(acdc_config(invalid), {})
+
+    def test_check_command_make_and_prerequisites(self):
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "Makefile": "check:\n\truff check . && pytest\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "Makefile": "check: lint test MODE=fast\n\nlint:\n\truff check .\n\ntest:\n\tpytest\n",
+        }))), Status.PASS)
+
+    def test_check_command_package_scripts(self):
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "package.json": '{"scripts":{"check":"eslint . && tsc"}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "package.json": '{"scripts":{"check":"run-s lint test","lint":"eslint .","test":"vitest run"}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "package.json": '{"scripts":{"verify":"npm run lint && yarn test","lint":"eslint .","test":"jest"}}',
+        }))), Status.PASS)
+
+    def test_check_command_file_entrypoints(self):
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "scripts/check.sh": "#!/bin/sh\nruff check .\npytest\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "justfile": "check:\n    ruff check .\n    pytest\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "Taskfile.yml": "version: '3'\ntasks:\n  check:\n    cmds:\n      - ruff check .\n      - pytest\n  other:\n    cmds: [echo]\n",
+        }))), Status.PASS)
+
+    def test_check_command_config_designations(self):
+        config = '{"schema_version":"1","acdc":{"verify_command":"make check"}}'
+        verdict = build.check_command(self.ctx({
+            ".agents/readiness/config.json": config,
+            "Makefile": "check:\n\tpytest\n",
+        }))
+        self.assertEqual(self.s(verdict), Status.PASS)
+        self.assertTrue(any(e.source == ".agents/readiness/config.json" for e in verdict.evidence))
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"npm run check"}}',
+            "package.json": '{"scripts":{"check":"jest --coverage"}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"scripts/check.sh"}}',
+            "scripts/check.sh": "pytest\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"ruff check ."}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"python3 -m unittest"}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"task check"}}',
+            "Taskfile.yaml": "tasks:\n  check:\n    cmds: [pytest]\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": config,
+        }))), Status.FAIL)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":42}}',
+            "Makefile": "check:\n\truff check . && pytest\n",
+        }))), Status.PASS)
+
+    def test_check_command_failures(self):
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "Makefile": "check:\n\tpytest\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "package.json": '{"scripts":{"check":"jest --coverage"}}',
+        }))), Status.FAIL)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "package.json": '{"scripts":{"check":"node scripts/gen-tsconfig.js"}}',
+        }))), Status.FAIL)
+        self.assertEqual(self.s(build.check_command(self.ctx({}))), Status.FAIL)
+
+    def test_agent_verify_contract_passes(self):
+        cases = [
+            {"AGENTS.md": "## Build & Test\n\n```sh\npython3 -m unittest\n```\n"},
+            {"CLAUDE.md": "Always run `npm test` after every change.\n"},
+            {".cursor/rules/verify.mdc": "## Verification\n`pnpm lint`\n"},
+            {"AGENTS.md": "## VERIFY phase\nRun `sonar analyze --file src/a.py` after edits.\n"},
+        ]
+        for files in cases:
+            with self.subTest(files=files):
+                self.assertEqual(self.s(docs.agent_verify_contract(self.ctx(files))), Status.PASS)
+        configured = docs.agent_verify_contract(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"instruction_files":["docs/agent-guide.md",42]}}',
+            "docs/agent-guide.md": "Execute verification with `ra1 report --project .`.\n",
+        }))
+        self.assertEqual(self.s(configured), Status.PASS)
+        self.assertTrue(any(e.summary == "acdc.instruction_files" for e in configured.evidence))
+
+    def test_agent_verify_contract_failures(self):
+        cases = [
+            {"AGENTS.md": "## Testing\nTBD\n\n" + "filler\n" * 11 + "## Setup\n`pnpm install`\n"},
+            {"AGENTS.md": "## Setup\n```sh\npython3 -m pytest\n```\n"},
+            {"AGENTS.md": "## Verification\nNo command is documented.\n"},
+            {
+                ".agents/readiness/config.json": '{"acdc":{"instruction_files":["docs/agent-guide.md"]}}',
+                "docs/agent-guide.md": "## Verification\nDescribe checks without a command.\n",
+            },
+            {},
+        ]
+        for files in cases:
+            with self.subTest(files=files):
+                self.assertEqual(self.s(docs.agent_verify_contract(self.ctx(files))), Status.FAIL)
+
+    def test_agent_hooks_passes(self):
+        self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
+            ".claude/settings.json": '{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"ruff check ."}]}]}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
+            ".claude/settings.json": '{"hooks":{"Stop":{"command":"ra1 report --project ."}}}',
+        }))), Status.PASS)
+        configured = devenv.agent_hooks(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh",7]}}',
+            ".agents/hooks/post-edit.sh": "#!/bin/sh\nruff check .\n",
+        }))
+        self.assertEqual(self.s(configured), Status.PASS)
+        self.assertTrue(any(e.summary == "acdc.hook_files" for e in configured.evidence))
+
+    def test_agent_hooks_fallthrough_and_failures(self):
+        cases = [
+            {".agents/readiness/config.json": '{"acdc":{"hook_files":["missing/*.sh"]}}'},
+            {
+                ".agents/readiness/config.json": '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh"]}}',
+                ".agents/hooks/post-edit.sh": "#!/bin/sh\necho done\n",
+            },
+            {".claude/settings.json": '{"permissions":{}}'},
+            {".claude/settings.json": "{invalid"},
+            {".claude/settings.json": '{"hooks":{"PostToolUse":[{"command":"echo done"}]}}'},
+            {".cursor/rules/always.mdc": "---\nalwaysApply: true\n---\nRun eslint after edits.\n"},
+            {},
+        ]
+        for files in cases:
+            with self.subTest(files=files):
+                self.assertEqual(self.s(devenv.agent_hooks(self.ctx(files))), Status.FAIL)
+
+    def test_new_code_quality_gate_passes(self):
+        cases = [
+            {
+                "codecov.yml": "coverage:\n  status:\n    patch:\n      default:\n        target: 80%\n",
+                ".github/workflows/ci.yml": "uses: codecov/codecov-action@v5\n",
+            },
+            {
+                "sonar-project.properties": "sonar.projectKey=x\n",
+                ".github/workflows/ci.yaml": "run: sonar analyze\n",
+            },
+            {"Makefile": "quality:\n\tdiff-cover coverage.xml\n"},
+            {".github/workflows/ci.yml": "run: diff_cover coverage.xml\n"},
+            {
+                "qodana.yaml": "version: 1.0\n",
+                ".github/workflows/ci.yml": "uses: JetBrains/qodana-action@v2026\n",
+            },
+        ]
+        for files in cases:
+            with self.subTest(files=files):
+                self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx(files))), Status.PASS)
+
+    def test_new_code_quality_gate_failures(self):
+        cases = [
+            {"codecov.yml": "coverage:\n  status:\n    patch:\n"},
+            {"sonar-project.properties": "sonar.projectKey=x\n"},
+            {},
+        ]
+        for files in cases:
+            with self.subTest(files=files):
+                self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx(files))), Status.FAIL)
+
+
+    def test_check_command_edge_branches(self):
+        passes = [
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"just check"}}',
+                "Justfile": "check:\n    pytest\n",
+            },
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"just check"}}',
+                "Justfile": "lint:\n    ruff check .\n",
+                "justfile": "check:\n    pytest\n",
+            },
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"yarn check"}}',
+                "package.json": '{"scripts":{"check":"pytest"}}',
+            },
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"pnpm run check"}}',
+                "package.json": '{"scripts":{"check":"pytest"}}',
+            },
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"./scripts/check.sh"}}',
+                "scripts/check.sh": "pytest\n",
+            },
+            {"Makefile": "check: absent\n\truff check . && pytest\n"},
+            {"package.json": '{"scripts":{"validate":"run-p --print-label lint missing test","lint":"eslint .","test":"jest"}}'},
+        ]
+        for files in passes:
+            with self.subTest(pass_files=files):
+                self.assertEqual(self.s(build.check_command(self.ctx(files))), Status.PASS)
+        failures = [
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"task check"}}',
+                "Taskfile.yml": "tasks:\n  lint:\n    cmds: [ruff]\n",
+            },
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"npm run missing"}}',
+                "package.json": '{"scripts":{"check":"pytest"}}',
+            },
+            {".agents/readiness/config.json": '{"acdc":{"verify_command":"custom verify"}}'},
+            {"Makefile": "lint:\n\truff check .\n"},
+            {"Taskfile.yml": "tasks:\n  lint:\n    cmds: [ruff]\n"},
+            {"Taskfile.yml": "tasks:\n  check:\n    cmds:\n      - pytest\n"},
+            {"scripts/verify.sh": "pytest\n"},
+            {"package.json": '{"scripts":{"build":"tsc"}}'},
+        ]
+        for files in failures:
+            with self.subTest(fail_files=files):
+                self.assertEqual(self.s(build.check_command(self.ctx(files))), Status.FAIL)
+
+    def test_contract_locality_edges(self):
+        self.assertEqual(self.s(docs.agent_verify_contract(self.ctx({
+            "AGENTS.md": "Run verification now.\n\n`npm test`\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(docs.agent_verify_contract(self.ctx({
+            "AGENTS.md": "## Verification\n" + "filler\n" * 11 + "`npm test`\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(docs.agent_verify_contract(self.ctx({
+            "AGENTS.md": "Run verification now.\nnot the command\n\n`npm test`\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(docs.agent_verify_contract(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"instruction_files":{}}}',
+            "AGENTS.md": "## Verification\n`make check`\n",
+        }))), Status.PASS)
+
+    def test_agent_hook_vendor_needles(self):
+        self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh"]}}',
+            ".agents/hooks/post-edit.sh": "sonar analyze --file src/a.py\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
+            ".claude/settings.json": '{"hooks":{"PostToolUse":{"command":"sonar analyze"}}}',
+        }))), Status.PASS)
+
+    def test_new_code_quality_gate_edges(self):
+        self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx({
+            "qodana.yml": "version: 1.0\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx({
+            ".codecov.yml": "coverage:\n  status:\n    patch:\n",
+            ".github/workflows/a.yml": "run: echo no-match\n",
+            ".github/workflows/z.yml": "uses: codecov/codecov-action@v5\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx({
+            "codecov.yml": "coverage:\n  status:\n    project:\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx({
+            "sonar-project.properties": "sonar.projectKey=x\n",
+            "qodana.yml": "version: 1.0\n",
+            ".github/workflows/ci.yml": "uses: JetBrains/qodana-action@v2026\n",
+        }))), Status.PASS)
+
+
+    def test_configured_entrypoint_checks_all_candidate_files(self):
+        ctx = self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"just check"}}',
+            "first": "lint:\n    ruff check .\n",
+            "second": "check:\n    pytest\n",
+        })
+        with mock.patch.object(build, "aglob", return_value=["first", "second"]):
+            self.assertEqual(self.s(build.check_command(ctx)), Status.PASS)
 
 
 class TestDoraAdvisoryChecks(CheckCase):

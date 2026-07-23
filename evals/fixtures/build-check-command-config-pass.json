@@ -1,0 +1,12 @@
+{
+  "name": "build-check-command-config-pass",
+  "description": "build.check_command pass: maintainer designation resolves an unconventional single-tool entrypoint and cites config.",
+  "detect": {"project_type": "service"},
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "app/main.py": "x = 1\n",
+    ".agents/readiness/config.json": "{\"schema_version\":\"1\",\"acdc\":{\"verify_command\":\"make check\"}}",
+    "Makefile": "check:\n\tpytest\n"
+  },
+  "expected": {"build.check_command": "pass"}
+}

@@ -1638,6 +1638,91 @@
     "engine_min_version": "0.5.0"
   },
   {
+    "id": "build.check_command",
+    "pillar": "Build System",
+    "title": "Single Verify Command",
+    "level": 2,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.check_command",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "docs.agent_verify_contract",
+    "pillar": "Documentation",
+    "title": "Agent Verification Contract",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "docs.agent_verify_contract",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "propose",
+      "template": "acdc/workflow.md",
+      "autofixable": false
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "devenv.agent_hooks",
+    "pillar": "Dev Environment",
+    "title": "Post-Edit Verification Hooks",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "devenv.agent_hooks",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "testing.new_code_quality_gate",
+    "pillar": "Testing",
+    "title": "New-Code Quality Gate",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "testing.new_code_quality_gate",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
     "id": "judgment.naming_consistency",
     "pillar": "Style & Validation",
     "title": "Naming Consistency",

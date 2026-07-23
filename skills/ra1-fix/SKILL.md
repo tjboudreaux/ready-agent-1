@@ -44,6 +44,12 @@ scaffolds; you handle git and author any prose. Three buckets, three different s
 5. **Author the "Propose" items yourself** — README sections, a tailored `AGENTS.md`, runbooks, a first
    test. Write these as **drafts for the user to review**; do not invent facts about the codebase.
    `templates/AGENTS.md` is a starting skeleton — fill it from what the repo actually does.
+   - When the Propose list contains `docs.agent_verify_contract`, draft the workflow section from
+     `templates/acdc/workflow.md`. Fill `<VERIFY_COMMAND>` in this order: `acdc.verify_command`,
+     `build.check_command` evidence, then the documented test command. Fill `<GUIDE_DOCS>` only from
+     architecture docs actually identified in the report. Offer `templates/acdc/guide-skill.md`,
+     `verify-skill.md`, and `solve-skill.md` as optional additions under the repo's skills directory.
+     Treat the workflow and skills as drafts for review; never auto-apply them.
 
 6. **Show the diff and commit locally.** Summarize changes, then:
    ```bash
