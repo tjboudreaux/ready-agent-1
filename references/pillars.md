@@ -16,10 +16,10 @@ document is the source of truth for what comes next and the rules for getting th
 | **T3 execution** | running the repo's own lint/test/build | **OFF** — opt-in only, behind a sandbox contract (no network, scrubbed env, isolated copy, timeout, command allowlist); CI status from T2 substitutes |
 | **T4 agent** | qualitative judgment (naming, doc quality, modularization) | skills only, **advisory** — never changes the score |
 
-## Current gating set (v0.5.0 — 32 deterministic gating criteria)
+## Current gating set (v0.6.0 — 32 deterministic gating criteria)
 
-Generated from `registry.json` v0.5.0; if this table and the registry disagree, the registry wins.
-The gating set is **unchanged at 32**. 0.5.0 adds a large advisory tier (Factory-parity gap closure:
+Generated from `registry.json` v0.6.0; if this table and the registry disagree, the registry wins.
+The gating set is **unchanged at 32**. 0.5.0 added a large advisory tier (Factory-parity gap closure:
 Style code-health, observability/security depth, build/dev-env hygiene, docs/product), nine
 agent-graded `judgment.*` criteria with an ESLint-style ignore (`.agents/readiness/config.json`
 `judgments`), and two T3 execution criteria — all non-gating. See the CHANGELOG for the full list.
@@ -129,6 +129,28 @@ maintainer-owned contract exists and is not obviously empty or placeholder text.
   Service-Flow documentation quality · Runbooks.
 - T4 judgments are rendered by the skills as advisory commentary and never change the
   deterministic score.
+
+
+### DORA-derived advisory criteria (0.6.0)
+
+Engine/registry 0.6.0 adds ten always-on advisory criteria grounded in the DORA decade + AI
+Capabilities Model crosswalk (`references/dora-crosswalk.md`). All are `gating: false`.
+Repo-level proxies stay honest (`partial` in the crosswalk); they do not claim full DORA coverage.
+
+| id | One-line DORA rationale |
+|---|---|
+| `build.small_batches` | LOC-churn proxy for DORA small batches / AI capability #5 (heuristic, not releasability). |
+| `build.integration_frequency` | Activity-anchored integration cadence proxy for CI/trunk short-cycle delivery. |
+| `taskdisc.review_latency` | Median first-review latency ≤48h — fast peer review lever (2023). |
+| `observability.slo_definitions` | Reliability-contract artifact + CI/deploy wiring (SRE/SLO line). |
+| `observability.incident_learning` | Postmortem/incident-review docs proxy for learning-from-failure. |
+| `docs.ai_stance` | Discoverable AI usage policy — AI capability #1 (repo proxy). |
+| `security.agent_permissions` | Shared least-privilege agent deny/restrictive-allow config (2026 guidance). |
+| `docs.machine_context` | MCP/`llms.txt` machine-readable context beyond AGENTS.md — AI capability #3. |
+| `build.agent_config_versioned` | Prompts/agent configs with multi-commit history — AI #4 + 2026 guidance. |
+| `judgment.user_feedback_loop` | T4 forever: feedback reaches prioritization — AI capability #6. |
+
+`build.agentic_development` remains adoption evidence only and is not a readiness claim.
 
 ## Graduation rules (advisory → gating)
 
