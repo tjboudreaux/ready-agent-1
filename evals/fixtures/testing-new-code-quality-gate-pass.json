@@ -1,0 +1,12 @@
+{
+  "name": "testing-new-code-quality-gate-pass",
+  "description": "testing.new_code_quality_gate pass: Codecov patch coverage is configured and wired in CI.",
+  "detect": {"project_type": "service"},
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "app/main.py": "x = 1\n",
+    "codecov.yml": "coverage:\n  status:\n    patch:\n      default:\n        target: 80%\n",
+    ".github/workflows/ci.yml": "steps:\n  - uses: codecov/codecov-action@v5\n"
+  },
+  "expected": {"testing.new_code_quality_gate": "pass"}
+}

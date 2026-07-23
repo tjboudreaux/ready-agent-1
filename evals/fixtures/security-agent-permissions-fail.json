@@ -1,0 +1,14 @@
+{
+  "name": "security-agent-permissions-fail",
+  "description": "security.agent_permissions fail: only settings.local.json (not shared) with deny.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    ".claude/settings.local.json": "{\n  \"permissions\": {\n    \"deny\": [\"Bash(rm *)\"]\n  }\n}\n"
+  },
+  "expected": {
+    "security.agent_permissions": "fail"
+  }
+}

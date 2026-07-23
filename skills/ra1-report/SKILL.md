@@ -4,7 +4,7 @@ description: Ready Agent 1 scans your repo for agent-readiness — a determinist
 license: MIT
 compatibility: Python 3.11+; optional authenticated gh CLI for GitHub (T2) checks
 metadata:
-  version: 0.5.0
+  version: 0.6.0
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
@@ -42,9 +42,26 @@ score**; you (the agent) add **advisory** commentary only. You must never change
 
 4. **Add a `## T4 Advisory` section** (qualitative, non-gating). The engine deliberately leaves these
    soft judgments to you; label each clearly as advisory opinion grounded strictly in engine findings
-   and files you actually read. Use these labelled sub-headings:
-   - **Naming consistency** · **Code modularization** · **README quality** · **AGENTS.md quality** ·
-     **Service-flow docs** · **Runbook usefulness** · **Autonomy workflow maturity**.
+   and files you actually read. Use one labelled sub-heading per registered judgment id:
+   - **Naming Consistency** (`naming_consistency`)
+   - **Code Modularization** (`code_modularization`)
+   - **N+1 Query Avoidance** (`n_plus_one_query`)
+   - **README Quality** (`readme_quality`)
+   - **AGENTS.md Quality** (`agents_md_quality`)
+   - **Service-Flow Documentation Quality** (`service_flow_doc_quality`)
+   - **Runbook Quality** (`runbooks_quality`)
+   - **PII Handling** (`pii_handling`)
+   - **Privacy Compliance** (`privacy_compliance`)
+   - **User Feedback Loop** (`user_feedback_loop`) — judged question: "Is there evidence user/customer
+     feedback reaches prioritization — feedback issue templates or categories, triage labels in use,
+     product metrics beside technical metrics, or documented feedback→backlog flow?"
+   - **Verification-loop (AC/DC) maturity** — map engine findings onto *Guide*
+     (`docs.agents_md*`, `docs.agent_verify_contract`, `docs.architecture_doc`), *inner-loop Verify*
+     (`build.check_command`, `devenv.agent_hooks`), *outer-loop Verify* (`build.ci_runs_tests`,
+     `testing.coverage_threshold`, `testing.new_code_quality_gate`, `security.branch_protection`),
+     and *Solve* (`style.precommit_hooks`, ra1-fix). Name the single highest-leverage missing stage.
+     When a stage fails, point to the `acdc` config block and `templates/acdc/` pack as the
+     remediation path; keep this mapping advisory and never alter the engine score.
    For each, cite the specific file/finding, explain *why* it matters, and give the highest-leverage
    next step. Example (good): "AGENTS.md quality (advisory): the build section names `make test` but
    the repo uses `pytest` (see AGENTS.md L12 vs pyproject) — align them so an agent picks the right

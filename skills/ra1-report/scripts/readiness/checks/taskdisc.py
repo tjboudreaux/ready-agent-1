@@ -1,7 +1,9 @@
 """Task Discovery checks (issue/PR hygiene)."""
 from __future__ import annotations
 
-from ._helpers import ev, failed, passed, skipped
+from statistics import median
+
+from ._helpers import ev, failed, parse_iso, passed, skipped
 
 # GitHub's default label set; a real taxonomy means labels beyond these.
 _DEFAULT_LABELS = {
@@ -66,3 +68,32 @@ def actionable_backlog_items(ctx):
         return passed(f"{int(ratio * 100)}% of open issues are actionable (labeled/milestoned + body).",
                       [ev("actionable backlog", tier="T2")])
     return failed(f"Only {int(ratio * 100)}% of open issues are actionable (<60%).")
+
+
+def review_latency(ctx):
+    """Pass when median first-review latency on recent merged PRs is ≤ 48 hours."""
+    from datetime import timezone
+
+    if not ctx.github.available:
+        return skipped("no GitHub API")
+    prs = ctx.github.recent_merged_prs(20)
+    latencies = []
+    for pr in prs:
+        if not isinstance(pr, dict):
+            continue
+        created = parse_iso(pr.get("created_at"))
+        first = parse_iso(ctx.github.pr_first_review_iso(pr.get("number")))
+        if not created or not first:
+            continue
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if first.tzinfo is None:
+            first = first.replace(tzinfo=timezone.utc)
+        latencies.append((first - created).total_seconds() / 3600.0)
+    if len(latencies) < 5:
+        return skipped("insufficient reviewed PRs")
+    med = median(latencies)
+    evidence = [ev(f"median first-review {med:.1f}h (n={len(latencies)})", tier="T2")]
+    if med <= 48:
+        return passed(f"Median first-review latency {med:.1f}h ≤ 48h (n={len(latencies)}).", evidence)
+    return failed(f"Median first-review latency {med:.1f}h > 48h (n={len(latencies)}).", evidence)

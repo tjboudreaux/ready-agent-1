@@ -1,0 +1,14 @@
+{
+  "name": "security-agent-permissions-pass",
+  "description": "security.agent_permissions pass: shared .claude/settings.json with deny list.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    ".claude/settings.json": "{\n  \"permissions\": {\n    \"deny\": [\"Bash(rm *)\", \"Read(.env)\"]\n  }\n}\n"
+  },
+  "expected": {
+    "security.agent_permissions": "pass"
+  }
+}

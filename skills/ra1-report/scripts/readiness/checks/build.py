@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from statistics import median
 
-from ._helpers import adep, aglob, ev, failed, passed, skipped, tool_invoked, unknown
+from ._helpers import (
+    acdc_config, adep, aglob, check_needles, ev, failed, parse_iso, passed, skipped,
+    tool_invoked, unknown,
+)
 
 
 def deps_pinned(ctx):
@@ -99,6 +103,155 @@ def build_command_documented(ctx):
             return passed(f"Build command documented under a Build section in {doc}.",
                           [ev("documented build command", source=doc)])
     return failed("No explicit build command in package config or docs (Makefile targets not inferred).")
+
+
+def _target_recipe(text, name):
+    match = re.search(r"(?m)^" + re.escape(name) + r"\s*:(.*)$", text)
+    if not match:
+        return None, ""
+    lines = text[match.end():].splitlines()
+    recipe = []
+    for line in lines:
+        if line and not line[0].isspace():
+            break
+        recipe.append(line)
+    return match, "\n".join(recipe)
+
+
+def _configured_verify_command(ctx, command):
+    tokens = command.split()
+    if len(tokens) >= 2 and tokens[0] in {"make", "just"}:
+        patterns = ["Makefile"] if tokens[0] == "make" else ["Justfile", "justfile"]
+        for path in aglob(ctx, patterns):
+            if re.search(r"(?m)^" + re.escape(tokens[1]) + r"\s*:", ctx.app_static().read(path) or ctx.static.read(path) or ""):
+                return path
+        return ""
+    if len(tokens) >= 2 and tokens[0] == "task":
+        for path in aglob(ctx, ["Taskfile.yml", "Taskfile.yaml"]):
+            if re.search(r"(?m)^\s*" + re.escape(tokens[1]) + r"\s*:", ctx.app_static().read(path) or ctx.static.read(path) or ""):
+                return path
+        return ""
+    script = ""
+    if len(tokens) >= 3 and tokens[:2] in (["npm", "run"], ["pnpm", "run"]):
+        script = tokens[2]
+    elif len(tokens) >= 2 and tokens[0] in {"yarn", "pnpm"}:
+        script = tokens[1]
+    if script:
+        pkg = ctx.app_static().manifests().get("package.json", (None, None))[1]
+        scripts = pkg.get("scripts") if isinstance(pkg, dict) else None
+        return "package.json" if isinstance(scripts, dict) and script in scripts else ""
+    first = tokens[0]
+    if first.startswith("scripts/") or first.startswith("./scripts/"):
+        rel = first[2:] if first.startswith("./") else first
+        return rel if aglob(ctx, [rel]) else ""
+    if check_needles(command) or command.startswith("python -m") or command.startswith("python3 -m"):
+        return "."
+    return ""
+
+
+def _script_check_text(value, scripts):
+    text = str(value)
+    siblings = []
+    for match in re.finditer(r"\b(?:npm run|yarn|pnpm run)\s+([\w:.-]+)", text):
+        siblings.append(match.group(1))
+    for match in re.finditer(r"\b(?:run-s|run-p)\s+([^&|;\n]+)", text):
+        siblings.extend(token for token in match.group(1).split() if not token.startswith("-"))
+    return "\n".join([text] + [str(scripts[name]) for name in siblings if name in scripts])
+
+
+def check_command(ctx):
+    """Detect one named inner-loop entrypoint that chains deterministic checks."""
+    configured = acdc_config(ctx).get("verify_command")
+    if isinstance(configured, str) and configured.strip():
+        command = configured.strip()
+        source = _configured_verify_command(ctx, command)
+        if source:
+            evidence = [ev("acdc.verify_command", source=".agents/readiness/config.json")]
+            if source != ".":
+                evidence.append(ev("verify command", source=source))
+            return passed(f"Verify entrypoint designated in readiness config: '{command}'.", evidence)
+        return failed(
+            f"Config declares verify_command '{command}' but it does not resolve to an existing target/script.",
+            [ev("acdc.verify_command", source=".agents/readiness/config.json")],
+        )
+
+    pkg = ctx.app_static().manifests().get("package.json", (None, None))[1]
+    if isinstance(pkg, dict) and isinstance(pkg.get("scripts"), dict):
+        scripts = pkg["scripts"]
+        for name in ("check", "verify", "validate"):
+            if name in scripts:
+                count = len(check_needles(_script_check_text(scripts[name], scripts)))
+                if count >= 2:
+                    return passed(
+                        f"Single verify entrypoint '{name}' chains {count} check tools.",
+                        [ev("verify command", source="package.json")],
+                    )
+                return failed(
+                    f"'{name}' exists but chains only {count} recognized check tool(s); a verify entrypoint should run lint/type/test together."
+                )
+
+    for path in aglob(ctx, ["Makefile", "Justfile", "justfile"]):
+        text = ctx.app_static().read(path) or ctx.static.read(path) or ""
+        for name in ("check", "verify", "validate"):
+            match, recipe = _target_recipe(text, name)
+            if not match:
+                continue
+            prerequisites = []
+            for token in match.group(1).split():
+                if token != name and "=" not in token and ":=" not in token:
+                    prerequisites.append(token)
+            resolved = [recipe]
+            for prerequisite in prerequisites:
+                _, body = _target_recipe(text, prerequisite)
+                if body:
+                    resolved.append(body)
+            count = len(check_needles("\n".join(resolved)))
+            if count >= 2:
+                return passed(
+                    f"Single verify entrypoint '{name}' chains {count} check tools.",
+                    [ev("verify command", source=path)],
+                )
+            return failed(
+                f"'{name}' exists but chains only {count} recognized check tool(s); a verify entrypoint should run lint/type/test together."
+            )
+
+    for path in aglob(ctx, ["Taskfile.yml", "Taskfile.yaml"]):
+        text = ctx.app_static().read(path) or ctx.static.read(path) or ""
+        match = re.search(r"(?m)^(\s*)(check|verify|validate)\s*:", text)
+        if match:
+            indent = len(match.group(1))
+            body = []
+            for line in text[match.end():].splitlines():
+                if line.strip() and len(line) - len(line.lstrip()) <= indent:
+                    break
+                body.append(line)
+            name = match.group(2)
+            count = len(check_needles("\n".join(body)))
+            if count >= 2:
+                return passed(
+                    f"Single verify entrypoint '{name}' chains {count} check tools.",
+                    [ev("verify command", source=path)],
+                )
+            return failed(
+                f"'{name}' exists but chains only {count} recognized check tool(s); a verify entrypoint should run lint/type/test together."
+            )
+
+    for path in aglob(ctx, ["scripts/check*", "scripts/verify*"]):
+        text = ctx.app_static().read(path) or ctx.static.read(path) or ""
+        name = path.rsplit("/", 1)[-1]
+        count = len(check_needles(text))
+        if count >= 2:
+            return passed(
+                f"Single verify entrypoint '{name}' chains {count} check tools.",
+                [ev("verify command", source=path)],
+            )
+        return failed(
+            f"'{name}' exists but chains only {count} recognized check tool(s); a verify entrypoint should run lint/type/test together."
+        )
+
+    return failed(
+        "No single check/verify command; agents need one fast inner-loop verification entrypoint (e.g. 'make check' running lint + typecheck + tests). Designate one via acdc.verify_command in .agents/readiness/config.json if yours is unconventional."
+    )
 
 
 def _ci_budget_minutes(ctx):
@@ -239,3 +392,85 @@ def dependency_weight_budget(ctx):
     if adep(ctx, _WEIGHT_DEPS) and tool_invoked(ctx, _WEIGHT_DEPS):
         return passed("Bundle analyzer/size tool wired.", [ev("bundle tool wired")])
     return failed("No dependency-weight budget (size-limit/bundlesize/bundle-analyzer with a budget).")
+
+
+# --- DORA / AI-capability build proxies (advisory) ------------------------------------
+
+
+def small_batches(ctx):
+    """Pass when median LOC churn across recent non-merge commits is ≤ 400.
+
+    RA1 LOC heuristic — squash-merge workflows may inflate per-commit churn.
+    """
+    if not ctx.git.available():
+        return unknown("No git history available.")
+    churn = ctx.git.recent_churn(50)
+    if not churn:
+        return unknown("No git history available.")
+    if len(churn) < 10:
+        return skipped("insufficient history (<10 non-merge commits)")
+    med = median(churn)
+    evidence = [ev(f"median churn {med} LOC (n={len(churn)})", tier="T1")]
+    if med <= 400:
+        return passed(f"Median commit churn {med} ≤ 400 LOC (n={len(churn)}).", evidence)
+    return failed(
+        f"Median commit churn {med} > 400 LOC (n={len(churn)}); "
+        "RA1 LOC heuristic — squash-merge may inflate churn.",
+        evidence,
+    )
+
+
+def integration_frequency(ctx):
+    """Pass when commits land in ≥4 distinct ISO weeks of the trailing 8 weeks
+    anchored at the most recent commit (activity-anchored)."""
+    if not ctx.git.available():
+        return unknown("No git history available.")
+    dates = ctx.git.commit_dates(200)
+    if not dates:
+        return unknown("No git history available.")
+    anchor = parse_iso(dates[0])
+    if not anchor:
+        return unknown("Could not parse recent commit dates.")
+    now = datetime.now(timezone.utc)
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=timezone.utc)
+    if (now - anchor).days > 90:
+        return skipped("inactive repository")
+    window_start = anchor - timedelta(weeks=8)
+    weeks = set()
+    for d in dates:
+        dt = parse_iso(d)
+        if not dt:
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if window_start <= dt <= anchor:
+            weeks.add(dt.isocalendar()[:2])
+    evidence = [ev(f"{len(weeks)} active ISO weeks in trailing 8 (n={len(dates)} dates)", tier="T1")]
+    if len(weeks) >= 4:
+        return passed(f"Commits in {len(weeks)} distinct ISO weeks of the trailing 8.", evidence)
+    return failed(
+        f"Only {len(weeks)} distinct ISO week(s) with commits in the trailing 8 weeks (need ≥4).",
+        evidence,
+    )
+
+
+def agent_config_versioned(ctx):
+    """Pass when at least one agent-config path has ≥2 commits of history."""
+    if not ctx.git.available():
+        return unknown("No git history available.")
+    candidates = ["AGENTS.md", "CLAUDE.md", ".claude", ".cursor", "skills", ".agents"]
+    existing = [p for p in candidates if (ctx.root / p).exists()]
+    if not existing:
+        return skipped("no agent configuration present")
+    for path in existing:
+        count = ctx.git.commit_count_for(path)
+        if count >= 2:
+            return passed(
+                f"Agent configuration versioned: {path} has {count} commits.",
+                [ev("agent config history", source=path, tier="T1")],
+            )
+    return failed(
+        "Agent configuration present but none have ≥2 commits of history "
+        f"(checked: {', '.join(existing)})."
+    )

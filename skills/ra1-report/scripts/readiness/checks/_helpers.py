@@ -10,6 +10,11 @@ import re
 
 from ..model import Evidence, Status, Verdict
 
+_PLACEHOLDER_RE = re.compile(
+    r"(?i)(TODO|FIXME|TBD|<!--|\[(?:TODO|FIXME|TBD|project|owner|path[^\]]*|command[^\]]*|describe[^\]]*|replace[^\]]*|bracketed[^\]]*)\])"
+)
+PLACEHOLDER_RE = _PLACEHOLDER_RE
+
 
 def ev(summary, source="", tier="T0", detail=""):
     return Evidence(summary=summary, source=source, tier=tier, detail=detail)
@@ -29,6 +34,34 @@ def unknown(rationale, evidence=None):
 
 def skipped(rationale, evidence=None):
     return Verdict(Status.SKIPPED, rationale, evidence or [])
+
+
+def _filled(ctx, path, label, min_chars=40) -> tuple[bool, str]:
+    text = ctx.static.read(path)
+    if text is None:
+        return False, f"{label} unreadable: {path}."
+    stripped = text.strip()
+    if not stripped:
+        return False, f"{label} is empty: {path}."
+    if len(stripped) < min_chars:
+        return False, f"{label} too thin ({len(stripped)} chars): {path}."
+    if _PLACEHOLDER_RE.search(text):
+        return False, f"{label} contains placeholder text: {path}."
+    return True, f"{label} present and filled: {path}."
+
+
+filled = _filled
+
+
+def parse_iso(value):
+    """Parse ISO timestamps; tolerate trailing Z. Return datetime or None."""
+    from datetime import datetime
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
 
 
 def aglob(ctx, patterns):
@@ -55,6 +88,32 @@ def atool(ctx, name):
 
 
 _SOURCE_EXTS = ("py", "js", "ts", "tsx", "jsx", "go", "java", "rb", "cs")
+
+CHECK_TOOL_NEEDLES = (
+    "pytest", "unittest", "ruff", "flake8", "eslint", "biome", "mypy", "pyright",
+    "tsc", "go vet", "go test", "cargo test", "cargo clippy", "golangci-lint",
+    "vitest", "jest", "rspec", "rubocop",
+)
+
+
+def check_needles(text) -> set[str]:
+    """Return distinct recognized verification tools mentioned in ``text``."""
+    text_lower = text.lower()
+    return {
+        needle
+        for needle in CHECK_TOOL_NEEDLES
+        if re.search(
+            r"(?<![\w-])" + re.escape(needle) + r"(?![\w-])", text_lower
+        )
+    }
+
+
+def acdc_config(ctx):
+    """Return the optional vendor-agnostic AC/DC readiness config block."""
+    from ..detect import load_readiness_config
+
+    value = load_readiness_config(ctx.root, ctx.options).get("acdc")
+    return value if isinstance(value, dict) else {}
 
 
 def agrep(ctx, patterns, exts=_SOURCE_EXTS, limit=400):
@@ -111,7 +170,6 @@ def _invocation_source(static, needles, prefix="."):
     if _scripts_invoked(pkg, needles):
         return _source(prefix, "package.json")
     return ""
-
 
 
 def tool_invoked(ctx, names):

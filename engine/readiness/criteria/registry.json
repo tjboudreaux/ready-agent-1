@@ -1,110 +1,2361 @@
 [
-  {"id": "docs.readme", "pillar": "Documentation", "title": "README", "level": 1, "scope": "repository", "decide": "deterministic", "gating": true, "check": "docs.readme", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "propose", "autofixable": false}, "engine_min_version": "0.1.0"},
-  {"id": "build.deps_pinned", "pillar": "Build System", "title": "Dependencies Pinned", "level": 1, "scope": "application", "decide": "deterministic", "gating": true, "check": "build.deps_pinned", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "build.vcs_cli", "pillar": "Build System", "title": "VCS CLI Tools", "level": 1, "scope": "repository", "decide": "deterministic", "gating": true, "check": "build.vcs_cli", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "security.gitignore_comprehensive", "pillar": "Security & Governance", "title": "Gitignore Comprehensive", "level": 1, "scope": "repository", "decide": "deterministic", "gating": true, "check": "security.gitignore_comprehensive", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": ".gitignore", "autofixable": true}, "engine_min_version": "0.1.0"},
-  {"id": "testing.unit_tests_exist", "pillar": "Testing", "title": "Unit Tests Exist", "level": 1, "scope": "application", "decide": "deterministic", "gating": true, "check": "testing.unit_tests_exist", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-
-  {"id": "docs.agents_md", "pillar": "Documentation", "title": "AGENTS.md", "level": 2, "scope": "repository", "decide": "deterministic", "gating": true, "check": "docs.agents_md", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "propose", "template": "AGENTS.md", "autofixable": false}, "engine_min_version": "0.1.0"},
-  {"id": "devenv.env_template", "pillar": "Dev Environment", "title": "Env Template", "level": 2, "scope": "application", "decide": "deterministic", "gating": true, "check": "devenv.env_template", "applies_when": {"project_types": ["service", "api", "frontend", "data", "unknown", "monorepo-root"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": ".env.example", "autofixable": true}, "engine_min_version": "0.1.0"},
-  {"id": "style.linter_config", "pillar": "Style & Validation", "title": "Linter Config", "level": 2, "scope": "application", "decide": "deterministic", "gating": true, "check": "style.linter_config", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": "linter", "autofixable": true}, "engine_min_version": "0.1.0"},
-  {"id": "style.formatter", "pillar": "Style & Validation", "title": "Formatter", "level": 2, "scope": "application", "decide": "deterministic", "gating": true, "check": "style.formatter", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": "formatter", "autofixable": true}, "engine_min_version": "0.1.0"},
-  {"id": "build.ci_present", "pillar": "Build System", "title": "CI Present", "level": 2, "scope": "repository", "decide": "deterministic", "gating": true, "check": "build.ci_present", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": "ci/readiness.yml", "autofixable": true}, "engine_min_version": "0.1.0"},
-  {"id": "testing.test_naming", "pillar": "Testing", "title": "Test Naming Conventions", "level": 2, "scope": "application", "decide": "deterministic", "gating": true, "check": "testing.test_naming", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "security.security_md", "pillar": "Security & Governance", "title": "SECURITY.md", "level": 2, "scope": "repository", "decide": "deterministic", "gating": true, "check": "security.security_md", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": "SECURITY.md", "autofixable": true}, "engine_min_version": "0.1.0"},
-  {"id": "taskdisc.issue_templates", "pillar": "Task Discovery", "title": "Issue Templates", "level": 2, "scope": "repository", "decide": "deterministic", "gating": true, "check": "taskdisc.issue_templates", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": "ISSUE_TEMPLATE", "autofixable": true}, "engine_min_version": "0.1.0"},
-  {"id": "taskdisc.pr_templates", "pillar": "Task Discovery", "title": "PR Templates", "level": 2, "scope": "repository", "decide": "deterministic", "gating": true, "check": "taskdisc.pr_templates", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": "pull_request_template.md", "autofixable": true}, "engine_min_version": "0.1.0"},
-
-  {"id": "style.type_check", "pillar": "Style & Validation", "title": "Type Check", "level": 3, "scope": "application", "decide": "deterministic", "gating": true, "check": "style.type_check", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "style.precommit_hooks", "pillar": "Style & Validation", "title": "Pre-commit Hooks", "level": 3, "scope": "repository", "decide": "deterministic", "gating": true, "check": "style.precommit_hooks", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": ".pre-commit-config.yaml", "autofixable": true}, "engine_min_version": "0.1.0"},
-  {"id": "security.codeowners", "pillar": "Security & Governance", "title": "CODEOWNERS", "level": 3, "scope": "repository", "decide": "deterministic", "gating": true, "check": "security.codeowners", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": "CODEOWNERS", "autofixable": true}, "engine_min_version": "0.1.0"},
-  {"id": "security.branch_protection", "pillar": "Security & Governance", "title": "Branch Protection", "level": 3, "scope": "repository", "decide": "deterministic", "gating": true, "check": "security.branch_protection", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "github_setting", "autofixable": false}, "engine_min_version": "0.1.0"},
-  {"id": "security.secret_scanning", "pillar": "Security & Governance", "title": "Secret Scanning", "level": 3, "scope": "repository", "decide": "deterministic", "gating": true, "check": "security.secret_scanning", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "github_setting", "autofixable": false}, "engine_min_version": "0.1.0"},
-  {"id": "security.dependency_update_automation", "pillar": "Security & Governance", "title": "Dependency Update Automation", "level": 3, "scope": "repository", "decide": "deterministic", "gating": true, "check": "security.dependency_update_automation", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": "dependabot.yml", "autofixable": true}, "engine_min_version": "0.1.0"},
-  {"id": "testing.integration_tests_exist", "pillar": "Testing", "title": "Integration Tests Exist", "level": 3, "scope": "application", "decide": "deterministic", "gating": true, "check": "testing.integration_tests_exist", "applies_when": {"project_types": ["service", "api", "frontend", "monorepo-root", "unknown"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "docs.agents_md_validation", "pillar": "Documentation", "title": "AGENTS.md Validation", "level": 3, "scope": "repository", "decide": "deterministic", "gating": true, "check": "docs.agents_md_validation", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": ["docs.agents_md"]}, "engine_min_version": "0.1.0"},
-  {"id": "docs.skills", "pillar": "Documentation", "title": "Skills", "level": 3, "scope": "repository", "decide": "deterministic", "gating": true, "check": "docs.skills", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "docs.doc_freshness", "pillar": "Documentation", "title": "Documentation Freshness", "level": 3, "scope": "repository", "decide": "deterministic", "gating": true, "check": "docs.doc_freshness", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "build.ci_runs_tests", "pillar": "Build System", "title": "CI Runs Tests", "level": 3, "scope": "repository", "decide": "deterministic", "gating": true, "check": "build.ci_runs_tests", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "devenv.devcontainer", "pillar": "Dev Environment", "title": "Devcontainer", "level": 3, "scope": "repository", "decide": "deterministic", "gating": true, "check": "devenv.devcontainer", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "fix": {"kind": "scaffold", "template": "devcontainer.json", "autofixable": true}, "engine_min_version": "0.1.0"},
-
-  {"id": "style.strict_typing", "pillar": "Style & Validation", "title": "Strict Typing", "level": 4, "scope": "application", "decide": "deterministic", "gating": true, "check": "style.strict_typing", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "security.automated_security_review", "pillar": "Security & Governance", "title": "Automated Security Review", "level": 4, "scope": "repository", "decide": "deterministic", "gating": true, "check": "security.automated_security_review", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "docs.api_schema_docs", "pillar": "Documentation", "title": "API Schema Docs", "level": 4, "scope": "application", "decide": "deterministic", "gating": true, "check": "docs.api_schema_docs", "applies_when": {"project_types": ["service", "api"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "build.release_automation", "pillar": "Build System", "title": "Release Automation", "level": 4, "scope": "repository", "decide": "deterministic", "gating": true, "check": "build.release_automation", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "taskdisc.issue_labeling", "pillar": "Task Discovery", "title": "Issue Labeling System", "level": 4, "scope": "repository", "decide": "deterministic", "gating": true, "check": "taskdisc.issue_labeling", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-  {"id": "taskdisc.backlog_health", "pillar": "Task Discovery", "title": "Backlog Health", "level": 4, "scope": "repository", "decide": "deterministic", "gating": true, "check": "taskdisc.backlog_health", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.1.0"},
-
-  {"id": "testing.tests_pass", "pillar": "Testing", "title": "Tests Pass (T3)", "level": 3, "scope": "application", "decide": "execution", "gating": false, "check": "testing.tests_pass", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": ["testing.unit_tests_exist"]}, "engine_min_version": "0.2.0"},
-
-  {"id": "build.agentic_development", "pillar": "Build System", "title": "Agentic Development", "level": 5, "scope": "repository", "decide": "deterministic", "gating": false, "check": "build.agentic_development", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "build.build_command_documented", "pillar": "Build System", "title": "Build Command Documented", "level": 2, "scope": "application", "decide": "deterministic", "gating": false, "check": "build.build_command_documented", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "testing.coverage_threshold", "pillar": "Testing", "title": "Coverage Threshold Enforced", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "testing.coverage_threshold", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "testing.flake_quarantine", "pillar": "Testing", "title": "Flaky Test Quarantine Policy", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "testing.flake_quarantine", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "taskdisc.actionable_backlog_items", "pillar": "Task Discovery", "title": "Actionable Backlog Items", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "taskdisc.actionable_backlog_items", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "build.ci_duration_budget", "pillar": "Build System", "title": "CI Duration Budget", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "build.ci_duration_budget", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-
-  {"id": "observability.structured_logging", "pillar": "Debugging & Observability", "title": "Structured Logging", "level": 3, "scope": "application", "decide": "deterministic", "gating": false, "check": "observability.structured_logging", "applies_when": {"project_types": ["service", "api", "frontend", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "observability.tracing", "pillar": "Debugging & Observability", "title": "Distributed Tracing", "level": 3, "scope": "application", "decide": "deterministic", "gating": false, "check": "observability.tracing", "applies_when": {"project_types": ["service", "api", "frontend", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "observability.metrics", "pillar": "Debugging & Observability", "title": "Metrics Collection", "level": 3, "scope": "application", "decide": "deterministic", "gating": false, "check": "observability.metrics", "applies_when": {"project_types": ["service", "api", "frontend", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "observability.health_endpoints", "pillar": "Debugging & Observability", "title": "Health and Readiness Endpoints", "level": 3, "scope": "application", "decide": "deterministic", "gating": false, "check": "observability.health_endpoints", "applies_when": {"project_types": ["service", "api", "frontend", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "observability.alerting_rules", "pillar": "Debugging & Observability", "title": "Alerting Rules", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "observability.alerting_rules", "applies_when": {"project_types": ["service", "api", "frontend", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "observability.dashboards_as_code", "pillar": "Debugging & Observability", "title": "Dashboards as Code", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "observability.dashboards_as_code", "applies_when": {"project_types": ["service", "api", "frontend", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "product.analytics_instrumentation", "pillar": "Product & Experimentation", "title": "Analytics Instrumentation", "level": 3, "scope": "application", "decide": "deterministic", "gating": false, "check": "product.analytics_instrumentation", "applies_when": {"project_types": ["frontend", "service", "api", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "product.feature_flags", "pillar": "Product & Experimentation", "title": "Feature Flags", "level": 4, "scope": "application", "decide": "deterministic", "gating": false, "check": "product.feature_flags", "applies_when": {"project_types": ["frontend", "service", "api", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-  {"id": "product.experiment_config", "pillar": "Product & Experimentation", "title": "Experiment Configuration", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "product.experiment_config", "applies_when": {"project_types": ["frontend", "service", "api", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.4.0"},
-
-  {"id": "style.naming_convention_rule", "pillar": "Style & Validation", "title": "Naming Convention Rule", "level": 2, "scope": "application", "decide": "deterministic", "gating": false, "check": "style.naming_convention_rule", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "style.complexity_budget", "pillar": "Style & Validation", "title": "Cyclomatic Complexity Budget", "level": 3, "scope": "application", "decide": "deterministic", "gating": false, "check": "style.complexity_budget", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "style.dead_code_detection", "pillar": "Style & Validation", "title": "Dead Code Detection", "level": 3, "scope": "application", "decide": "deterministic", "gating": false, "check": "style.dead_code_detection", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "style.duplicate_code_detection", "pillar": "Style & Validation", "title": "Duplicate Code Detection", "level": 4, "scope": "application", "decide": "deterministic", "gating": false, "check": "style.duplicate_code_detection", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "style.large_file_guard", "pillar": "Style & Validation", "title": "Large File Guard", "level": 2, "scope": "repository", "decide": "deterministic", "gating": false, "check": "style.large_file_guard", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "style.tech_debt_tracking", "pillar": "Style & Validation", "title": "Technical Debt Tracking", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "style.tech_debt_tracking", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-
-  {"id": "observability.error_tracking", "pillar": "Debugging & Observability", "title": "Error Tracking", "level": 3, "scope": "application", "decide": "deterministic", "gating": false, "check": "observability.error_tracking", "applies_when": {"project_types": ["service", "api", "frontend", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "observability.runbooks", "pillar": "Debugging & Observability", "title": "Runbooks", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "observability.runbooks", "applies_when": {"project_types": ["service", "api", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "observability.profiling", "pillar": "Debugging & Observability", "title": "Profiling Instrumentation", "level": 4, "scope": "application", "decide": "deterministic", "gating": false, "check": "observability.profiling", "applies_when": {"project_types": ["service", "api"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "observability.circuit_breakers", "pillar": "Debugging & Observability", "title": "Circuit Breakers", "level": 4, "scope": "application", "decide": "deterministic", "gating": false, "check": "observability.circuit_breakers", "applies_when": {"project_types": ["service", "api"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "observability.deployment_markers", "pillar": "Debugging & Observability", "title": "Deployment Observability", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "observability.deployment_markers", "applies_when": {"project_types": ["service", "api", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "security.dependency_min_age", "pillar": "Security & Governance", "title": "Minimum Dependency Release Age", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "security.dependency_min_age", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "security.log_scrubbing", "pillar": "Security & Governance", "title": "Sensitive Data Log Scrubbing", "level": 3, "scope": "application", "decide": "deterministic", "gating": false, "check": "security.log_scrubbing", "applies_when": {"project_types": ["service", "api"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "security.secrets_management", "pillar": "Security & Governance", "title": "Secrets Management", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "security.secrets_management", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "security.dast", "pillar": "Security & Governance", "title": "DAST Scanning", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "security.dast", "applies_when": {"project_types": ["service", "api"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-
-  {"id": "build.unused_dependencies", "pillar": "Build System", "title": "Unused Dependencies Detection", "level": 3, "scope": "application", "decide": "deterministic", "gating": false, "check": "build.unused_dependencies", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "build.version_drift", "pillar": "Build System", "title": "Version Drift Detection", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "build.version_drift", "applies_when": {"project_types": ["monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "build.monorepo_tooling", "pillar": "Build System", "title": "Monorepo Tooling", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "build.monorepo_tooling", "applies_when": {"project_types": ["monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "build.single_command_setup", "pillar": "Build System", "title": "Single Command Setup", "level": 2, "scope": "application", "decide": "deterministic", "gating": false, "check": "build.single_command_setup", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "build.release_notes_automation", "pillar": "Build System", "title": "Release Notes Automation", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "build.release_notes_automation", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "build.dependency_weight_budget", "pillar": "Build System", "title": "Dependency Weight Budget", "level": 4, "scope": "application", "decide": "deterministic", "gating": false, "check": "build.dependency_weight_budget", "applies_when": {"project_types": ["frontend"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "devenv.local_services", "pillar": "Dev Environment", "title": "Local Services Setup", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "devenv.local_services", "applies_when": {"project_types": ["service", "api", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "devenv.database_schema", "pillar": "Dev Environment", "title": "Database Schema", "level": 3, "scope": "application", "decide": "deterministic", "gating": false, "check": "devenv.database_schema", "applies_when": {"project_types": ["service", "api", "data"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-
-  {"id": "docs.auto_generation", "pillar": "Documentation", "title": "Automated Documentation Generation", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "docs.auto_generation", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "docs.agents_md_ci_validation", "pillar": "Documentation", "title": "AGENTS.md CI Validation", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "docs.agents_md_ci_validation", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "docs.architecture_doc", "pillar": "Documentation", "title": "Service Architecture Documented", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "docs.architecture_doc", "applies_when": {"project_types": ["service", "api", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "product.error_to_insight", "pillar": "Product & Experimentation", "title": "Error to Insight Pipeline", "level": 4, "scope": "repository", "decide": "deterministic", "gating": false, "check": "product.error_to_insight", "applies_when": {"project_types": ["service", "api", "frontend", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-
-  {"id": "judgment.naming_consistency", "pillar": "Style & Validation", "title": "Naming Consistency", "level": 2, "scope": "repository", "decide": "agent", "gating": false, "check": "judgment.assess", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "judgment.code_modularization", "pillar": "Style & Validation", "title": "Code Modularization", "level": 3, "scope": "repository", "decide": "agent", "gating": false, "check": "judgment.assess", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "judgment.n_plus_one_query", "pillar": "Style & Validation", "title": "N+1 Query Avoidance", "level": 4, "scope": "repository", "decide": "agent", "gating": false, "check": "judgment.assess", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "judgment.readme_quality", "pillar": "Documentation", "title": "README Quality", "level": 2, "scope": "repository", "decide": "agent", "gating": false, "check": "judgment.assess", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "judgment.agents_md_quality", "pillar": "Documentation", "title": "AGENTS.md Quality", "level": 3, "scope": "repository", "decide": "agent", "gating": false, "check": "judgment.assess", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "judgment.service_flow_doc_quality", "pillar": "Documentation", "title": "Service-Flow Documentation Quality", "level": 4, "scope": "repository", "decide": "agent", "gating": false, "check": "judgment.assess", "applies_when": {"project_types": ["service", "api", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "judgment.runbooks_quality", "pillar": "Debugging & Observability", "title": "Runbook Quality", "level": 4, "scope": "repository", "decide": "agent", "gating": false, "check": "judgment.assess", "applies_when": {"project_types": ["service", "api", "monorepo-root"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "judgment.pii_handling", "pillar": "Security & Governance", "title": "PII Handling", "level": 3, "scope": "repository", "decide": "agent", "gating": false, "check": "judgment.assess", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "judgment.privacy_compliance", "pillar": "Security & Governance", "title": "Privacy Compliance", "level": 4, "scope": "repository", "decide": "agent", "gating": false, "check": "judgment.assess", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-
-  {"id": "testing.behavioral_smoke", "pillar": "Testing", "title": "Behavioral Smoke Check (T3)", "level": 3, "scope": "application", "decide": "execution", "gating": false, "check": "testing.behavioral_smoke", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-  {"id": "devenv.devcontainer_runnable", "pillar": "Dev Environment", "title": "Devcontainer Runnable (T3)", "level": 3, "scope": "repository", "decide": "execution", "gating": false, "check": "devenv.devcontainer_runnable", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": []}, "engine_min_version": "0.5.0"},
-
-  {"id": "loop.loop_runs_dir", "pillar": "Documentation", "title": "Loop Run Log README", "level": 2, "scope": "repository", "decide": "deterministic", "gating": false, "check": "loop.loop_runs_dir", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": [], "opt_in": "loop_ready"}, "fix": {"kind": "scaffold", "template": "loop/loop-runs-README.md", "autofixable": true}, "engine_min_version": "0.3.0"},
-  {"id": "loop.rules_index", "pillar": "Security & Governance", "title": "Loop Rules Index", "level": 2, "scope": "repository", "decide": "deterministic", "gating": false, "check": "loop.rules_index", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": [], "opt_in": "loop_ready"}, "engine_min_version": "0.3.0"},
-  {"id": "loop.denylist", "pillar": "Security & Governance", "title": "Loop Denylist", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "loop.denylist", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": [], "opt_in": "loop_ready"}, "fix": {"kind": "scaffold", "template": "loop/denylist.md", "autofixable": true}, "engine_min_version": "0.3.0"},
-  {"id": "loop.signal_schema", "pillar": "Documentation", "title": "Signal Schema README", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "loop.signal_schema", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": [], "opt_in": "loop_ready"}, "fix": {"kind": "scaffold", "template": "loop/signals-README.md", "autofixable": true}, "engine_min_version": "0.3.0"},
-  {"id": "loop.pr_artifact_template", "pillar": "Task Discovery", "title": "PR Artifact Evidence Template", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "loop.pr_artifact_template", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": [], "opt_in": "loop_ready"}, "fix": {"kind": "scaffold", "template": "loop/pr-artifact-template.md", "autofixable": true}, "engine_min_version": "0.3.0"},
-  {"id": "loop.skills_present", "pillar": "Documentation", "title": "OMP Loop Skills", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "loop.skills_present", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": [], "opt_in": "loop_ready"}, "engine_min_version": "0.3.0"},
-  {"id": "loop.prompt_contracts", "pillar": "Documentation", "title": "Loop Prompt Contracts", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "loop.prompt_contracts", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": [], "opt_in": "loop_ready"}, "engine_min_version": "0.3.0"},
-  {"id": "loop.architecture_doc", "pillar": "Documentation", "title": "Architecture Doc", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "loop.architecture_doc", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": [], "opt_in": "loop_ready"}, "engine_min_version": "0.3.0"},
-  {"id": "loop.domain_docs", "pillar": "Documentation", "title": "Domain README Docs", "level": 3, "scope": "repository", "decide": "deterministic", "gating": false, "check": "loop.domain_docs", "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": [], "opt_in": "loop_ready"}, "engine_min_version": "0.3.0"}
+  {
+    "id": "docs.readme",
+    "pillar": "Documentation",
+    "title": "README",
+    "level": 1,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "docs.readme",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "propose",
+      "autofixable": false
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "build.deps_pinned",
+    "pillar": "Build System",
+    "title": "Dependencies Pinned",
+    "level": 1,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "build.deps_pinned",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "build.vcs_cli",
+    "pillar": "Build System",
+    "title": "VCS CLI Tools",
+    "level": 1,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "build.vcs_cli",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "security.gitignore_comprehensive",
+    "pillar": "Security & Governance",
+    "title": "Gitignore Comprehensive",
+    "level": 1,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "security.gitignore_comprehensive",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": ".gitignore",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "testing.unit_tests_exist",
+    "pillar": "Testing",
+    "title": "Unit Tests Exist",
+    "level": 1,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "testing.unit_tests_exist",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "docs.agents_md",
+    "pillar": "Documentation",
+    "title": "AGENTS.md",
+    "level": 2,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "docs.agents_md",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "propose",
+      "template": "AGENTS.md",
+      "autofixable": false
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "devenv.env_template",
+    "pillar": "Dev Environment",
+    "title": "Env Template",
+    "level": 2,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "devenv.env_template",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "frontend",
+        "data",
+        "unknown",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": ".env.example",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "style.linter_config",
+    "pillar": "Style & Validation",
+    "title": "Linter Config",
+    "level": 2,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "style.linter_config",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "linter",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "style.formatter",
+    "pillar": "Style & Validation",
+    "title": "Formatter",
+    "level": 2,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "style.formatter",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "formatter",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "build.ci_present",
+    "pillar": "Build System",
+    "title": "CI Present",
+    "level": 2,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "build.ci_present",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "ci/readiness.yml",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "testing.test_naming",
+    "pillar": "Testing",
+    "title": "Test Naming Conventions",
+    "level": 2,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "testing.test_naming",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "security.security_md",
+    "pillar": "Security & Governance",
+    "title": "SECURITY.md",
+    "level": 2,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "security.security_md",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "SECURITY.md",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "taskdisc.issue_templates",
+    "pillar": "Task Discovery",
+    "title": "Issue Templates",
+    "level": 2,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "taskdisc.issue_templates",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "ISSUE_TEMPLATE",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "taskdisc.pr_templates",
+    "pillar": "Task Discovery",
+    "title": "PR Templates",
+    "level": 2,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "taskdisc.pr_templates",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "pull_request_template.md",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "style.type_check",
+    "pillar": "Style & Validation",
+    "title": "Type Check",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "style.type_check",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "style.precommit_hooks",
+    "pillar": "Style & Validation",
+    "title": "Pre-commit Hooks",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "style.precommit_hooks",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": ".pre-commit-config.yaml",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "security.codeowners",
+    "pillar": "Security & Governance",
+    "title": "CODEOWNERS",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "security.codeowners",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "CODEOWNERS",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "security.branch_protection",
+    "pillar": "Security & Governance",
+    "title": "Branch Protection",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "security.branch_protection",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "github_setting",
+      "autofixable": false
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "security.secret_scanning",
+    "pillar": "Security & Governance",
+    "title": "Secret Scanning",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "security.secret_scanning",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "github_setting",
+      "autofixable": false
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "security.dependency_update_automation",
+    "pillar": "Security & Governance",
+    "title": "Dependency Update Automation",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "security.dependency_update_automation",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "dependabot.yml",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "testing.integration_tests_exist",
+    "pillar": "Testing",
+    "title": "Integration Tests Exist",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "testing.integration_tests_exist",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "frontend",
+        "monorepo-root",
+        "unknown"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "docs.agents_md_validation",
+    "pillar": "Documentation",
+    "title": "AGENTS.md Validation",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "docs.agents_md_validation",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [
+        "docs.agents_md"
+      ]
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "docs.skills",
+    "pillar": "Documentation",
+    "title": "Skills",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "docs.skills",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "docs.doc_freshness",
+    "pillar": "Documentation",
+    "title": "Documentation Freshness",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "docs.doc_freshness",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "build.ci_runs_tests",
+    "pillar": "Build System",
+    "title": "CI Runs Tests",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "build.ci_runs_tests",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "devenv.devcontainer",
+    "pillar": "Dev Environment",
+    "title": "Devcontainer",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "devenv.devcontainer",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "devcontainer.json",
+      "autofixable": true
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "style.strict_typing",
+    "pillar": "Style & Validation",
+    "title": "Strict Typing",
+    "level": 4,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "style.strict_typing",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "security.automated_security_review",
+    "pillar": "Security & Governance",
+    "title": "Automated Security Review",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "security.automated_security_review",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "docs.api_schema_docs",
+    "pillar": "Documentation",
+    "title": "API Schema Docs",
+    "level": 4,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "docs.api_schema_docs",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "build.release_automation",
+    "pillar": "Build System",
+    "title": "Release Automation",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "build.release_automation",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "taskdisc.issue_labeling",
+    "pillar": "Task Discovery",
+    "title": "Issue Labeling System",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "taskdisc.issue_labeling",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "taskdisc.backlog_health",
+    "pillar": "Task Discovery",
+    "title": "Backlog Health",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": true,
+    "check": "taskdisc.backlog_health",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.1.0"
+  },
+  {
+    "id": "testing.tests_pass",
+    "pillar": "Testing",
+    "title": "Tests Pass (T3)",
+    "level": 3,
+    "scope": "application",
+    "decide": "execution",
+    "gating": false,
+    "check": "testing.tests_pass",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [
+        "testing.unit_tests_exist"
+      ]
+    },
+    "engine_min_version": "0.2.0"
+  },
+  {
+    "id": "build.agentic_development",
+    "pillar": "Build System",
+    "title": "Agentic Development",
+    "level": 5,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.agentic_development",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "build.build_command_documented",
+    "pillar": "Build System",
+    "title": "Build Command Documented",
+    "level": 2,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.build_command_documented",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "testing.coverage_threshold",
+    "pillar": "Testing",
+    "title": "Coverage Threshold Enforced",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "testing.coverage_threshold",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "testing.flake_quarantine",
+    "pillar": "Testing",
+    "title": "Flaky Test Quarantine Policy",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "testing.flake_quarantine",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "taskdisc.actionable_backlog_items",
+    "pillar": "Task Discovery",
+    "title": "Actionable Backlog Items",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "taskdisc.actionable_backlog_items",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "build.ci_duration_budget",
+    "pillar": "Build System",
+    "title": "CI Duration Budget",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.ci_duration_budget",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "observability.structured_logging",
+    "pillar": "Debugging & Observability",
+    "title": "Structured Logging",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.structured_logging",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "frontend",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "observability.tracing",
+    "pillar": "Debugging & Observability",
+    "title": "Distributed Tracing",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.tracing",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "frontend",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "observability.metrics",
+    "pillar": "Debugging & Observability",
+    "title": "Metrics Collection",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.metrics",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "frontend",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "observability.health_endpoints",
+    "pillar": "Debugging & Observability",
+    "title": "Health and Readiness Endpoints",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.health_endpoints",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "frontend",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "observability.alerting_rules",
+    "pillar": "Debugging & Observability",
+    "title": "Alerting Rules",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.alerting_rules",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "frontend",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "observability.dashboards_as_code",
+    "pillar": "Debugging & Observability",
+    "title": "Dashboards as Code",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.dashboards_as_code",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "frontend",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "product.analytics_instrumentation",
+    "pillar": "Product & Experimentation",
+    "title": "Analytics Instrumentation",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "product.analytics_instrumentation",
+    "applies_when": {
+      "project_types": [
+        "frontend",
+        "service",
+        "api",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "product.feature_flags",
+    "pillar": "Product & Experimentation",
+    "title": "Feature Flags",
+    "level": 4,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "product.feature_flags",
+    "applies_when": {
+      "project_types": [
+        "frontend",
+        "service",
+        "api",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "product.experiment_config",
+    "pillar": "Product & Experimentation",
+    "title": "Experiment Configuration",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "product.experiment_config",
+    "applies_when": {
+      "project_types": [
+        "frontend",
+        "service",
+        "api",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.4.0"
+  },
+  {
+    "id": "style.naming_convention_rule",
+    "pillar": "Style & Validation",
+    "title": "Naming Convention Rule",
+    "level": 2,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "style.naming_convention_rule",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "style.complexity_budget",
+    "pillar": "Style & Validation",
+    "title": "Cyclomatic Complexity Budget",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "style.complexity_budget",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "style.dead_code_detection",
+    "pillar": "Style & Validation",
+    "title": "Dead Code Detection",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "style.dead_code_detection",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "style.duplicate_code_detection",
+    "pillar": "Style & Validation",
+    "title": "Duplicate Code Detection",
+    "level": 4,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "style.duplicate_code_detection",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "style.large_file_guard",
+    "pillar": "Style & Validation",
+    "title": "Large File Guard",
+    "level": 2,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "style.large_file_guard",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "style.tech_debt_tracking",
+    "pillar": "Style & Validation",
+    "title": "Technical Debt Tracking",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "style.tech_debt_tracking",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "observability.error_tracking",
+    "pillar": "Debugging & Observability",
+    "title": "Error Tracking",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.error_tracking",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "frontend",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "observability.runbooks",
+    "pillar": "Debugging & Observability",
+    "title": "Runbooks",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.runbooks",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "observability.profiling",
+    "pillar": "Debugging & Observability",
+    "title": "Profiling Instrumentation",
+    "level": 4,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.profiling",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "observability.circuit_breakers",
+    "pillar": "Debugging & Observability",
+    "title": "Circuit Breakers",
+    "level": 4,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.circuit_breakers",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "observability.deployment_markers",
+    "pillar": "Debugging & Observability",
+    "title": "Deployment Observability",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.deployment_markers",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "security.dependency_min_age",
+    "pillar": "Security & Governance",
+    "title": "Minimum Dependency Release Age",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "security.dependency_min_age",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "security.log_scrubbing",
+    "pillar": "Security & Governance",
+    "title": "Sensitive Data Log Scrubbing",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "security.log_scrubbing",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "security.secrets_management",
+    "pillar": "Security & Governance",
+    "title": "Secrets Management",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "security.secrets_management",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "security.dast",
+    "pillar": "Security & Governance",
+    "title": "DAST Scanning",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "security.dast",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "build.unused_dependencies",
+    "pillar": "Build System",
+    "title": "Unused Dependencies Detection",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.unused_dependencies",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "build.version_drift",
+    "pillar": "Build System",
+    "title": "Version Drift Detection",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.version_drift",
+    "applies_when": {
+      "project_types": [
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "build.monorepo_tooling",
+    "pillar": "Build System",
+    "title": "Monorepo Tooling",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.monorepo_tooling",
+    "applies_when": {
+      "project_types": [
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "build.single_command_setup",
+    "pillar": "Build System",
+    "title": "Single Command Setup",
+    "level": 2,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.single_command_setup",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "build.release_notes_automation",
+    "pillar": "Build System",
+    "title": "Release Notes Automation",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.release_notes_automation",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "build.dependency_weight_budget",
+    "pillar": "Build System",
+    "title": "Dependency Weight Budget",
+    "level": 4,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.dependency_weight_budget",
+    "applies_when": {
+      "project_types": [
+        "frontend"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "devenv.local_services",
+    "pillar": "Dev Environment",
+    "title": "Local Services Setup",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "devenv.local_services",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "devenv.database_schema",
+    "pillar": "Dev Environment",
+    "title": "Database Schema",
+    "level": 3,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "devenv.database_schema",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "data"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "docs.auto_generation",
+    "pillar": "Documentation",
+    "title": "Automated Documentation Generation",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "docs.auto_generation",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "docs.agents_md_ci_validation",
+    "pillar": "Documentation",
+    "title": "AGENTS.md CI Validation",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "docs.agents_md_ci_validation",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "docs.architecture_doc",
+    "pillar": "Documentation",
+    "title": "Service Architecture Documented",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "docs.architecture_doc",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "product.error_to_insight",
+    "pillar": "Product & Experimentation",
+    "title": "Error to Insight Pipeline",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "product.error_to_insight",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "frontend",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "build.check_command",
+    "pillar": "Build System",
+    "title": "Single Verify Command",
+    "level": 2,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.check_command",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "docs.agent_verify_contract",
+    "pillar": "Documentation",
+    "title": "Agent Verification Contract",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "docs.agent_verify_contract",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "propose",
+      "template": "acdc/workflow.md",
+      "autofixable": false
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "devenv.agent_hooks",
+    "pillar": "Dev Environment",
+    "title": "Post-Edit Verification Hooks",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "devenv.agent_hooks",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "testing.new_code_quality_gate",
+    "pillar": "Testing",
+    "title": "New-Code Quality Gate",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "testing.new_code_quality_gate",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "judgment.naming_consistency",
+    "pillar": "Style & Validation",
+    "title": "Naming Consistency",
+    "level": 2,
+    "scope": "repository",
+    "decide": "agent",
+    "gating": false,
+    "check": "judgment.assess",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "judgment.code_modularization",
+    "pillar": "Style & Validation",
+    "title": "Code Modularization",
+    "level": 3,
+    "scope": "repository",
+    "decide": "agent",
+    "gating": false,
+    "check": "judgment.assess",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "judgment.n_plus_one_query",
+    "pillar": "Style & Validation",
+    "title": "N+1 Query Avoidance",
+    "level": 4,
+    "scope": "repository",
+    "decide": "agent",
+    "gating": false,
+    "check": "judgment.assess",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "judgment.readme_quality",
+    "pillar": "Documentation",
+    "title": "README Quality",
+    "level": 2,
+    "scope": "repository",
+    "decide": "agent",
+    "gating": false,
+    "check": "judgment.assess",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "judgment.agents_md_quality",
+    "pillar": "Documentation",
+    "title": "AGENTS.md Quality",
+    "level": 3,
+    "scope": "repository",
+    "decide": "agent",
+    "gating": false,
+    "check": "judgment.assess",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "judgment.service_flow_doc_quality",
+    "pillar": "Documentation",
+    "title": "Service-Flow Documentation Quality",
+    "level": 4,
+    "scope": "repository",
+    "decide": "agent",
+    "gating": false,
+    "check": "judgment.assess",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "judgment.runbooks_quality",
+    "pillar": "Debugging & Observability",
+    "title": "Runbook Quality",
+    "level": 4,
+    "scope": "repository",
+    "decide": "agent",
+    "gating": false,
+    "check": "judgment.assess",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "judgment.pii_handling",
+    "pillar": "Security & Governance",
+    "title": "PII Handling",
+    "level": 3,
+    "scope": "repository",
+    "decide": "agent",
+    "gating": false,
+    "check": "judgment.assess",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "judgment.privacy_compliance",
+    "pillar": "Security & Governance",
+    "title": "Privacy Compliance",
+    "level": 4,
+    "scope": "repository",
+    "decide": "agent",
+    "gating": false,
+    "check": "judgment.assess",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "testing.behavioral_smoke",
+    "pillar": "Testing",
+    "title": "Behavioral Smoke Check (T3)",
+    "level": 3,
+    "scope": "application",
+    "decide": "execution",
+    "gating": false,
+    "check": "testing.behavioral_smoke",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "devenv.devcontainer_runnable",
+    "pillar": "Dev Environment",
+    "title": "Devcontainer Runnable (T3)",
+    "level": 3,
+    "scope": "repository",
+    "decide": "execution",
+    "gating": false,
+    "check": "devenv.devcontainer_runnable",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.5.0"
+  },
+  {
+    "id": "loop.loop_runs_dir",
+    "pillar": "Documentation",
+    "title": "Loop Run Log README",
+    "level": 2,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "loop.loop_runs_dir",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [],
+      "opt_in": "loop_ready"
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "loop/loop-runs-README.md",
+      "autofixable": true
+    },
+    "engine_min_version": "0.3.0"
+  },
+  {
+    "id": "loop.rules_index",
+    "pillar": "Security & Governance",
+    "title": "Loop Rules Index",
+    "level": 2,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "loop.rules_index",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [],
+      "opt_in": "loop_ready"
+    },
+    "engine_min_version": "0.3.0"
+  },
+  {
+    "id": "loop.denylist",
+    "pillar": "Security & Governance",
+    "title": "Loop Denylist",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "loop.denylist",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [],
+      "opt_in": "loop_ready"
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "loop/denylist.md",
+      "autofixable": true
+    },
+    "engine_min_version": "0.3.0"
+  },
+  {
+    "id": "loop.signal_schema",
+    "pillar": "Documentation",
+    "title": "Signal Schema README",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "loop.signal_schema",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [],
+      "opt_in": "loop_ready"
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "loop/signals-README.md",
+      "autofixable": true
+    },
+    "engine_min_version": "0.3.0"
+  },
+  {
+    "id": "loop.pr_artifact_template",
+    "pillar": "Task Discovery",
+    "title": "PR Artifact Evidence Template",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "loop.pr_artifact_template",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [],
+      "opt_in": "loop_ready"
+    },
+    "fix": {
+      "kind": "scaffold",
+      "template": "loop/pr-artifact-template.md",
+      "autofixable": true
+    },
+    "engine_min_version": "0.3.0"
+  },
+  {
+    "id": "loop.skills_present",
+    "pillar": "Documentation",
+    "title": "OMP Loop Skills",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "loop.skills_present",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [],
+      "opt_in": "loop_ready"
+    },
+    "engine_min_version": "0.3.0"
+  },
+  {
+    "id": "loop.prompt_contracts",
+    "pillar": "Documentation",
+    "title": "Loop Prompt Contracts",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "loop.prompt_contracts",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [],
+      "opt_in": "loop_ready"
+    },
+    "engine_min_version": "0.3.0"
+  },
+  {
+    "id": "loop.architecture_doc",
+    "pillar": "Documentation",
+    "title": "Architecture Doc",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "loop.architecture_doc",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [],
+      "opt_in": "loop_ready"
+    },
+    "engine_min_version": "0.3.0"
+  },
+  {
+    "id": "loop.domain_docs",
+    "pillar": "Documentation",
+    "title": "Domain README Docs",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "loop.domain_docs",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [],
+      "opt_in": "loop_ready"
+    },
+    "engine_min_version": "0.3.0"
+  },
+  {
+    "id": "build.small_batches",
+    "pillar": "Build System",
+    "title": "Small Batches",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.small_batches",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "build.integration_frequency",
+    "pillar": "Build System",
+    "title": "Integration Frequency",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.integration_frequency",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "build.agent_config_versioned",
+    "pillar": "Build System",
+    "title": "Agent Config Versioned",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "build.agent_config_versioned",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "taskdisc.review_latency",
+    "pillar": "Task Discovery",
+    "title": "Review Latency",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "taskdisc.review_latency",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "observability.slo_definitions",
+    "pillar": "Debugging & Observability",
+    "title": "SLO Definitions",
+    "level": 4,
+    "scope": "application",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.slo_definitions",
+    "applies_when": {
+      "project_types": [
+        "service",
+        "api",
+        "frontend",
+        "monorepo-root"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "observability.incident_learning",
+    "pillar": "Debugging & Observability",
+    "title": "Incident Learning",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "observability.incident_learning",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "docs.ai_stance",
+    "pillar": "Documentation",
+    "title": "AI Stance Policy",
+    "level": 2,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "docs.ai_stance",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "docs.machine_context",
+    "pillar": "Documentation",
+    "title": "Machine-Readable Context",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "docs.machine_context",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "security.agent_permissions",
+    "pillar": "Security & Governance",
+    "title": "Agent Permissions",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "security.agent_permissions",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "judgment.user_feedback_loop",
+    "pillar": "Product & Experimentation",
+    "title": "User Feedback Loop",
+    "level": 4,
+    "scope": "repository",
+    "decide": "agent",
+    "gating": false,
+    "check": "judgment.assess",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "engine_min_version": "0.6.0"
+  }
 ]

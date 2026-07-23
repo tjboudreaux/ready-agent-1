@@ -4,6 +4,24 @@ All notable changes to Ready Agent 1. The deterministic **gating score** and the
 are tracked separately: advisory additions never change a repo's Level, GitHub annotations, JUnit, or
 SARIF.
 
+## 0.6.0 — Verification loop (AC/DC) advisory cluster
+
+Engine/registry → `0.6.0`; detector stays `0.5.0`; report schema unchanged at **2**. The deterministic
+**gating set is unchanged at 32** — every addition below is advisory and never moves a repo's Level.
+
+### Advisory (T0 — never changes the score)
+- **Verification loop (4)**: `build.check_command`, `docs.agent_verify_contract`,
+  `devenv.agent_hooks`, `testing.new_code_quality_gate` (Sonar AC/DC Guide→Verify→Solve inner/outer loop).
+- **`acdc` config block** in `.agents/readiness/config.json`: `verify_command`, `instruction_files`,
+  `hook_files` — vendor-agnostic, maintainer-declared, always config-cited in evidence.
+- **Vendor-agnostic AC/DC pack** `templates/acdc/` (workflow directive + guide/verify/solve skills;
+  RA1's answer to Sonar's downloadable pack, allowlisted + vendored).
+- Skill advisory mapping in `skills/ra1-report` / `skills/ra1-fix` (metadata 0.6.0).
+
+### Tests/fixtures
+- `TestAcdcVerificationLoop` branch coverage; ten labeled fixtures for the new criteria including
+  config-driven passes (0 FP/FN/applicability).
+
 ## 0.5.0 — Factory parity gap closure
 
 Engine/registry/detector → `0.5.0`; report schema unchanged at **2**. The deterministic **gating set

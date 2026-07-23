@@ -1,0 +1,14 @@
+{
+  "name": "observability-incident-learning-fail",
+  "description": "observability.incident_learning fail: thin postmortem without enough substance.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "docs/postmortems/outage.md": "# Outage\n"
+  },
+  "expected": {
+    "observability.incident_learning": "fail"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "build-check-command-fail",
+  "description": "build.check_command fail: a named Make target runs only one recognized tool.",
+  "detect": {"project_type": "service"},
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "app/main.py": "x = 1\n",
+    "Makefile": "check:\n\tpytest\n"
+  },
+  "expected": {"build.check_command": "fail"}
+}

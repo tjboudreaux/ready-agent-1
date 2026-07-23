@@ -1,9 +1,14 @@
 """Documentation checks (mostly repository-scoped)."""
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
-from ._helpers import adep, aglob, ev, failed, passed, skipped, tool_invoked, unknown
+from ..parsers import load_jsonc
+from ._helpers import (
+    PLACEHOLDER_RE, acdc_config, adep, aglob, check_needles, ev, failed, filled, passed,
+    skipped, tool_invoked, unknown,
+)
 
 
 def readme(ctx):
@@ -114,6 +119,83 @@ def agents_md_ci_validation(ctx):
     return failed("AGENTS.md present but no CI job validates its commands.")
 
 
+_AGENT_INSTRUCTION_FILES = [
+    "AGENTS.md", "CLAUDE.md", ".claude/CLAUDE.md", "GEMINI.md",
+    ".github/copilot-instructions.md", ".cursorrules", ".cursor/rules/*.md",
+    ".cursor/rules/*.mdc", ".windsurfrules",
+]
+_VERIFY_HEADING_RE = re.compile(
+    r"(?im)^#{1,6}[^\n]*\b(verif\w*|test\w*|check\w*|validat\w*|lint\w*)\b"
+)
+_VERIFY_IMPERATIVE_RE = re.compile(
+    r"(?i)\b(run|execute)\b[^.\n]{0,120}\b(tests?|lint\w*|checks?|verif\w*|type-?check\w*)"
+)
+_RUNNABLE_PHRASES = (
+    "make ", "npm test", "npm run check", "npm run verify", "npm run validate",
+    "npm run lint", "npm run test", "yarn test", "yarn lint", "pnpm test",
+    "pnpm lint", "python3 -m", "python -m", "go test", "go vet", "cargo test",
+    "cargo clippy", "ra1 report", "sonar analyze",
+)
+
+
+def _line_number(text, offset):
+    return text.count("\n", 0, offset)
+
+
+def _runnable_command_spans(text):
+    spans = []
+    patterns = (re.compile(r"(?ms)```[^\n]*\n(.*?)```"), re.compile(r"(?<!`)`([^`\n]+)`(?!`)"))
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            command = match.group(1)
+            low = command.lower()
+            if check_needles(command) or any(phrase in low for phrase in _RUNNABLE_PHRASES):
+                spans.append((_line_number(text, match.start()), _line_number(text, match.end())))
+    return spans
+
+
+def _has_local_verify_contract(text):
+    spans = _runnable_command_spans(text)
+    if not spans:
+        return False
+    for heading in _VERIFY_HEADING_RE.finditer(text):
+        heading_line = _line_number(text, heading.start())
+        if any(heading_line < start <= heading_line + 10 for start, _ in spans):
+            return True
+    lines = text.splitlines()
+    for imperative in _VERIFY_IMPERATIVE_RE.finditer(text):
+        line = _line_number(text, imperative.start())
+        next_nonblank = None
+        for index in range(line + 1, len(lines)):
+            if lines[index].strip():
+                next_nonblank = index
+                break
+        allowed = {line}
+        if next_nonblank is not None:
+            allowed.add(next_nonblank)
+        if any(start in allowed for start, _ in spans):
+            return True
+    return False
+
+
+def agent_verify_contract(ctx):
+    configured = acdc_config(ctx).get("instruction_files")
+    configured_patterns = [item for item in configured if isinstance(item, str)] if isinstance(configured, list) else []
+    configured_files = set(ctx.static.glob(configured_patterns))
+    files = ctx.static.glob(_AGENT_INSTRUCTION_FILES + configured_patterns)
+    if not files:
+        return failed("No agent instruction file (AGENTS.md/CLAUDE.md/.cursor rules) to carry a verification contract.")
+    for path in files:
+        if _has_local_verify_contract(ctx.static.read(path) or ""):
+            evidence = [ev("verification contract", source=path)]
+            if path in configured_files:
+                evidence.append(ev("acdc.instruction_files", source=".agents/readiness/config.json"))
+            return passed(f"{path} instructs agents to verify with a runnable command.", evidence)
+    return failed(
+        "Agent instruction files never direct the agent to verify its changes with a runnable command (AC/DC Guide stage)."
+    )
+
+
 _ARCH_FILES = ["docs/architecture*.md", "ARCHITECTURE.md", "docs/adr/**", "docs/decisions/**",
                "doc/architecture*.md", "CONTEXT.md", "docs/design*.md"]
 
@@ -124,3 +206,127 @@ def architecture_doc(ctx):
         if len(ctx.static.read(f) or "") >= 200:
             return passed(f"Architecture documentation present: {f}", [ev("architecture doc", source=f)])
     return failed("No architecture documentation (ARCHITECTURE.md / docs/architecture / ADRs).")
+
+
+# --- DORA / AI-capability documentation proxies (advisory) ---------------------------
+
+_AI_HEADING_RE = re.compile(
+    r"(?im)^#{1,4}\s.*\b(AI (policy|usage|stance)|agent policy)\b"
+)
+_AI_TOOL_RE = re.compile(r"(?i)\b(copilot|claude|cursor|codex|gemini|agent)\b")
+_AI_PERM_RE = re.compile(r"(?i)\b(allowed|prohibited|must not|may use|approved)\b")
+
+
+def _text_filled(text, min_chars=40) -> bool:
+    stripped = (text or "").strip()
+    if not stripped or len(stripped) < min_chars:
+        return False
+    if PLACEHOLDER_RE.search(text or ""):
+        return False
+    return True
+
+
+def _ai_signal(text) -> bool:
+    return bool(_AI_TOOL_RE.search(text or "") or _AI_PERM_RE.search(text or ""))
+
+
+def _heading_sections(text, heading_re):
+    for m in heading_re.finditer(text):
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        line_end = text.find("\n", m.start())
+        if line_end < 0:
+            line_end = len(text)
+        line = text[line_start:line_end]
+        level = len(line) - len(line.lstrip("#"))
+        body_start = line_end + 1 if line_end < len(text) else len(text)
+        rest = text[body_start:]
+        next_h = re.compile(rf"(?m)^#{{1,{level}}}\s")
+        m2 = next_h.search(rest)
+        body = rest[: m2.start()] if m2 else rest
+        yield body
+
+
+def ai_stance(ctx):
+    """Pass on a filled AI policy artifact or AGENTS/CONTRIBUTING heading section
+    that includes a tool/agent or permission signal."""
+    accepted = ("AI_POLICY.md", "docs/ai-policy.md", "AGENTS.md", "CONTRIBUTING.md")
+    seen_invalid = []
+    for path in ("AI_POLICY.md", "docs/ai-policy.md"):
+        if not ctx.static.glob([path]):
+            continue
+        ok, rationale = filled(ctx, path, "AI policy")
+        text = ctx.static.read(path) or ""
+        if ok and _ai_signal(text):
+            return passed(rationale, [ev("AI stance", source=path, tier="T0")])
+        seen_invalid.append(path)
+    for path in ("AGENTS.md", "CONTRIBUTING.md"):
+        text = ctx.static.read(path)
+        if not text:
+            continue
+        for body in _heading_sections(text, _AI_HEADING_RE):
+            if _text_filled(body) and _ai_signal(body):
+                return passed(
+                    f"AI stance section present in {path}.",
+                    [ev("AI stance", source=path, tier="T0")],
+                )
+            seen_invalid.append(path)
+            break
+    if seen_invalid:
+        return failed(
+            "AI stance artifact present but thin/empty or missing tool/permission signal: "
+            f"{', '.join(seen_invalid)}. Accepted locations: {', '.join(accepted)}."
+        )
+    return failed(
+        "No filled AI stance policy "
+        f"(accepted: {', '.join(accepted)})."
+    )
+
+
+def _mcp_servers_ok(data) -> bool:
+    if not isinstance(data, dict):
+        return False
+    servers = data.get("mcpServers")
+    if not isinstance(servers, dict) or not servers:
+        return False
+    for cfg in servers.values():
+        if not isinstance(cfg, dict):
+            continue
+        if str(cfg.get("command") or "").strip() or str(cfg.get("url") or "").strip():
+            return True
+    return False
+
+
+def _llms_has_ref(text) -> bool:
+    for line in (text or "").splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if re.search(r"https?://", s) or "/" in s or s.endswith(".md"):
+            return True
+    return False
+
+
+def machine_context(ctx):
+    """Pass on MCP config with a real server entry, or a filled root llms.txt with URLs/paths.
+
+    AGENTS.md alone does not pass.
+    """
+    mcp_paths = [".mcp.json", ".cursor/mcp.json", ".vscode/mcp.json", ".gemini/settings.json"]
+    for path in mcp_paths:
+        if not ctx.static.glob([path]):
+            continue
+        data = load_jsonc(ctx.root / path)
+        if _mcp_servers_ok(data):
+            return passed(
+                f"MCP machine context configured: {path}.",
+                [ev("MCP config", source=path, tier="T0")],
+            )
+    if ctx.static.glob(["llms.txt"]):
+        ok, rationale = filled(ctx, "llms.txt", "llms.txt")
+        text = ctx.static.read("llms.txt") or ""
+        if ok and _llms_has_ref(text):
+            return passed(rationale, [ev("llms.txt", source="llms.txt", tier="T0")])
+    return failed(
+        "No machine-readable context (MCP config with command/url server, or filled llms.txt "
+        "with URL/path lines). AGENTS.md alone does not pass."
+    )

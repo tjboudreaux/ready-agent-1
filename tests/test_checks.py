@@ -1,6 +1,8 @@
 import unittest
+from unittest import mock
 
 from readiness.checks import build, devenv, docs, loop, observability, product, security, style, taskdisc, testing
+from readiness.checks._helpers import acdc_config, check_needles
 from readiness.collectors.git import GitCollector
 from readiness.collectors.github import GithubCollector
 from readiness.collectors.static import StaticCollector
@@ -656,6 +658,792 @@ class TestG4DocsProduct(CheckCase):
             {"package.json": '{"dependencies":{"@sentry/node":"^7"}}'}))), Status.FAIL)  # tracker only
         self.assertEqual(self.s(product.error_to_insight(self.ctx(
             {".github/workflows/s.yml": "name: s\nsteps:\n  - uses: getsentry/action-release@v1\n"}))), Status.FAIL)  # integ only
+
+
+class TestAcdcVerificationLoop(CheckCase):
+    def test_shared_helpers(self):
+        self.assertEqual(check_needles("ESLint . && TSC"), {"eslint", "tsc"})
+        self.assertEqual(check_needles("node scripts/gen-tsconfig.js"), set())
+        self.assertEqual(check_needles("jest --coverage"), {"jest"})
+        self.assertEqual(check_needles("cargo test"), {"cargo test"})
+        valid = self.ctx({".agents/readiness/config.json": '{"acdc":{"verify_command":"make check"}}'})
+        self.assertEqual(acdc_config(valid), {"verify_command": "make check"})
+        invalid = self.ctx({".agents/readiness/config.json": '{"acdc":[]}'})
+        self.assertEqual(acdc_config(invalid), {})
+
+    def test_check_command_make_and_prerequisites(self):
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "Makefile": "check:\n\truff check . && pytest\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "Makefile": "check: lint test MODE=fast\n\nlint:\n\truff check .\n\ntest:\n\tpytest\n",
+        }))), Status.PASS)
+
+    def test_check_command_package_scripts(self):
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "package.json": '{"scripts":{"check":"eslint . && tsc"}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "package.json": '{"scripts":{"check":"run-s lint test","lint":"eslint .","test":"vitest run"}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "package.json": '{"scripts":{"verify":"npm run lint && yarn test","lint":"eslint .","test":"jest"}}',
+        }))), Status.PASS)
+
+    def test_check_command_file_entrypoints(self):
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "scripts/check.sh": "#!/bin/sh\nruff check .\npytest\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "justfile": "check:\n    ruff check .\n    pytest\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "Taskfile.yml": "version: '3'\ntasks:\n  check:\n    cmds:\n      - ruff check .\n      - pytest\n  other:\n    cmds: [echo]\n",
+        }))), Status.PASS)
+
+    def test_check_command_config_designations(self):
+        config = '{"schema_version":"1","acdc":{"verify_command":"make check"}}'
+        verdict = build.check_command(self.ctx({
+            ".agents/readiness/config.json": config,
+            "Makefile": "check:\n\tpytest\n",
+        }))
+        self.assertEqual(self.s(verdict), Status.PASS)
+        self.assertTrue(any(e.source == ".agents/readiness/config.json" for e in verdict.evidence))
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"npm run check"}}',
+            "package.json": '{"scripts":{"check":"jest --coverage"}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"scripts/check.sh"}}',
+            "scripts/check.sh": "pytest\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"ruff check ."}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"python3 -m unittest"}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"task check"}}',
+            "Taskfile.yaml": "tasks:\n  check:\n    cmds: [pytest]\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": config,
+        }))), Status.FAIL)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":42}}',
+            "Makefile": "check:\n\truff check . && pytest\n",
+        }))), Status.PASS)
+
+    def test_check_command_failures(self):
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "Makefile": "check:\n\tpytest\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "package.json": '{"scripts":{"check":"jest --coverage"}}',
+        }))), Status.FAIL)
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            "package.json": '{"scripts":{"check":"node scripts/gen-tsconfig.js"}}',
+        }))), Status.FAIL)
+        self.assertEqual(self.s(build.check_command(self.ctx({}))), Status.FAIL)
+
+    def test_agent_verify_contract_passes(self):
+        cases = [
+            {"AGENTS.md": "## Build & Test\n\n```sh\npython3 -m unittest\n```\n"},
+            {"CLAUDE.md": "Always run `npm test` after every change.\n"},
+            {".cursor/rules/verify.mdc": "## Verification\n`pnpm lint`\n"},
+            {"AGENTS.md": "## VERIFY phase\nRun `sonar analyze --file src/a.py` after edits.\n"},
+        ]
+        for files in cases:
+            with self.subTest(files=files):
+                self.assertEqual(self.s(docs.agent_verify_contract(self.ctx(files))), Status.PASS)
+        configured = docs.agent_verify_contract(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"instruction_files":["docs/agent-guide.md",42]}}',
+            "docs/agent-guide.md": "Execute verification with `ra1 report --project .`.\n",
+        }))
+        self.assertEqual(self.s(configured), Status.PASS)
+        self.assertTrue(any(e.summary == "acdc.instruction_files" for e in configured.evidence))
+
+    def test_agent_verify_contract_failures(self):
+        cases = [
+            {"AGENTS.md": "## Testing\nTBD\n\n" + "filler\n" * 11 + "## Setup\n`pnpm install`\n"},
+            {"AGENTS.md": "## Setup\n```sh\npython3 -m pytest\n```\n"},
+            {"AGENTS.md": "## Verification\nNo command is documented.\n"},
+            {
+                ".agents/readiness/config.json": '{"acdc":{"instruction_files":["docs/agent-guide.md"]}}',
+                "docs/agent-guide.md": "## Verification\nDescribe checks without a command.\n",
+            },
+            {},
+        ]
+        for files in cases:
+            with self.subTest(files=files):
+                self.assertEqual(self.s(docs.agent_verify_contract(self.ctx(files))), Status.FAIL)
+
+    def test_agent_hooks_passes(self):
+        self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
+            ".claude/settings.json": '{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"ruff check ."}]}]}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
+            ".claude/settings.json": '{"hooks":{"Stop":{"command":"ra1 report --project ."}}}',
+        }))), Status.PASS)
+        configured = devenv.agent_hooks(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh",7]}}',
+            ".agents/hooks/post-edit.sh": "#!/bin/sh\nruff check .\n",
+        }))
+        self.assertEqual(self.s(configured), Status.PASS)
+        self.assertTrue(any(e.summary == "acdc.hook_files" for e in configured.evidence))
+
+    def test_agent_hooks_fallthrough_and_failures(self):
+        cases = [
+            {".agents/readiness/config.json": '{"acdc":{"hook_files":["missing/*.sh"]}}'},
+            {
+                ".agents/readiness/config.json": '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh"]}}',
+                ".agents/hooks/post-edit.sh": "#!/bin/sh\necho done\n",
+            },
+            {".claude/settings.json": '{"permissions":{}}'},
+            {".claude/settings.json": "{invalid"},
+            {".claude/settings.json": '{"hooks":{"PostToolUse":[{"command":"echo done"}]}}'},
+            {".cursor/rules/always.mdc": "---\nalwaysApply: true\n---\nRun eslint after edits.\n"},
+            {},
+        ]
+        for files in cases:
+            with self.subTest(files=files):
+                self.assertEqual(self.s(devenv.agent_hooks(self.ctx(files))), Status.FAIL)
+
+    def test_new_code_quality_gate_passes(self):
+        cases = [
+            {
+                "codecov.yml": "coverage:\n  status:\n    patch:\n      default:\n        target: 80%\n",
+                ".github/workflows/ci.yml": "uses: codecov/codecov-action@v5\n",
+            },
+            {
+                "sonar-project.properties": "sonar.projectKey=x\n",
+                ".github/workflows/ci.yaml": "run: sonar analyze\n",
+            },
+            {"Makefile": "quality:\n\tdiff-cover coverage.xml\n"},
+            {".github/workflows/ci.yml": "run: diff_cover coverage.xml\n"},
+            {
+                "qodana.yaml": "version: 1.0\n",
+                ".github/workflows/ci.yml": "uses: JetBrains/qodana-action@v2026\n",
+            },
+        ]
+        for files in cases:
+            with self.subTest(files=files):
+                self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx(files))), Status.PASS)
+
+    def test_new_code_quality_gate_failures(self):
+        cases = [
+            {"codecov.yml": "coverage:\n  status:\n    patch:\n"},
+            {"sonar-project.properties": "sonar.projectKey=x\n"},
+            {},
+        ]
+        for files in cases:
+            with self.subTest(files=files):
+                self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx(files))), Status.FAIL)
+
+
+    def test_check_command_edge_branches(self):
+        passes = [
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"just check"}}',
+                "Justfile": "check:\n    pytest\n",
+            },
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"just check"}}',
+                "Justfile": "lint:\n    ruff check .\n",
+                "justfile": "check:\n    pytest\n",
+            },
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"yarn check"}}',
+                "package.json": '{"scripts":{"check":"pytest"}}',
+            },
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"pnpm run check"}}',
+                "package.json": '{"scripts":{"check":"pytest"}}',
+            },
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"./scripts/check.sh"}}',
+                "scripts/check.sh": "pytest\n",
+            },
+            {"Makefile": "check: absent\n\truff check . && pytest\n"},
+            {"package.json": '{"scripts":{"validate":"run-p --print-label lint missing test","lint":"eslint .","test":"jest"}}'},
+        ]
+        for files in passes:
+            with self.subTest(pass_files=files):
+                self.assertEqual(self.s(build.check_command(self.ctx(files))), Status.PASS)
+        failures = [
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"task check"}}',
+                "Taskfile.yml": "tasks:\n  lint:\n    cmds: [ruff]\n",
+            },
+            {
+                ".agents/readiness/config.json": '{"acdc":{"verify_command":"npm run missing"}}',
+                "package.json": '{"scripts":{"check":"pytest"}}',
+            },
+            {".agents/readiness/config.json": '{"acdc":{"verify_command":"custom verify"}}'},
+            {"Makefile": "lint:\n\truff check .\n"},
+            {"Taskfile.yml": "tasks:\n  lint:\n    cmds: [ruff]\n"},
+            {"Taskfile.yml": "tasks:\n  check:\n    cmds:\n      - pytest\n"},
+            {"scripts/verify.sh": "pytest\n"},
+            {"package.json": '{"scripts":{"build":"tsc"}}'},
+        ]
+        for files in failures:
+            with self.subTest(fail_files=files):
+                self.assertEqual(self.s(build.check_command(self.ctx(files))), Status.FAIL)
+
+    def test_contract_locality_edges(self):
+        self.assertEqual(self.s(docs.agent_verify_contract(self.ctx({
+            "AGENTS.md": "Run verification now.\n\n`npm test`\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(docs.agent_verify_contract(self.ctx({
+            "AGENTS.md": "## Verification\n" + "filler\n" * 11 + "`npm test`\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(docs.agent_verify_contract(self.ctx({
+            "AGENTS.md": "Run verification now.\nnot the command\n\n`npm test`\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(docs.agent_verify_contract(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"instruction_files":{}}}',
+            "AGENTS.md": "## Verification\n`make check`\n",
+        }))), Status.PASS)
+
+    def test_agent_hook_vendor_needles(self):
+        self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh"]}}',
+            ".agents/hooks/post-edit.sh": "sonar analyze --file src/a.py\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
+            ".claude/settings.json": '{"hooks":{"PostToolUse":{"command":"sonar analyze"}}}',
+        }))), Status.PASS)
+
+    def test_new_code_quality_gate_edges(self):
+        self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx({
+            "qodana.yml": "version: 1.0\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx({
+            ".codecov.yml": "coverage:\n  status:\n    patch:\n",
+            ".github/workflows/a.yml": "run: echo no-match\n",
+            ".github/workflows/z.yml": "uses: codecov/codecov-action@v5\n",
+        }))), Status.PASS)
+        self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx({
+            "codecov.yml": "coverage:\n  status:\n    project:\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx({
+            "sonar-project.properties": "sonar.projectKey=x\n",
+            "qodana.yml": "version: 1.0\n",
+            ".github/workflows/ci.yml": "uses: JetBrains/qodana-action@v2026\n",
+        }))), Status.PASS)
+
+
+    def test_configured_entrypoint_checks_all_candidate_files(self):
+        ctx = self.ctx({
+            ".agents/readiness/config.json": '{"acdc":{"verify_command":"just check"}}',
+            "first": "lint:\n    ruff check .\n",
+            "second": "check:\n    pytest\n",
+        })
+        with mock.patch.object(build, "aglob", return_value=["first", "second"]):
+            self.assertEqual(self.s(build.check_command(ctx)), Status.PASS)
+
+
+class TestDoraAdvisoryChecks(CheckCase):
+    _GIT_AVAIL = {("rev-parse", "--is-inside-work-tree"): "true\n"}
+    _AI_POLICY = (
+        "# AI Policy\n\nEngineers may use Claude and Copilot. "
+        "Secrets are prohibited from prompts.\n"
+    )
+    _OPENSLO = (
+        "apiVersion: openslo/v1\nkind: SLO\nmetadata:\n  name: availability\n"
+        "spec:\n  budgetingMethod: Occurrences\n"
+    )
+
+    def test_build_small_batches(self):
+        self.assertEqual(self.s(build.small_batches(self.ctx({}))), Status.UNKNOWN)
+        thin = "a\n1\t1\tsrc/a.py\nb\n2\t2\tsrc/b.py\nc\n3\t3\tsrc/c.py\n"
+        self.assertEqual(self.s(build.small_batches(self.ctx({}, git={
+            **self._GIT_AVAIL,
+            ("log", "-50", "--no-merges", "--numstat", "--format=%H"): thin,
+        }))), Status.SKIPPED)
+        pass_lines = []
+        for i in range(10):
+            pass_lines.append(f"c{i}")
+            pass_lines.append(f"10\t5\tsrc/a{i}.py")
+        self.assertEqual(self.s(build.small_batches(self.ctx({}, git={
+            **self._GIT_AVAIL,
+            ("log", "-50", "--no-merges", "--numstat", "--format=%H"): "\n".join(pass_lines) + "\n",
+        }))), Status.PASS)
+        fail_lines = []
+        for i in range(10):
+            fail_lines.append(f"c{i}")
+            fail_lines.append(f"300\t200\tsrc/a{i}.py")
+        self.assertEqual(self.s(build.small_batches(self.ctx({}, git={
+            **self._GIT_AVAIL,
+            ("log", "-50", "--no-merges", "--numstat", "--format=%H"): "\n".join(fail_lines) + "\n",
+        }))), Status.FAIL)
+
+    def test_build_integration_frequency(self):
+        from datetime import datetime, timezone, timedelta
+
+        self.assertEqual(self.s(build.integration_frequency(self.ctx({}))), Status.UNKNOWN)
+        old = "2020-01-01T00:00:00+00:00\n" * 5
+        self.assertEqual(self.s(build.integration_frequency(self.ctx({}, git={
+            **self._GIT_AVAIL,
+            ("log", "-200", "--format=%cI"): old,
+        }))), Status.SKIPPED)
+        now = datetime.now(timezone.utc)
+        pass_dates = "\n".join((now - timedelta(weeks=w)).isoformat() for w in range(5)) + "\n"
+        self.assertEqual(self.s(build.integration_frequency(self.ctx({}, git={
+            **self._GIT_AVAIL,
+            ("log", "-200", "--format=%cI"): pass_dates,
+        }))), Status.PASS)
+        fail_dates = "\n".join([
+            now.isoformat(),
+            (now - timedelta(weeks=1)).isoformat(),
+        ]) + "\n"
+        self.assertEqual(self.s(build.integration_frequency(self.ctx({}, git={
+            **self._GIT_AVAIL,
+            ("log", "-200", "--format=%cI"): fail_dates,
+        }))), Status.FAIL)
+
+    def test_build_agent_config_versioned(self):
+        self.assertEqual(self.s(build.agent_config_versioned(self.ctx({}))), Status.UNKNOWN)
+        self.assertEqual(self.s(build.agent_config_versioned(self.ctx(
+            {}, git=self._GIT_AVAIL))), Status.SKIPPED)
+        self.assertEqual(self.s(build.agent_config_versioned(self.ctx(
+            {"AGENTS.md": "# Agents\n"},
+            git={
+                **self._GIT_AVAIL,
+                ("rev-list", "--count", "--follow", "HEAD", "--", "AGENTS.md"): "3\n",
+            },
+        ))), Status.PASS)
+        self.assertEqual(self.s(build.agent_config_versioned(self.ctx(
+            {"AGENTS.md": "# Agents\n"},
+            git={
+                **self._GIT_AVAIL,
+                ("rev-list", "--count", "--follow", "HEAD", "--", "AGENTS.md"): "1\n",
+            },
+        ))), Status.FAIL)
+
+    def test_taskdisc_review_latency(self):
+        import json
+
+        self.assertEqual(self.s(taskdisc.review_latency(self.ctx({}))), Status.SKIPPED)
+        pulls_key = (
+            "api",
+            "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=1",
+        )
+        insuff = []
+        extra = {}
+        for i in range(3):
+            insuff.append({
+                "number": i + 1,
+                "merged_at": "2026-06-01T00:00:00Z",
+                "created_at": "2026-06-01T00:00:00Z",
+            })
+            extra[("api", f"repos/o/r/pulls/{i + 1}/reviews")] = json.dumps(
+                [{"submitted_at": "2026-06-01T02:00:00Z"}]
+            )
+        extra[pulls_key] = json.dumps(insuff)
+        self.assertEqual(self.s(taskdisc.review_latency(self.ctx(
+            {}, gh=_gh_available(extra)))), Status.SKIPPED)
+
+        pass_extra = {}
+        pass_prs = []
+        for i in range(5):
+            pass_prs.append({
+                "number": i + 1,
+                "merged_at": "2026-06-02T00:00:00Z",
+                "created_at": "2026-06-01T00:00:00Z",
+            })
+            pass_extra[("api", f"repos/o/r/pulls/{i + 1}/reviews")] = json.dumps(
+                [{"submitted_at": "2026-06-01T12:00:00Z"}]
+            )
+        pass_extra[pulls_key] = json.dumps(pass_prs)
+        self.assertEqual(self.s(taskdisc.review_latency(self.ctx(
+            {}, gh=_gh_available(pass_extra)))), Status.PASS)
+
+        fail_extra = {}
+        fail_prs = []
+        for i in range(5):
+            fail_prs.append({
+                "number": i + 1,
+                "merged_at": "2026-06-10T00:00:00Z",
+                "created_at": "2026-06-01T00:00:00Z",
+            })
+            fail_extra[("api", f"repos/o/r/pulls/{i + 1}/reviews")] = json.dumps(
+                [{"submitted_at": "2026-06-05T00:00:00Z"}]
+            )
+        fail_extra[pulls_key] = json.dumps(fail_prs)
+        self.assertEqual(self.s(taskdisc.review_latency(self.ctx(
+            {}, gh=_gh_available(fail_extra)))), Status.FAIL)
+
+    def test_docs_ai_stance(self):
+        self.assertEqual(self.s(docs.ai_stance(self.ctx({}))), Status.FAIL)
+        self.assertEqual(self.s(docs.ai_stance(self.ctx(
+            {"AI_POLICY.md": "# AI\nshort"}))), Status.FAIL)
+        self.assertEqual(self.s(docs.ai_stance(self.ctx(
+            {"AI_POLICY.md": self._AI_POLICY}))), Status.PASS)
+        agents = (
+            "# Agents\n\n## AI Policy\n\nEngineers may use Claude for coding. "
+            "Secrets are prohibited from prompts.\n"
+        )
+        self.assertEqual(self.s(docs.ai_stance(self.ctx(
+            {"AGENTS.md": agents}))), Status.PASS)
+
+    def test_docs_machine_context(self):
+        import json
+
+        self.assertEqual(self.s(docs.machine_context(self.ctx(
+            {"AGENTS.md": "# Agents\n"}))), Status.FAIL)
+        mcp_ok = json.dumps({
+            "mcpServers": {"fs": {"command": "npx", "args": ["-y", "srv"]}},
+        })
+        self.assertEqual(self.s(docs.machine_context(self.ctx(
+            {".mcp.json": mcp_ok}))), Status.PASS)
+        self.assertEqual(self.s(docs.machine_context(self.ctx(
+            {".mcp.json": json.dumps({"mcpServers": {}})}))), Status.FAIL)
+        self.assertEqual(self.s(docs.machine_context(self.ctx({
+            "llms.txt": "# Project\n\nhttps://example.com/docs\nSee docs/api.md for details.\n",
+        }))), Status.PASS)
+
+    def test_security_agent_permissions(self):
+        self.assertEqual(self.s(security.agent_permissions(self.ctx({
+            ".claude/settings.local.json": '{"permissions":{"deny":["Bash"]}}',
+        }))), Status.FAIL)
+        self.assertEqual(self.s(security.agent_permissions(self.ctx({
+            ".claude/settings.json": '{"permissions":{"deny":["Bash(rm *)"]}}',
+        }))), Status.PASS)
+        self.assertEqual(self.s(security.agent_permissions(self.ctx({
+            ".claude/settings.json": '{"permissions":{"allow":["*"]}}',
+        }))), Status.FAIL)
+        self.assertEqual(self.s(security.agent_permissions(self.ctx({
+            ".claude/settings.json": '{"permissions":{"allow":["Read","Edit"]}}',
+        }))), Status.PASS)
+
+    def test_observability_slo_definitions(self):
+        self.assertEqual(self.s(observability.slo_definitions(self.ctx({}))), Status.FAIL)
+        self.assertEqual(self.s(observability.slo_definitions(self.ctx({
+            "openslo/availability.yaml": self._OPENSLO,
+        }))), Status.FAIL)
+        self.assertEqual(self.s(observability.slo_definitions(self.ctx({
+            "openslo/availability.yaml": self._OPENSLO,
+            ".github/workflows/ci.yml": (
+                "name: ci\non: push\njobs:\n  slo:\n    runs-on: ubuntu-latest\n"
+                "    steps:\n      - run: sloth generate -i openslo/availability.yaml\n"
+            ),
+        }))), Status.PASS)
+
+    def test_observability_incident_learning(self):
+        self.assertEqual(self.s(observability.incident_learning(self.ctx({}))), Status.FAIL)
+        self.assertEqual(self.s(observability.incident_learning(self.ctx({
+            "docs/postmortems/outage.md": "# Outage\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(observability.incident_learning(self.ctx({
+            "docs/postmortems/2024-outage.md": (
+                "# 2024 Outage Postmortem\n\n## Summary\n\n"
+                "The API was down for 40 minutes due to a bad deploy. "
+                "We rolled back and added a canary gate.\n"
+            ),
+        }))), Status.PASS)
+
+
+
+
+    def test_helpers_filled_and_parse_iso(self):
+        from readiness.checks import _helpers
+
+        class S:
+            def read(self, p):
+                return None
+
+        class C:
+            static = S()
+
+        ok, rationale = _helpers.filled(C(), "x", "lab")
+        self.assertFalse(ok)
+        self.assertIn("unreadable", rationale)
+
+        class SEmpty:
+            def read(self, p):
+                return "   \n"
+
+        class CEmpty:
+            static = SEmpty()
+
+        ok, rationale = _helpers.filled(CEmpty(), "x", "lab")
+        self.assertFalse(ok)
+        self.assertIn("empty", rationale)
+
+        self.assertIsNone(_helpers.parse_iso(None))
+        self.assertIsNone(_helpers.parse_iso(1))
+        self.assertIsNone(_helpers.parse_iso("not-a-date"))
+
+    def test_build_integration_frequency_edge_branches(self):
+        from datetime import datetime, timezone, timedelta
+
+        self.assertEqual(self.s(build.integration_frequency(self.ctx({}, git={
+            **self._GIT_AVAIL,
+            ("log", "-200", "--format=%cI"): "not-a-date\n",
+        }))), Status.UNKNOWN)
+
+        now = datetime.now(timezone.utc)
+        naive_anchor = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S")
+        dates = "\n".join([
+            naive_anchor,
+            "bad-date",
+            (now - timedelta(weeks=1)).strftime("%Y-%m-%dT%H:%M:%S"),
+            (now - timedelta(weeks=2)).strftime("%Y-%m-%dT%H:%M:%S"),
+            (now - timedelta(weeks=3)).strftime("%Y-%m-%dT%H:%M:%S"),
+            (now - timedelta(weeks=4)).strftime("%Y-%m-%dT%H:%M:%S"),
+            (now - timedelta(weeks=12)).strftime("%Y-%m-%dT%H:%M:%S"),  # outside trailing-8 window
+        ]) + "\n"
+        self.assertEqual(self.s(build.integration_frequency(self.ctx({}, git={
+            **self._GIT_AVAIL,
+            ("log", "-200", "--format=%cI"): dates,
+        }))), Status.PASS)
+
+    def test_docs_dora_helpers_and_edge_branches(self):
+        import json
+
+        self.assertFalse(docs._text_filled("short"))
+        self.assertFalse(docs._text_filled(
+            "TODO replace this placeholder with a real AI policy document body."
+        ))
+        self.assertFalse(docs._text_filled(""))
+
+        # Heading match with no trailing newline after the heading line.
+        bodies = list(docs._heading_sections("## AI Policy", docs._AI_HEADING_RE))
+        self.assertEqual(bodies, [""])
+
+        # AGENTS heading present but body lacks tool/permission signal → invalid path.
+        thin_agents = (
+            "# Agents\n\n## AI Policy\n\n"
+            "This section is long enough to count as filled content for the "
+            "length check but intentionally omits any stance keywords.\n"
+        )
+        self.assertEqual(self.s(docs.ai_stance(self.ctx({"AGENTS.md": thin_agents}))), Status.FAIL)
+
+        self.assertFalse(docs._mcp_servers_ok(None))
+        self.assertFalse(docs._mcp_servers_ok("x"))
+        self.assertFalse(docs._mcp_servers_ok({"mcpServers": {"x": "not-a-dict"}}))
+        self.assertFalse(docs._mcp_servers_ok({"mcpServers": {"x": {"args": ["a"]}}}))
+        self.assertFalse(docs._llms_has_ref("just words\nno links here"))
+        self.assertFalse(docs._llms_has_ref(""))
+
+        # Filled llms.txt without URL/path refs.
+        self.assertEqual(self.s(docs.machine_context(self.ctx({
+            "llms.txt": (
+                "# Project overview for language models reading this file carefully.\n"
+                "There are no URLs or path references in this document body.\n"
+            ),
+        }))), Status.FAIL)
+        self.assertEqual(self.s(docs.machine_context(self.ctx({
+            ".mcp.json": json.dumps({"mcpServers": {"x": "bad"}}),
+        }))), Status.FAIL)
+
+    def test_security_agent_permissions_edge_branches(self):
+        from readiness.checks import security as sec
+
+        self.assertFalse(sec._is_unbounded_perm(123))
+        self.assertFalse(sec._is_unbounded_perm(None))
+        self.assertFalse(sec._permissions_policy_ok(None))
+        self.assertFalse(sec._permissions_policy_ok("x"))
+        self.assertFalse(sec._permissions_policy_ok({"other": True}))
+        # Top-level allow/deny (no permissions wrapper); non-str allow entries are ignored.
+        self.assertTrue(sec._permissions_policy_ok({"allow": ["Read", 1], "deny": []}))
+        self.assertTrue(sec._permissions_policy_ok({"deny": ["Bash"]}))
+        self.assertFalse(sec._permissions_policy_ok({"allow": [], "deny": []}))
+
+        self.assertIsNone(sec._parse_permissions_markdown(""))
+        self.assertIsNone(sec._parse_permissions_markdown("# No fence\n"))
+        self.assertIsNone(sec._parse_permissions_markdown("```json\n{bad}\n```\n"))
+        self.assertEqual(
+            sec._parse_permissions_markdown("```json\n{\"deny\":[\"Bash\"]}\n```\n"),
+            {"deny": ["Bash"]},
+        )
+
+        md = (
+            "# Permissions\n\n```json\n"
+            '{"permissions":{"deny":["Bash(rm *)"]}}\n'
+            "```\n"
+        )
+        self.assertEqual(self.s(security.agent_permissions(self.ctx({
+            ".agents/shared/permissions.md": md,
+        }))), Status.PASS)
+
+        v = security.agent_permissions(self.ctx({
+            ".claude/settings.json": "{not-json",
+        }))
+        self.assertEqual(v.status, Status.FAIL)
+        self.assertIn("could not be parsed", v.rationale)
+
+        v = security.agent_permissions(self.ctx({
+            ".agents/shared/permissions.md": "# Permissions\n\nNo fenced JSON here, only prose.\n",
+        }))
+        self.assertEqual(v.status, Status.FAIL)
+        self.assertIn("could not be parsed", v.rationale)
+
+        self.assertEqual(self.s(security.agent_permissions(self.ctx({
+            ".agents/team/permissions.json": '{"permissions":{"allow":["Read"]}}',
+        }))), Status.PASS)
+
+    def test_taskdisc_review_latency_edge_branches(self):
+        import json
+
+        pulls_key = (
+            "api",
+            "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=1",
+        )
+        extra = {}
+        prs = [
+            "not-a-dict",
+            {"number": 1, "merged_at": "2026-06-02T00:00:00Z"},  # missing created_at
+            {
+                "number": 2,
+                "merged_at": "2026-06-02T00:00:00Z",
+                "created_at": "2026-06-01T00:00:00",  # naive
+            },
+            {
+                "number": 3,
+                "merged_at": "2026-06-02T00:00:00Z",
+                "created_at": "2026-06-01T00:00:00Z",
+            },
+            {
+                "number": 4,
+                "merged_at": "2026-06-02T00:00:00Z",
+                "created_at": "2026-06-01T00:00:00",
+            },
+            {
+                "number": 5,
+                "merged_at": "2026-06-02T00:00:00Z",
+                "created_at": "2026-06-01T00:00:00Z",
+            },
+            {
+                "number": 6,
+                "merged_at": "2026-06-02T00:00:00Z",
+                "created_at": "2026-06-01T00:00:00Z",
+            },
+            {
+                "number": 7,
+                "merged_at": "2026-06-02T00:00:00Z",
+                "created_at": "2026-06-01T00:00:00Z",
+            },
+        ]
+        extra[pulls_key] = json.dumps(prs)
+        # PR 2: naive created + naive review; PR 3: missing review
+        extra[("api", "repos/o/r/pulls/2/reviews")] = json.dumps(
+            [{"submitted_at": "2026-06-01T12:00:00"}]
+        )
+        extra[("api", "repos/o/r/pulls/3/reviews")] = "[]"
+        for i in (4, 5, 6, 7):
+            extra[("api", f"repos/o/r/pulls/{i}/reviews")] = json.dumps(
+                [{"submitted_at": "2026-06-01T12:00:00Z"}]
+            )
+        # Valid latencies: 2,4,5,6,7 (PR1 missing created, PR3 missing review).
+        self.assertEqual(self.s(taskdisc.review_latency(self.ctx(
+            {}, gh=_gh_available(extra)))), Status.PASS)
+
+        # Non-dict entries are skipped inside review_latency (collector normally filters them).
+        ctx = self.ctx({}, gh=_gh_available(extra))
+        original = ctx.github.recent_merged_prs
+        ctx.github.recent_merged_prs = lambda n=20: ["skip-me", *original(n)]
+        self.assertEqual(self.s(taskdisc.review_latency(ctx)), Status.PASS)
+
+    def test_observability_slo_artifact_variants(self):
+        # sloth.yml / nobl9 / terraform `_slo"` artifact discovery
+        self.assertEqual(self.s(observability.slo_definitions(self.ctx({
+            "sloth.yml": "version: prometheus/v1\nservice: api\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(observability.slo_definitions(self.ctx({
+            "prod.nobl9.yaml": "apiVersion: n9/v1alpha\nkind: SLO\n",
+        }))), Status.FAIL)
+        self.assertEqual(self.s(observability.slo_definitions(self.ctx({
+            "infra/slo.tf": 'resource "datadog_service_level_objective" "api_slo" {}\n',
+        }))), Status.FAIL)
+
+        # Artifact also matches wiring globs → skipped; empty wiring file skipped;
+        # a non-matching wiring file is ignored; tool-name mention in Dockerfile wires it.
+        # infra/other.tf exercises the false branch of the `_slo"` terraform matcher.
+        # Chart.yaml sorts before Dockerfile so the non-match tool-name continue branch is hit.
+        self.assertEqual(self.s(observability.slo_definitions(self.ctx({
+            ".github/workflows/slo.yml": self._OPENSLO,
+            "infra/other.tf": 'resource "null_resource" "x" {}\n',
+            "Makefile": "",
+            "Chart.yaml": "apiVersion: v2\nname: demo\ndescription: chart without slo tooling\n",
+            "Dockerfile": "RUN sloth generate -f openslo.yaml\n",
+        }))), Status.PASS)
+
+        # Empty Makefile alone is encountered (and continued) when it is the only wiring candidate.
+        self.assertEqual(self.s(observability.slo_definitions(self.ctx({
+            "openslo/availability.yaml": self._OPENSLO,
+            "Makefile": "",
+        }))), Status.FAIL)
+
+
+class TestLoopCoverageGaps(CheckCase):
+    FILLED = (
+        "# Loop Runs\n\nDocument how loop-runs artifacts are stored and reviewed by maintainers.\n"
+    )
+
+    def test_contains_artifact_language_ci_and_log(self):
+        self.assertTrue(loop._contains_artifact_language("See the CI status.", ["ci"]))
+        self.assertTrue(loop._contains_artifact_language("Attach the log please.", ["log"]))
+        self.assertTrue(loop._contains_artifact_language("Attach the logs please.", ["log"]))
+        # Evidence + CI only (no screenshot/video/loop-runs) hits the word-boundary path.
+        text = (
+            "# Pull Request\n\n"
+            "Include evidence and CI status so reviewers can trust this change.\n"
+        )
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({
+            ".github/pull_request_template.md": text,
+        }))), Status.PASS)
+        log_text = (
+            "# Pull Request\n\n"
+            "Include evidence and a log for reviewers evaluating this change.\n"
+        )
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({
+            ".github/pull_request_template.md": log_text,
+        }))), Status.PASS)
+
+    def test_unfilled_and_missing_contract_branches(self):
+        thin = "# x\n"
+        self.assertEqual(self.s(loop.rules_index(self.ctx({
+            ".omp/rules/README.md": thin,
+        }))), Status.FAIL)
+        self.assertEqual(self.s(loop.denylist(self.ctx({
+            ".omp/rules/denylist.md": thin,
+        }))), Status.FAIL)
+        self.assertEqual(self.s(loop.signal_schema(self.ctx({
+            "signals/README.md": thin,
+        }))), Status.FAIL)
+
+        missing_terms = (
+            "# Signal Schema Documentation\n\n"
+            "This describes the envelope shape for loop signals in detail.\n\n"
+            "```json\n{\"hello\": 1}\n```\n"
+        )
+        v = loop.signal_schema(self.ctx({"signals/README.md": missing_terms}))
+        self.assertEqual(v.status, Status.FAIL)
+        self.assertIn("missing schema term", v.rationale)
+
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({
+            ".omp/commands/pr-artifact-template.md": thin,
+        }))), Status.FAIL)
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({}))), Status.FAIL)
+
+        v = loop.prompt_contracts(self.ctx({
+            ".omp/commands/goal.md": thin,
+            ".omp/commands/loop.md": self.FILLED,
+        }))
+        self.assertEqual(v.status, Status.FAIL)
+        self.assertIn(".omp/commands/goal.md", v.rationale)
+
+        # One thin skill must be skipped (if ok is false) while three filled skills still pass.
+        files = {
+            ".omp/skills/a/SKILL.md": self.FILLED,
+            ".omp/skills/b/SKILL.md": self.FILLED,
+            ".omp/skills/c/SKILL.md": self.FILLED,
+            ".omp/skills/thin/SKILL.md": thin,
+        }
+        self.assertEqual(self.s(loop.skills_present(self.ctx(files))), Status.PASS)
 
 
 if __name__ == "__main__":

@@ -77,3 +77,82 @@ class GitCollector:
     def most_recent_commit_iso(self) -> Optional[str]:
         dates = self.commit_dates(1)
         return dates[0] if dates else None
+
+    def recent_churn(self, n: int = 50) -> List[int]:
+        """Per-commit added+deleted LOC for the last ``n`` non-merge commits.
+
+        Skips binary numstat rows and vendor/lockfile noise. Unavailable → ``[]``.
+        """
+        out = self._run(["log", f"-{n}", "--no-merges", "--numstat", "--format=%H"])
+        if not out:
+            return []
+        churns: List[int] = []
+        current: Optional[int] = None
+        for line in out.splitlines():
+            if not line.strip():
+                continue
+            if "\t" not in line:
+                if current is not None:
+                    churns.append(current)
+                current = 0
+                continue
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+            added, deleted, path = parts[0], parts[1], parts[2]
+            if added == "-" or deleted == "-":
+                continue
+            if _churn_path_excluded(path):
+                continue
+            if current is None:
+                current = 0
+            try:
+                current += int(added) + int(deleted)
+            except ValueError:
+                continue
+        if current is not None:
+            churns.append(current)
+        return churns
+
+    def commit_count_for(self, relpath: str) -> int:
+        """Commit count for a file (with ``--follow``) or directory (without).
+
+        When the path does not exist in a fake root, treat trailing ``/`` or known
+        agent dirs as directories (no ``--follow``); otherwise follow renames.
+        """
+        path = self.root / relpath
+        if path.is_dir():
+            is_dir = True
+        elif path.exists():
+            is_dir = False
+        else:
+            name = relpath.rstrip("/").rsplit("/", 1)[-1]
+            is_dir = relpath.endswith("/") or (
+                Path(name).suffix == "" and name in _AGENT_DIRS
+            )
+        target = relpath.rstrip("/") or relpath
+        if is_dir:
+            args = ["rev-list", "--count", "HEAD", "--", target]
+        else:
+            args = ["rev-list", "--count", "--follow", "HEAD", "--", target]
+        out = self._run(args)
+        try:
+            return int(out.strip()) if out else 0
+        except ValueError:
+            return 0
+
+
+_LOCK_BASENAMES = {
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb",
+    "poetry.lock", "Cargo.lock", "Gemfile.lock", "composer.lock",
+}
+_CHURN_SKIP_PARTS = {"vendor", "node_modules", "dist"}
+_AGENT_DIRS = {".claude", ".cursor", "skills", ".agents"}
+
+
+def _churn_path_excluded(path: str) -> bool:
+    parts = Path(path).parts
+    if any(part in _CHURN_SKIP_PARTS for part in parts):
+        return True
+    base = Path(path).name
+    return base in _LOCK_BASENAMES or base.endswith(".lock")

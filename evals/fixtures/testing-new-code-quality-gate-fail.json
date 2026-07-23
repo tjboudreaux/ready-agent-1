@@ -1,0 +1,11 @@
+{
+  "name": "testing-new-code-quality-gate-fail",
+  "description": "testing.new_code_quality_gate fail: Codecov patch coverage exists without enforcement wiring.",
+  "detect": {"project_type": "service"},
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "app/main.py": "x = 1\n",
+    "codecov.yml": "coverage:\n  status:\n    patch:\n      default:\n        target: 80%\n"
+  },
+  "expected": {"testing.new_code_quality_gate": "fail"}
+}

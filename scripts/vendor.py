@@ -21,6 +21,10 @@ SKILLS = ["ra1-report", "ra1-fix"]
 _SKIP_PARTS = {"__pycache__"}
 TEMPLATE_ALLOWLIST = [
     "AGENTS.md",
+    "acdc/workflow.md",
+    "acdc/guide-skill.md",
+    "acdc/verify-skill.md",
+    "acdc/solve-skill.md",
     "SECURITY.md",
     "CODEOWNERS",
     "env.example",

@@ -1,0 +1,12 @@
+{
+  "name": "devenv-agent-hooks-fail",
+  "description": "devenv.agent_hooks fail: persistent Cursor guidance and hook-less Claude settings do not execute checks.",
+  "detect": {"project_type": "service"},
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "app/main.py": "x = 1\n",
+    ".cursor/rules/always.mdc": "---\nalwaysApply: true\n---\nRun eslint after edits.\n",
+    ".claude/settings.json": "{\"permissions\":{}}"
+  },
+  "expected": {"devenv.agent_hooks": "fail"}
+}

@@ -1,0 +1,14 @@
+{
+  "name": "observability-slo-definitions-fail",
+  "description": "observability.slo_definitions fail: openslo artifact present without CI/deploy wiring.",
+  "detect": {
+    "project_type": "service"
+  },
+  "files": {
+    "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
+    "openslo/availability.yaml": "apiVersion: openslo/v1\nkind: SLO\nmetadata:\n  name: availability\nspec:\n  budgetingMethod: Occurrences\n"
+  },
+  "expected": {
+    "observability.slo_definitions": "fail"
+  }
+}

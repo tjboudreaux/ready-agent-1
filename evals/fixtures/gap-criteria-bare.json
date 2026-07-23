@@ -1,7 +1,9 @@
 {
   "name": "gap-criteria-bare",
   "description": "Minimal Express service with none of the G1-G4 Factory-parity advisory tooling; the new advisory criteria fail. Offline by design (no GitHub); exercises the fail shapes end-to-end.",
-  "detect": { "project_type": "service" },
+  "detect": {
+    "project_type": "service"
+  },
   "files": {
     "package.json": "{\n  \"name\": \"gap-bare\",\n  \"dependencies\": { \"express\": \"^4.19.0\" }\n}\n",
     "src/index.js": "const express = require('express');\nconst app = express();\napp.get('/', (req, res) => res.send('ok'));\nmodule.exports = app;\n",
@@ -31,6 +33,11 @@
     "docs.auto_generation": "fail",
     "docs.agents_md_ci_validation": "fail",
     "docs.architecture_doc": "fail",
-    "product.error_to_insight": "fail"
+    "product.error_to_insight": "fail",
+    "docs.ai_stance": "fail",
+    "docs.machine_context": "fail",
+    "security.agent_permissions": "fail",
+    "observability.slo_definitions": "fail",
+    "observability.incident_learning": "fail"
   }
 }

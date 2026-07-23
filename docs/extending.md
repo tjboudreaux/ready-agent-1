@@ -81,6 +81,33 @@ If detection is wrong or low-confidence, pin it in `.agents/readiness/config.jso
 Also consider opening an issue with the repo shape — misclassification is treated as a bug, since a
 wrong skip inflates the score.
 
+
+## AC/DC verification-loop configuration
+
+Vendor-neutral verification-loop declarations live in the same readiness config:
+
+```json
+{
+  "schema_version": "1",
+  "acdc": {
+    "verify_command": "make check",
+    "instruction_files": ["docs/agent-guide.md"],
+    "hook_files": [".cursor/hooks.json", ".agents/hooks/*.sh"]
+  }
+}
+```
+
+- `acdc.verify_command` names one verify entrypoint. RA1 resolves supported Make/Just/Task targets,
+  package scripts, repository scripts, or recognized direct check commands before granting credit.
+- `acdc.instruction_files` adds string globs to the agent-instruction files inspected for a local
+  verification instruction plus runnable command.
+- `acdc.hook_files` adds string globs for maintainer-declared executed-hook files; a matching file
+  must contain a recognized check command, `sonar`, or `ra1`.
+
+Every config-driven verdict cites `.agents/readiness/config.json`. Invalid shapes (a non-string
+command, non-list file fields, or non-string list entries) are ignored and built-in detection still
+runs; a non-empty `verify_command` that does not resolve fails rather than silently falling through.
+
 ## Application discovery
 
 Detection inventories independently deployable applications so app-scoped criteria report

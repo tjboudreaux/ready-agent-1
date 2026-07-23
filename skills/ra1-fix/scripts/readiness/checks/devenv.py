@@ -1,7 +1,9 @@
 """Dev Environment checks."""
 from __future__ import annotations
 
-from ._helpers import aglob, ev, failed, passed, skipped
+import json
+
+from ._helpers import acdc_config, aglob, check_needles, ev, failed, passed, skipped
 
 
 def devcontainer(ctx):
@@ -61,3 +63,51 @@ def devcontainer_runnable(ctx):
     if res["returncode"] == 0:
         return passed("Devcontainer builds on an isolated copy.", [ev("T3 devcontainer build", tier="T3")])
     return failed(f"devcontainer build exited {res['returncode']} on an isolated copy.")
+
+
+def _hook_runs_check(value):
+    if isinstance(value, dict):
+        command = value.get("command")
+        if isinstance(command, str):
+            low = command.lower()
+            if check_needles(command) or "sonar" in low or "ra1" in low:
+                return True
+        return any(_hook_runs_check(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_hook_runs_check(item) for item in value)
+    return False
+
+
+def agent_hooks(ctx):
+    configured = acdc_config(ctx).get("hook_files")
+    patterns = [item for item in configured if isinstance(item, str)] if isinstance(configured, list) else []
+    for path in ctx.static.glob(patterns):
+        text = ctx.static.read(path) or ""
+        low = text.lower()
+        if check_needles(text) or "sonar" in low or "ra1" in low:
+            return passed(
+                f"Maintainer-declared post-edit hook: {path} (acdc.hook_files).",
+                [
+                    ev("agent hook (config-declared)", source=path),
+                    ev("acdc.hook_files", source=".agents/readiness/config.json"),
+                ],
+            )
+
+    raw = ctx.static.read(".claude/settings.json")
+    if raw:
+        try:
+            settings = json.loads(raw)
+        except json.JSONDecodeError:
+            settings = None
+        hooks = settings.get("hooks") if isinstance(settings, dict) else None
+        if isinstance(hooks, dict):
+            for hook_key in ("PostToolUse", "Stop"):
+                if hook_key in hooks and _hook_runs_check(hooks[hook_key]):
+                    return passed(
+                        f"Post-edit verification hook runs a check command: .claude/settings.json ({hook_key}).",
+                        [ev("agent hook", source=".claude/settings.json")],
+                    )
+
+    return failed(
+        "No machine-enforced post-edit verification hook (e.g. Claude Code PostToolUse/Stop hook running a check command, or files declared in acdc.hook_files); instruction files are advisory to the agent — hooks make inner-loop verification mechanical (AC/DC Verify stage)."
+    )
