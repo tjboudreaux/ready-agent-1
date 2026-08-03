@@ -7,7 +7,7 @@ from datetime import datetime
 from ..parsers import load_jsonc
 from ._helpers import (
     PLACEHOLDER_RE, acdc_config, adep, aglob, check_needles, ev, failed, filled, passed,
-    skipped, tool_invoked, unknown,
+    tool_invoked, unknown,
 )
 
 
