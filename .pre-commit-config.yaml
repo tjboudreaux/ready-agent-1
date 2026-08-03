@@ -6,3 +6,10 @@ repos:
       - id: end-of-file-fixer
       - id: check-added-large-files
       - id: check-merge-conflict
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.1
+    hooks:
+      # Same correctness subset CI gates on (see .github/workflows/ci.yml). Kept in sync
+      # deliberately: a hook stricter than CI trains contributors to skip hooks.
+      - id: ruff
+        args: ["--select", "F,E9,B", "--no-cache"]

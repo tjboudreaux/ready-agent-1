@@ -4,3 +4,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+  # Runtime is intentionally zero-dependency (enforced by tests/test_stdlib_purity.py), so
+  # this only watches dev tooling -- but without it the first dev dependency added would be
+  # unmonitored.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"

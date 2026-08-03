@@ -19,13 +19,25 @@ packages = ["readiness", "readiness.checks", "readiness.collectors", "readiness.
 [tool.setuptools.package-data]
 readiness = ["criteria/*.json"]
 
+# No [project.optional-dependencies]: declaring dev deps here without a lockfile would
+# make build.deps_pinned fail on our own scan, and adding poetry/uv lock machinery to a
+# deliberately zero-dep project is not worth it for three tools. Dev tooling is pinned
+# exactly at its point of use instead -- .github/workflows/ci.yml and the
+# .pre-commit-config.yaml rev, which are kept on the same ruff version.
+
 [tool.ruff]
+# Older ruff cannot parse [tool.ruff.lint] and exits with a TOML error rather than a
+# finding, so an unpinned contributor would silently lint nothing. Fail loudly instead.
+required-version = ">=0.6"
 line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+# NOTE: strict typing is an aspiration, not a gate. `mypy engine/readiness` currently
+# reports ~1045 errors (mostly no-untyped-def), so CI enforces only the ruff correctness
+# subset (F, E9, B). Do not describe this repo as strictly typed until that count is zero.
 [tool.mypy]
 python_version = "3.11"
 strict = true
