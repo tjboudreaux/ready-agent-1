@@ -71,7 +71,9 @@ def render_markdown(report) -> str:
         lines.append("## Levels")
         for lv in score.levels:
             mark = "achieved" if lv.achieved else "not yet"
-            lines.append(f"- **L{lv.level} {lv.name}**: {lv.passed}/{lv.total} ({round(lv.ratio*100)}%) — {mark}")
+            lines.append(
+                f"- **L{lv.level} {lv.name}**: {lv.passed}/{lv.total} "
+                f"({round(lv.ratio*100)}%) — {mark}")
         lines.append("")
 
     lines.append("## Criteria Results")
@@ -81,14 +83,18 @@ def render_markdown(report) -> str:
         for r in [x for x in d.results if x.pillar == pillar]:
             sym = _SYMBOL.get(r.status.value, "?")
             gate_label = "gating" if r.gating else "**advisory**"
-            lines.append(f"- {sym} **{r.title}** ({gate_label}, L{r.level}, {_display_score(r)}): {r.rationale}")
+            lines.append(
+                f"- {sym} **{r.title}** ({gate_label}, L{r.level}, {_display_score(r)}): "
+                f"{r.rationale}")
 
     recs = _recommendations(d.results, score.level if score else 0)
     if recs:
         lines.append("")
         lines.append("## Action Items")
         lines.append("")
-        lines.append(f"_Top {len(recs)} highest-impact gating next steps (clear the next level first)._")
+        lines.append(
+            f"_Top {len(recs)} highest-impact gating next steps "
+            f"(clear the next level first)._")
         for rec in recs:
             effort = _EFFORT.get(rec.get("fix_kind", ""), _EFFORT[""])
             lines.append(f"- **{rec['title']}** ({rec['id']}, L{rec['level']}, {rec['pillar']}) "
@@ -115,8 +121,10 @@ def render_markdown(report) -> str:
             lines.append("To assess: " + ", ".join(r.title for r in assess) + ".")
         if ignored:
             lines.append("")
-            lines.append(f"Ignored judgments ({len(ignored)}): " + ", ".join(r.title for r in ignored)
-                         + " — silenced via .agents/readiness/config.json `judgments`.")
+            lines.append(
+                f"Ignored judgments ({len(ignored)}): "
+                + ", ".join(r.title for r in ignored)
+                + " — silenced via .agents/readiness/config.json `judgments`.")
 
     if d.advisory:
         lines.append("")
@@ -251,9 +259,11 @@ def render_history_list(payload) -> str:
              "| id | timestamp | level | pass_rate | gating | registry |",
              "|---|---|---|---|---|---|"]
     for e in payload.get("entries", []):
-        lines.append(f"| {e.get('id', '')} | {e.get('timestamp', '')} | {e.get('level', '')} | "
-                     f"{e.get('pass_rate', '')} | {e.get('gating_passed', '')}/{e.get('gating_total', '')} | "
-                     f"{e.get('registry_version', '')} |")
+        lines.append(
+            f"| {e.get('id', '')} | {e.get('timestamp', '')} | {e.get('level', '')} | "
+            f"{e.get('pass_rate', '')} | "
+            f"{e.get('gating_passed', '')}/{e.get('gating_total', '')} | "
+            f"{e.get('registry_version', '')} |")
     if not payload.get("entries"):
         lines.append("| _(none)_ | | | | | |")
     return "\n".join(lines) + "\n"

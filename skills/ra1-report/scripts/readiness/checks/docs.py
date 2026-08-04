@@ -6,8 +6,17 @@ from datetime import datetime
 
 from ..parsers import load_jsonc
 from ._helpers import (
-    PLACEHOLDER_RE, acdc_config, adep, aglob, check_needles, ev, failed, filled, passed,
-    tool_invoked, unknown,
+    PLACEHOLDER_RE,
+    acdc_config,
+    adep,
+    aglob,
+    check_needles,
+    ev,
+    failed,
+    filled,
+    passed,
+    tool_invoked,
+    unknown,
 )
 
 
@@ -20,7 +29,8 @@ def readme(ctx):
         return failed(f"README too thin ({len(text)} chars).")
     if text.count("#") < 2 and "```" not in text:
         return failed("README lacks sections or examples.")
-    return passed(f"README present and substantive ({len(text)} chars).", [ev("README", source=hits[0])])
+    return passed(f"README present and substantive ({len(text)} chars).",
+                  [ev("README", source=hits[0])])
 
 
 def agents_md(ctx):
@@ -39,7 +49,8 @@ def agents_md_validation(ctx):
         return failed("AGENTS.md lacks structure (fewer than 2 headings).")
     if lines > 400:
         return failed(f"AGENTS.md too long ({lines} lines; keep it high-signal).")
-    return passed(f"AGENTS.md is well-formed ({headings} sections, {lines} lines).", [ev("AGENTS.md structure", source="AGENTS.md")])
+    return passed(f"AGENTS.md is well-formed ({headings} sections, {lines} lines).",
+                  [ev("AGENTS.md structure", source="AGENTS.md")])
 
 
 def skills(ctx):
@@ -74,7 +85,8 @@ def doc_freshness(ctx):
         return unknown("Unparseable commit timestamps.")
     if stale:
         return failed(f"Docs stale (>180 days before latest commit): {', '.join(stale)}")
-    return passed("Key docs updated within 180 days of the latest commit.", [ev("doc vs latest-commit dates", tier="T1")])
+    return passed("Key docs updated within 180 days of the latest commit.",
+                  [ev("doc vs latest-commit dates", tier="T1")])
 
 
 def api_schema_docs(ctx):
@@ -180,19 +192,25 @@ def _has_local_verify_contract(text):
 
 def agent_verify_contract(ctx):
     configured = acdc_config(ctx).get("instruction_files")
-    configured_patterns = [item for item in configured if isinstance(item, str)] if isinstance(configured, list) else []
+    configured_patterns = (
+        [item for item in configured if isinstance(item, str)]
+        if isinstance(configured, list) else []
+    )
     configured_files = set(ctx.static.glob(configured_patterns))
     files = ctx.static.glob(_AGENT_INSTRUCTION_FILES + configured_patterns)
     if not files:
-        return failed("No agent instruction file (AGENTS.md/CLAUDE.md/.cursor rules) to carry a verification contract.")
+        return failed("No agent instruction file (AGENTS.md/CLAUDE.md/.cursor rules) "
+                       "to carry a verification contract.")
     for path in files:
         if _has_local_verify_contract(ctx.static.read(path) or ""):
             evidence = [ev("verification contract", source=path)]
             if path in configured_files:
-                evidence.append(ev("acdc.instruction_files", source=".agents/readiness/config.json"))
+                evidence.append(ev("acdc.instruction_files",
+                                   source=".agents/readiness/config.json"))
             return passed(f"{path} instructs agents to verify with a runnable command.", evidence)
     return failed(
-        "Agent instruction files never direct the agent to verify its changes with a runnable command (AC/DC Guide stage)."
+        "Agent instruction files never direct the agent to verify its changes "
+        "with a runnable command (AC/DC Guide stage)."
     )
 
 
@@ -204,7 +222,8 @@ def architecture_doc(ctx):
     """Architecture documentation must be substantive (>=200 chars), not an empty stub."""
     for f in ctx.static.glob(_ARCH_FILES):
         if len(ctx.static.read(f) or "") >= 200:
-            return passed(f"Architecture documentation present: {f}", [ev("architecture doc", source=f)])
+            return passed(f"Architecture documentation present: {f}",
+                           [ev("architecture doc", source=f)])
     return failed("No architecture documentation (ARCHITECTURE.md / docs/architecture / ADRs).")
 
 

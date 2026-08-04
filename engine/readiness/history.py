@@ -18,7 +18,7 @@ import hashlib
 import json
 import re
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # The stale-state contract: a delta is only meaningful when these match.
@@ -131,7 +131,7 @@ def _unique_snapshot(bucket, safe_ts):
 
 
 def now_iso():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _index_entry(report_dict, filename):

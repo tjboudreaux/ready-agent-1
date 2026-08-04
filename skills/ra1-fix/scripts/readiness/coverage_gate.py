@@ -108,7 +108,8 @@ def _build_parser():
     p.add_argument("--fail-under", type=float, default=90.0,
                    help="Minimum total branch coverage percent (default 90)")
     p.add_argument("--thin-wrapper", nargs="*", default=[],
-                   help="Changed files allowed to be absent from the report (logic-free entrypoints)")
+                   help="Changed files allowed to be absent from the report "
+                        "(logic-free entrypoints)")
     return p
 
 

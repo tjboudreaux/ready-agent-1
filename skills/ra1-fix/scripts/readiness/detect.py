@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import List, Tuple
 
 from .collectors.static import StaticCollector
 from .model import App, Detection
@@ -79,9 +78,9 @@ def _pin_app(app: App, pinned: str) -> None:
     app.deploy_surface = pinned
 
 
-def _classify(static: StaticCollector) -> Tuple[str, float, List[str]]:
+def _classify(static: StaticCollector) -> tuple[str, float, list[str]]:
     """Return (deploy_surface/project_type, confidence, signals) for a single app dir."""
-    signals: List[str] = []
+    signals: list[str] = []
     deps = static.declared_deps()
     manifests = static.manifests()
 
@@ -89,7 +88,8 @@ def _classify(static: StaticCollector) -> Tuple[str, float, List[str]]:
         return sorted(deps & {n.lower() for n in names})
 
     # Infra as code
-    if static.glob(["*.tf", "**/*.tf", "main.tf"]) or static.exists_any(["Pulumi.yaml", "cloudformation.yaml", "**/*.bicep"]):
+    if static.glob(["*.tf", "**/*.tf", "main.tf"]) or static.exists_any(
+            ["Pulumi.yaml", "cloudformation.yaml", "**/*.bicep"]):
         signals.append("IaC files (.tf/Pulumi/CloudFormation) present")
         return "infra", CONF_HIGH, signals
 
@@ -139,10 +139,10 @@ def _classify(static: StaticCollector) -> Tuple[str, float, List[str]]:
     return "unknown", CONF_LOW, signals
 
 
-def _workspace_dirs(root: Path, static: StaticCollector) -> List[str]:
+def _workspace_dirs(root: Path, static: StaticCollector) -> list[str]:
     """Discover application subdirectories in a monorepo (best-effort, no YAML parsing)."""
     dirs: set = set()
-    globs: List[str] = []
+    globs: list[str] = []
     pkg = static.manifests().get("package.json", (None, None))[1]
     if isinstance(pkg, dict):
         ws = pkg.get("workspaces")
@@ -172,7 +172,8 @@ def _workspace_dirs(root: Path, static: StaticCollector) -> List[str]:
 
 
 def _has_manifest(path: Path) -> bool:
-    for name in ("package.json", "pyproject.toml", "go.mod", "Cargo.toml", "pom.xml", "build.gradle"):
+    for name in ("package.json", "pyproject.toml", "go.mod", "Cargo.toml",
+                 "pom.xml", "build.gradle"):
         if (path / name).exists():
             return True
     return False
@@ -188,7 +189,7 @@ def _ignored_app_dir(rel: str) -> bool:
     return (rel.strip("/").lower() + "/").startswith(_IGNORED_APP_PREFIXES)
 
 
-def _go_cmd_apps(root: Path) -> List[str]:
+def _go_cmd_apps(root: Path) -> list[str]:
     """Go convention: each ``cmd/<name>`` with a ``.go`` file is an independent binary."""
     if not (root / "go.mod").exists():
         return []
@@ -231,7 +232,7 @@ def _pom_tree(raw: bytes):
         return None
 
 
-def _maven_modules(root: Path) -> List[str]:
+def _maven_modules(root: Path) -> list[str]:
     pom = root / "pom.xml"
     if not pom.exists():
         return []
@@ -269,8 +270,9 @@ def _maven_modules(root: Path) -> List[str]:
     return out
 
 
-def _gradle_modules(root: Path, static: StaticCollector) -> List[str]:
-    text = (static.read("settings.gradle") or "") + "\n" + (static.read("settings.gradle.kts") or "")
+def _gradle_modules(root: Path, static: StaticCollector) -> list[str]:
+    text = ((static.read("settings.gradle") or "") + "\n"
+            + (static.read("settings.gradle.kts") or ""))
     out = []
     for m in re.finditer(r"include[\s(]+([^)\n]+)", text):
         for tok in re.findall(r"""["']([^"']+)["']""", m.group(1)):
@@ -289,13 +291,15 @@ def _build_app(root: Path, rel: str, root_static: StaticCollector = None) -> App
     sub = StaticCollector(root / rel if rel != "." else root)
     surface, _conf, _sig = _classify(sub)
     # A Go cmd/* binary has no manifest of its own; classify it from the module's deps.
-    if surface == "unknown" and rel != "." and (root / "go.mod").exists() and list((root / rel).glob("*.go")):
+    if (surface == "unknown" and rel != "." and (root / "go.mod").exists()
+            and list((root / rel).glob("*.go"))):
         surface = _go_root_surface(root_static or StaticCollector(root))
     langs = sub.languages() or (["go"] if list((root / rel).glob("*.go")) else [])
     test_cmd = _detect_test_cmd(sub)
     prod = "unknown"
     if surface in ("service", "frontend"):
-        if sub.exists_any(["Dockerfile", "**/Dockerfile", "Procfile", "fly.toml", "vercel.json", "k8s/**", "helm/**"]):
+        if sub.exists_any(["Dockerfile", "**/Dockerfile", "Procfile", "fly.toml",
+                           "vercel.json", "k8s/**", "helm/**"]):
             prod = True
     return App(
         path=rel,
@@ -333,7 +337,8 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
     app_pins = cfg.get("apps") if isinstance(cfg.get("apps"), dict) else {}
 
     ws = _workspace_dirs(root, static)
-    has_mono_tooling = bool(static.exists_any(["turbo.json", "nx.json", "pnpm-workspace.yaml", "lerna.json", "go.work"]))
+    has_mono_tooling = bool(static.exists_any(
+        ["turbo.json", "nx.json", "pnpm-workspace.yaml", "lerna.json", "go.work"]))
     is_monorepo = len(ws) > 1 or (has_mono_tooling and len(ws) >= 1)
 
     if is_monorepo:
@@ -346,14 +351,16 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
                 _pin_app(app, pinned)
                 signals.append(f"app '{rel}' type pinned to '{pinned}' via {PIN_SOURCE}")
             elif pinned is not None:
-                signals.append(f"ignored invalid type pin '{pinned}' for app '{rel}' in {PIN_SOURCE}")
+                signals.append(
+                    f"ignored invalid type pin '{pinned}' for app '{rel}' in {PIN_SOURCE}")
             apps.append(app)
-        languages = sorted({l for a in apps for l in a.languages})
+        languages = sorted({lang for a in apps for lang in a.languages})
         signals.insert(0, f"monorepo: {len(apps)} application(s) discovered")
         if has_mono_tooling:
             signals.append("monorepo tooling present")
         if root_pin is not None:
-            signals.append(f"root project_type pin ignored for monorepo (use detect.apps in {PIN_SOURCE})")
+            signals.append(
+                f"root project_type pin ignored for monorepo (use detect.apps in {PIN_SOURCE})")
         return Detection(
             project_type="monorepo-root",
             confidence=CONF_HIGH if apps else CONF_LOW,
@@ -376,7 +383,8 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
         signals.append(f"ignored invalid project_type pin '{root_pin}' in {PIN_SOURCE}")
     project_type = surface if conf >= UNKNOWN_THRESHOLD else "unknown"
     if conf < UNKNOWN_THRESHOLD:
-        signals.append("confidence below threshold -> type=unknown (criteria will not be silently skipped)")
+        signals.append(
+            "confidence below threshold -> type=unknown (criteria will not be silently skipped)")
     return Detection(
         project_type=project_type,
         confidence=conf,

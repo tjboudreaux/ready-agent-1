@@ -2,12 +2,21 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from statistics import median
 
 from ._helpers import (
-    acdc_config, adep, aglob, check_needles, ev, failed, parse_iso, passed, skipped,
-    tool_invoked, unknown,
+    acdc_config,
+    adep,
+    aglob,
+    check_needles,
+    ev,
+    failed,
+    parse_iso,
+    passed,
+    skipped,
+    tool_invoked,
+    unknown,
 )
 
 
@@ -26,7 +35,8 @@ def deps_pinned(ctx):
 
 def vcs_cli(ctx):
     if ctx.github.available:
-        return passed("gh CLI authenticated for this repo.", [ev("gh repo view succeeds", tier="T2")])
+        return passed("gh CLI authenticated for this repo.",
+                       [ev("gh repo view succeeds", tier="T2")])
     if ctx.git.available():
         return passed("git available (repository initialized).", [ev("git work tree", tier="T1")])
     return failed("Neither git nor authenticated gh available.")
@@ -36,7 +46,8 @@ def agentic_development(ctx):
     if not ctx.git.available():
         return unknown("No git history available.")
     if ctx.git.has_agent_coauthorship():
-        return passed("Agent co-authorship present in git history.", [ev("co-author trailer", tier="T1")])
+        return passed("Agent co-authorship present in git history.",
+                       [ev("co-author trailer", tier="T1")])
     return failed("No agent co-authorship in recent commits.")
 
 
@@ -52,8 +63,10 @@ def ci_present(ctx):
 
 
 def release_automation(ctx):
-    files = ctx.static.glob([".releaserc*", "release.config.*", ".goreleaser.yml", ".goreleaser.yaml",
-                             ".github/workflows/release*.yml", ".github/workflows/release*.yaml",
+    files = ctx.static.glob([".releaserc*", "release.config.*", ".goreleaser.yml",
+                             ".goreleaser.yaml",
+                             ".github/workflows/release*.yml",
+                             ".github/workflows/release*.yaml",
                              ".changeset/config.json"])
     if files:
         return passed(f"Release automation: {files[0]}", [ev("release config", source=files[0])])
@@ -94,7 +107,8 @@ def build_command_documented(ctx):
     """Pass on an explicit build command in package config or docs. Makefile targets are not
     inferred in v1 (they are too ambiguous to credit deterministically)."""
     pkg = ctx.app_static().manifests().get("package.json", (None, None))[1]
-    if isinstance(pkg, dict) and isinstance(pkg.get("scripts"), dict) and pkg["scripts"].get("build"):
+    if (isinstance(pkg, dict) and isinstance(pkg.get("scripts"), dict)
+            and pkg["scripts"].get("build")):
         return passed("Build command declared in package.json scripts.build.",
                       [ev("scripts.build", source="package.json")])
     for doc in ("README.md", "AGENTS.md", "docs/README.md", "CONTRIBUTING.md"):
@@ -102,7 +116,8 @@ def build_command_documented(ctx):
         if text and _has_build_command_section(text):
             return passed(f"Build command documented under a Build section in {doc}.",
                           [ev("documented build command", source=doc)])
-    return failed("No explicit build command in package config or docs (Makefile targets not inferred).")
+    return failed("No explicit build command in package config or docs "
+                  "(Makefile targets not inferred).")
 
 
 def _target_recipe(text, name):
@@ -123,12 +138,14 @@ def _configured_verify_command(ctx, command):
     if len(tokens) >= 2 and tokens[0] in {"make", "just"}:
         patterns = ["Makefile"] if tokens[0] == "make" else ["Justfile", "justfile"]
         for path in aglob(ctx, patterns):
-            if re.search(r"(?m)^" + re.escape(tokens[1]) + r"\s*:", ctx.app_static().read(path) or ctx.static.read(path) or ""):
+            target = ctx.app_static().read(path) or ctx.static.read(path) or ""
+            if re.search(r"(?m)^" + re.escape(tokens[1]) + r"\s*:", target):
                 return path
         return ""
     if len(tokens) >= 2 and tokens[0] == "task":
         for path in aglob(ctx, ["Taskfile.yml", "Taskfile.yaml"]):
-            if re.search(r"(?m)^\s*" + re.escape(tokens[1]) + r"\s*:", ctx.app_static().read(path) or ctx.static.read(path) or ""):
+            target = ctx.app_static().read(path) or ctx.static.read(path) or ""
+            if re.search(r"(?m)^\s*" + re.escape(tokens[1]) + r"\s*:", target):
                 return path
         return ""
     script = ""
@@ -144,7 +161,8 @@ def _configured_verify_command(ctx, command):
     if first.startswith("scripts/") or first.startswith("./scripts/"):
         rel = first[2:] if first.startswith("./") else first
         return rel if aglob(ctx, [rel]) else ""
-    if check_needles(command) or command.startswith("python -m") or command.startswith("python3 -m"):
+    if (check_needles(command) or command.startswith("python -m")
+            or command.startswith("python3 -m")):
         return "."
     return ""
 
@@ -169,9 +187,13 @@ def check_command(ctx):
             evidence = [ev("acdc.verify_command", source=".agents/readiness/config.json")]
             if source != ".":
                 evidence.append(ev("verify command", source=source))
-            return passed(f"Verify entrypoint designated in readiness config: '{command}'.", evidence)
+            return passed(
+                f"Verify entrypoint designated in readiness config: '{command}'.",
+                evidence,
+            )
         return failed(
-            f"Config declares verify_command '{command}' but it does not resolve to an existing target/script.",
+            f"Config declares verify_command '{command}' but it does not resolve "
+            f"to an existing target/script.",
             [ev("acdc.verify_command", source=".agents/readiness/config.json")],
         )
 
@@ -187,7 +209,8 @@ def check_command(ctx):
                         [ev("verify command", source="package.json")],
                     )
                 return failed(
-                    f"'{name}' exists but chains only {count} recognized check tool(s); a verify entrypoint should run lint/type/test together."
+                    f"'{name}' exists but chains only {count} recognized check "
+                    f"tool(s); a verify entrypoint should run lint/type/test together."
                 )
 
     for path in aglob(ctx, ["Makefile", "Justfile", "justfile"]):
@@ -212,7 +235,8 @@ def check_command(ctx):
                     [ev("verify command", source=path)],
                 )
             return failed(
-                f"'{name}' exists but chains only {count} recognized check tool(s); a verify entrypoint should run lint/type/test together."
+                f"'{name}' exists but chains only {count} recognized check "
+                f"tool(s); a verify entrypoint should run lint/type/test together."
             )
 
     for path in aglob(ctx, ["Taskfile.yml", "Taskfile.yaml"]):
@@ -233,7 +257,8 @@ def check_command(ctx):
                     [ev("verify command", source=path)],
                 )
             return failed(
-                f"'{name}' exists but chains only {count} recognized check tool(s); a verify entrypoint should run lint/type/test together."
+                f"'{name}' exists but chains only {count} recognized check "
+                f"tool(s); a verify entrypoint should run lint/type/test together."
             )
 
     for path in aglob(ctx, ["scripts/check*", "scripts/verify*"]):
@@ -246,11 +271,15 @@ def check_command(ctx):
                 [ev("verify command", source=path)],
             )
         return failed(
-            f"'{name}' exists but chains only {count} recognized check tool(s); a verify entrypoint should run lint/type/test together."
+            f"'{name}' exists but chains only {count} recognized check "
+            f"tool(s); a verify entrypoint should run lint/type/test together."
         )
 
     return failed(
-        "No single check/verify command; agents need one fast inner-loop verification entrypoint (e.g. 'make check' running lint + typecheck + tests). Designate one via acdc.verify_command in .agents/readiness/config.json if yours is unconventional."
+        "No single check/verify command; agents need one fast inner-loop "
+        "verification entrypoint (e.g. 'make check' running lint + typecheck + tests). "
+        "Designate one via acdc.verify_command in .agents/readiness/config.json if "
+        "yours is unconventional."
     )
 
 
@@ -282,7 +311,8 @@ def ci_duration_budget(ctx):
         return skipped("No GitHub API; cannot read CI run durations.")
     budget = _ci_budget_minutes(ctx)
     if budget is None:
-        return unknown("No ci_budget_minutes in .agents/readiness/config.json; cannot judge duration.")
+        return unknown("No ci_budget_minutes in .agents/readiness/config.json; "
+                       "cannot judge duration.")
     durations = [d for d in (_run_minutes(r) for r in ctx.github.recent_runs()) if d is not None]
     if not durations:
         return unknown("No timed CI runs available to assess duration.")
@@ -317,9 +347,11 @@ _DRIFT_CFG = [".syncpackrc*", "syncpack.config.*", ".manypkgrc"]
 
 def version_drift(ctx):
     if adep(ctx, _DRIFT_TOOLS) or aglob(ctx, _DRIFT_CFG):
-        return passed("Dependency version-drift control configured (syncpack/manypkg).", [ev("version-drift tool")])
+        return passed("Dependency version-drift control configured (syncpack/manypkg).",
+                       [ev("version-drift tool")])
     if "catalog:" in (ctx.static.read("pnpm-workspace.yaml") or ""):
-        return passed("Versions centralized via pnpm catalog.", [ev("pnpm catalog", source="pnpm-workspace.yaml")])
+        return passed("Versions centralized via pnpm catalog.",
+                       [ev("pnpm catalog", source="pnpm-workspace.yaml")])
     return failed("No version-drift control (syncpack/manypkg/pnpm catalog).")
 
 
@@ -331,12 +363,14 @@ _MONO_DEPS = ["turbo", "nx", "lerna", "@nrwl/workspace", "@microsoft/rush"]
 def monorepo_tooling(ctx):
     cfg = ctx.static.glob(_MONO_CFG)
     if cfg:
-        return passed(f"Monorepo tooling configured: {cfg[0]}", [ev("monorepo tool", source=cfg[0])])
+        return passed(f"Monorepo tooling configured: {cfg[0]}",
+                       [ev("monorepo tool", source=cfg[0])])
     if adep(ctx, _MONO_DEPS):
         return passed("Monorepo task runner declared (turbo/nx/lerna).", [ev("monorepo dep")])
     pkg = ctx.static.manifests().get("package.json", (None, None))[1]
     if isinstance(pkg, dict) and pkg.get("workspaces"):
-        return passed("npm/yarn workspaces configured.", [ev("workspaces field", source="package.json")])
+        return passed("npm/yarn workspaces configured.",
+                       [ev("workspaces field", source="package.json")])
     return failed("No monorepo tooling (turbo/nx/lerna/rush/bazel/workspaces).")
 
 
@@ -353,15 +387,20 @@ def single_command_setup(ctx):
             return passed(f"Setup target in {f}.", [ev("setup target", source=f)])
     for f in ctx.static.glob([".devcontainer/devcontainer.json", ".devcontainer.json"]):
         if "postcreatecommand" in (ctx.static.read(f) or "").lower():
-            return passed("Devcontainer postCreateCommand bootstraps the env.", [ev("postCreateCommand", source=f)])
+            return passed("Devcontainer postCreateCommand bootstraps the env.",
+                           [ev("postCreateCommand", source=f)])
     pkg = ctx.app_static().manifests().get("package.json", (None, None))[1]
-    if isinstance(pkg, dict) and any(k in (pkg.get("scripts") or {}) for k in ("setup", "bootstrap")):
-        return passed("package.json setup/bootstrap script present.", [ev("setup script", source="package.json")])
-    return failed("No single-command setup (bin/setup, make setup, devcontainer postCreateCommand, npm setup).")
+    if isinstance(pkg, dict) and any(
+            k in (pkg.get("scripts") or {}) for k in ("setup", "bootstrap")):
+        return passed("package.json setup/bootstrap script present.",
+                       [ev("setup script", source="package.json")])
+    return failed("No single-command setup (bin/setup, make setup, "
+                  "devcontainer postCreateCommand, npm setup).")
 
 
 _RELNOTES_CFG = [".releaserc*", "release.config.*", ".changeset/config.json", "cliff.toml",
-                 ".github/release.yml", "release-please-config.json", ".release-please-manifest.json",
+                 ".github/release.yml", "release-please-config.json",
+                 ".release-please-manifest.json",
                  "towncrier.toml"]
 _RELNOTES_DEPS = ["semantic-release", "@changesets/cli", "changesets", "release-please",
                   "standard-version", "git-cliff", "towncrier"]
@@ -370,12 +409,15 @@ _RELNOTES_DEPS = ["semantic-release", "@changesets/cli", "changesets", "release-
 def release_notes_automation(ctx):
     cfg = ctx.static.glob(_RELNOTES_CFG)
     if cfg:
-        return passed(f"Release-notes automation configured: {cfg[0]}", [ev("release notes", source=cfg[0])])
+        return passed(f"Release-notes automation configured: {cfg[0]}",
+                       [ev("release notes", source=cfg[0])])
     if adep(ctx, _RELNOTES_DEPS):
-        return passed("Release-notes tool declared (semantic-release/changesets/git-cliff).", [ev("release-notes dep")])
+        return passed("Release-notes tool declared (semantic-release/changesets/git-cliff).",
+                       [ev("release-notes dep")])
     if "towncrier" in (ctx.static.read("pyproject.toml") or "").lower():
         return passed("Towncrier changelog configured.", [ev("towncrier", source="pyproject.toml")])
-    return failed("No release-notes automation (semantic-release/changesets/release-please/git-cliff/towncrier).")
+    return failed("No release-notes automation "
+                  "(semantic-release/changesets/release-please/git-cliff/towncrier).")
 
 
 _WEIGHT_DEPS = ["size-limit", "@size-limit/preset-app", "bundlesize", "bundlewatch",
@@ -385,13 +427,16 @@ _WEIGHT_CFG = [".size-limit.json", ".size-limit.js", ".bundlewatch.config.json"]
 
 def dependency_weight_budget(ctx):
     pkg = ctx.app_static().manifests().get("package.json", (None, None))[1]
-    if isinstance(pkg, dict) and (pkg.get("size-limit") or pkg.get("bundlesize") or pkg.get("bundlewatch")):
-        return passed("Bundle-size budget configured in package.json.", [ev("size budget", source="package.json")])
+    if isinstance(pkg, dict) and (pkg.get("size-limit") or pkg.get("bundlesize")
+                                    or pkg.get("bundlewatch")):
+        return passed("Bundle-size budget configured in package.json.",
+                       [ev("size budget", source="package.json")])
     if aglob(ctx, _WEIGHT_CFG):
         return passed("Bundle-size budget config present.", [ev("size budget config")])
     if adep(ctx, _WEIGHT_DEPS) and tool_invoked(ctx, _WEIGHT_DEPS):
         return passed("Bundle analyzer/size tool wired.", [ev("bundle tool wired")])
-    return failed("No dependency-weight budget (size-limit/bundlesize/bundle-analyzer with a budget).")
+    return failed("No dependency-weight budget "
+                  "(size-limit/bundlesize/bundle-analyzer with a budget).")
 
 
 # --- DORA / AI-capability build proxies (advisory) ------------------------------------
@@ -431,9 +476,9 @@ def integration_frequency(ctx):
     anchor = parse_iso(dates[0])
     if not anchor:
         return unknown("Could not parse recent commit dates.")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if anchor.tzinfo is None:
-        anchor = anchor.replace(tzinfo=timezone.utc)
+        anchor = anchor.replace(tzinfo=UTC)
     if (now - anchor).days > 90:
         return skipped("inactive repository")
     window_start = anchor - timedelta(weeks=8)
@@ -443,10 +488,11 @@ def integration_frequency(ctx):
         if not dt:
             continue
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         if window_start <= dt <= anchor:
             weeks.add(dt.isocalendar()[:2])
-    evidence = [ev(f"{len(weeks)} active ISO weeks in trailing 8 (n={len(dates)} dates)", tier="T1")]
+    evidence = [ev(f"{len(weeks)} active ISO weeks in trailing 8 "
+                   f"(n={len(dates)} dates)", tier="T1")]
     if len(weeks) >= 4:
         return passed(f"Commits in {len(weeks)} distinct ISO weeks of the trailing 8.", evidence)
     return failed(

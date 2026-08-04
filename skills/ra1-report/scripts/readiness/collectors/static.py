@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional
 
 from .. import parsers
 
 # Directories never worth walking.
-_IGNORE_DIRS = {".git", "node_modules", ".venv", "venv", "dist", "build", "__pycache__", ".mypy_cache", ".tox"}
+_IGNORE_DIRS = {
+    ".git", "node_modules", ".venv", "venv", "dist", "build",
+    "__pycache__", ".mypy_cache", ".tox",
+}
 
 _MANIFEST_FILES = {
     "package.json": "npm",
@@ -51,11 +53,11 @@ class StaticCollector:
                 found.add(rel.as_posix())
         return sorted(found)
 
-    def exists_any(self, patterns) -> Optional[str]:
+    def exists_any(self, patterns) -> str | None:
         hits = self.glob(patterns)
         return hits[0] if hits else None
 
-    def read(self, relpath) -> Optional[str]:
+    def read(self, relpath) -> str | None:
         return parsers.read_text(self.root / relpath)
 
     # ----- manifests & dependencies -----------------------------------------------------
@@ -91,7 +93,8 @@ class StaticCollector:
         deps: set = set()
         for fname, (_kind, parsed) in self.manifests().items():
             if fname == "package.json" and isinstance(parsed, dict):
-                for key in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"):
+                for key in ("dependencies", "devDependencies", "peerDependencies",
+                            "optionalDependencies"):
                     section = parsed.get(key)
                     if isinstance(section, dict):
                         deps.update(k.lower() for k in section)
@@ -126,7 +129,7 @@ class StaticCollector:
         self._cache["deps"] = deps
         return deps
 
-    def has_dep(self, names) -> Optional[str]:
+    def has_dep(self, names) -> str | None:
         if isinstance(names, str):
             names = [names]
         declared = self.declared_deps()
@@ -144,9 +147,10 @@ class StaticCollector:
 
     def gitignore_patterns(self) -> list:
         text = self.read(".gitignore") or ""
-        return [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+        return [ln.strip() for ln in text.splitlines()
+                if ln.strip() and not ln.strip().startswith("#")]
 
-    def within(self, subpath) -> "StaticCollector":
+    def within(self, subpath) -> StaticCollector:
         """A collector scoped to an application subdirectory ('.' returns self)."""
         if subpath in (".", "", None):
             return self

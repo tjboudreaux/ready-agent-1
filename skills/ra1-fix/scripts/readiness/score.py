@@ -11,8 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .context import Context
-from .model import (LEVEL_NAMES, App, CriterionResult, Evidence, LevelScore,
-                    ScoreSummary, Status)
+from .model import LEVEL_NAMES, App, CriterionResult, Evidence, LevelScore, ScoreSummary, Status
 
 _REGISTRY_PATH = Path(__file__).resolve().parent / "criteria" / "registry.json"
 
@@ -67,7 +66,7 @@ def _type_match(applies_types, actual_type):
 def _lang_match(applies_langs, actual_langs):
     if "*" in applies_langs:
         return True
-    return bool({a.lower() for a in applies_langs} & {l.lower() for l in actual_langs})
+    return bool({a.lower() for a in applies_langs} & {lang.lower() for lang in actual_langs})
 
 
 def _ctx(root, detection, static, git, github, app, options):
@@ -96,13 +95,16 @@ def _eval_criterion(crit, root, detection, static, git, github, waivers, options
 
     opt_in = aw.get("opt_in")
     if opt_in == "loop_ready" and not detection.opt_in.get("loop_ready"):
-        return CriterionResult(status=Status.SKIPPED, rationale="not opted into loop readiness", app_path=".", **base)
+        return CriterionResult(status=Status.SKIPPED, rationale="not opted into loop readiness",
+                               app_path=".", **base)
     if opt_in is not None and opt_in != "loop_ready":
-        return CriterionResult(status=Status.UNKNOWN, rationale=f"Unsupported opt-in '{opt_in}'.", app_path=".", **base)
+        return CriterionResult(status=Status.UNKNOWN,
+                               rationale=f"Unsupported opt-in '{opt_in}'.", app_path=".", **base)
 
     if cid in waivers:
         reason = waivers[cid].get("reason", "")
-        return CriterionResult(status=Status.WAIVED, rationale=f"Waived: {reason}".strip(), app_path=".", **base)
+        return CriterionResult(status=Status.WAIVED, rationale=f"Waived: {reason}".strip(),
+                               app_path=".", **base)
 
     if crit.get("decide") == "agent":
         from .detect import load_readiness_config
@@ -114,12 +116,16 @@ def _eval_criterion(crit, root, detection, static, git, github, waivers, options
 
     for req in requires:
         if done.get(req) != Status.PASS:
-            return CriterionResult(status=Status.SKIPPED, rationale=f"Prerequisite '{req}' not satisfied.", app_path=".", **base)
+            return CriterionResult(status=Status.SKIPPED,
+                                   rationale=f"Prerequisite '{req}' not satisfied.",
+                                   app_path=".", **base)
 
     check = _resolve_check(crit["check"])
 
     if base["scope"] == "application":
-        apps = detection.apps or [App(path=".", languages=detection.languages, deploy_surface=detection.project_type)]
+        apps = detection.apps or [
+            App(path=".", languages=detection.languages, deploy_surface=detection.project_type)
+        ]
         per = []
         for app in apps:
             tm = _type_match(types, app.deploy_surface)
@@ -137,13 +143,20 @@ def _eval_criterion(crit, root, detection, static, git, github, waivers, options
     tm = _type_match(types, detection.project_type)
     app = App(path=".", languages=detection.languages, deploy_surface=detection.project_type)
     if tm == "skip":
-        return CriterionResult(status=Status.SKIPPED, rationale="Not applicable to this project type.", app_path=".", **base)
+        return CriterionResult(status=Status.SKIPPED,
+                               rationale="Not applicable to this project type.",
+                               app_path=".", **base)
     if not _lang_match(langs, detection.languages):
-        return CriterionResult(status=Status.SKIPPED, rationale="No matching language.", app_path=".", **base)
+        return CriterionResult(status=Status.SKIPPED, rationale="No matching language.",
+                               app_path=".", **base)
     if tm == "unknown":
-        return CriterionResult(status=Status.UNKNOWN, rationale="Project type unknown; applicability undetermined.", app_path=".", **base)
+        return CriterionResult(
+            status=Status.UNKNOWN,
+            rationale="Project type unknown; applicability undetermined.",
+            app_path=".", **base)
     v = check(_ctx(root, detection, static, git, github, app, options))
-    return CriterionResult(status=v.status, rationale=v.rationale, evidence=list(v.evidence), app_path=".", **base)
+    return CriterionResult(status=v.status, rationale=v.rationale,
+                           evidence=list(v.evidence), app_path=".", **base)
 
 
 def _status_counts(status):
@@ -157,7 +170,8 @@ def _status_counts(status):
 
 def _aggregate(base, per):
     if not per:
-        return CriterionResult(status=Status.SKIPPED, rationale="Not applicable to any application.",
+        return CriterionResult(status=Status.SKIPPED,
+                               rationale="Not applicable to any application.",
                                app_path=".", passed_apps=0, evaluated_apps=0, **base)
     evidence, fails, unknown_apps = [], [], []
     passes = skips = 0
@@ -190,13 +204,15 @@ def _aggregate(base, per):
                                app_path=app_path, **counts, **base)
     if unknown_apps:
         if passes > 0:
-            rationale = f"{passes}/{total} application(s) pass; undetermined for {', '.join(unknown_apps)}."
+            rationale = (f"{passes}/{total} application(s) pass; "
+                         f"undetermined for {', '.join(unknown_apps)}.")
         else:
             rationale = f"Undetermined for {', '.join(unknown_apps)}."
         return CriterionResult(status=Status.UNKNOWN, rationale=rationale,
                                evidence=evidence, app_path=app_path, **counts, **base)
     if passes > 0:
-        return CriterionResult(status=Status.PASS, rationale=f"{passes}/{total} application(s) pass.",
+        return CriterionResult(status=Status.PASS,
+                               rationale=f"{passes}/{total} application(s) pass.",
                                evidence=evidence, app_path=app_path, **counts, **base)
     return CriterionResult(status=Status.SKIPPED, rationale="Skipped for all applications.",
                            evidence=evidence, app_path=app_path, **counts, **base)

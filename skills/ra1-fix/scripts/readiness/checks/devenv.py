@@ -31,7 +31,8 @@ _LOCAL_SVC_FILES = ["docker-compose.yml", "docker-compose.yaml", "compose.yml", 
 def local_services(ctx):
     files = ctx.static.glob(_LOCAL_SVC_FILES)
     if files:
-        return passed(f"Local services defined: {files[0]}", [ev("local services", source=files[0])])
+        return passed(f"Local services defined: {files[0]}",
+                       [ev("local services", source=files[0])])
     return failed("No local services definition (docker-compose/Procfile/Tiltfile/skaffold).")
 
 
@@ -42,7 +43,8 @@ _DB_SCHEMA_FILES = ["migrations/**", "**/migrations/**", "prisma/schema.prisma",
 def database_schema(ctx):
     files = aglob(ctx, _DB_SCHEMA_FILES)
     if files:
-        return passed(f"Database schema/migrations present: {files[0]}", [ev("db schema", source=files[0])])
+        return passed(f"Database schema/migrations present: {files[0]}",
+                       [ev("db schema", source=files[0])])
     return failed("No database schema or migrations (migrations/prisma/alembic/*.sql).")
 
 
@@ -61,7 +63,8 @@ def devcontainer_runnable(ctx):
     if res["timed_out"]:
         return failed(f"devcontainer build timed out after {ex.timeout}s on an isolated copy.")
     if res["returncode"] == 0:
-        return passed("Devcontainer builds on an isolated copy.", [ev("T3 devcontainer build", tier="T3")])
+        return passed("Devcontainer builds on an isolated copy.",
+                       [ev("T3 devcontainer build", tier="T3")])
     return failed(f"devcontainer build exited {res['returncode']} on an isolated copy.")
 
 
@@ -80,7 +83,10 @@ def _hook_runs_check(value):
 
 def agent_hooks(ctx):
     configured = acdc_config(ctx).get("hook_files")
-    patterns = [item for item in configured if isinstance(item, str)] if isinstance(configured, list) else []
+    patterns = (
+        [item for item in configured if isinstance(item, str)]
+        if isinstance(configured, list) else []
+    )
     for path in ctx.static.glob(patterns):
         text = ctx.static.read(path) or ""
         low = text.lower()
@@ -104,10 +110,14 @@ def agent_hooks(ctx):
             for hook_key in ("PostToolUse", "Stop"):
                 if hook_key in hooks and _hook_runs_check(hooks[hook_key]):
                     return passed(
-                        f"Post-edit verification hook runs a check command: .claude/settings.json ({hook_key}).",
+                        f"Post-edit verification hook runs a check command: "
+                        f".claude/settings.json ({hook_key}).",
                         [ev("agent hook", source=".claude/settings.json")],
                     )
 
     return failed(
-        "No machine-enforced post-edit verification hook (e.g. Claude Code PostToolUse/Stop hook running a check command, or files declared in acdc.hook_files); instruction files are advisory to the agent — hooks make inner-loop verification mechanical (AC/DC Verify stage)."
+        "No machine-enforced post-edit verification hook (e.g. Claude Code "
+        "PostToolUse/Stop hook running a check command, or files declared in "
+        "acdc.hook_files); instruction files are advisory to the agent — hooks make "
+        "inner-loop verification mechanical (AC/DC Verify stage)."
     )

@@ -21,7 +21,8 @@ def secret_scanning(ctx):
         return skipped("No GitHub API; cannot read secret scanning.")
     enabled = ctx.github.secret_scanning_enabled()
     if enabled:
-        return passed("Secret scanning / push protection enabled.", [ev("secret scanning enabled", tier="T2")])
+        return passed("Secret scanning / push protection enabled.",
+                       [ev("secret scanning enabled", tier="T2")])
     return failed("Secret scanning not enabled.")
 
 
@@ -34,9 +35,11 @@ def codeowners(ctx):
 
 def dependency_update_automation(ctx):
     files = ctx.static.glob([".github/dependabot.yml", ".github/dependabot.yaml",
-                             "renovate.json", ".renovaterc", ".renovaterc.json", ".github/renovate.json"])
+                             "renovate.json", ".renovaterc", ".renovaterc.json",
+                             ".github/renovate.json"])
     if files:
-        return passed(f"Dependency update automation: {files[0]}", [ev("dependabot/renovate", source=files[0])])
+        return passed(f"Dependency update automation: {files[0]}",
+                       [ev("dependabot/renovate", source=files[0])])
     return failed("No dependency update automation (Dependabot/Renovate).")
 
 
@@ -45,7 +48,8 @@ def automated_security_review(ctx):
                              ".github/workflows/*security*.yml", ".github/workflows/*semgrep*.yml",
                              ".semgrep.yml", ".snyk"])
     if files:
-        return passed(f"Automated security review: {files[0]}", [ev("SAST/CodeQL config", source=files[0])])
+        return passed(f"Automated security review: {files[0]}",
+                       [ev("SAST/CodeQL config", source=files[0])])
     dep = adep(ctx, ["bandit", "semgrep", "snyk"])
     if dep or atool(ctx, "bandit"):
         return passed(f"Security scanning tool configured: {dep or 'bandit'}")
@@ -61,7 +65,8 @@ def gitignore_comprehensive(ctx):
     has_artifact = any(k in blob for k in ["node_modules", "__pycache__", "dist", "build",
                                            "target", "*.pyc", ".venv", "venv", ".coverage"])
     if has_secret and has_artifact:
-        return passed("Gitignore covers secrets and build/cache artifacts.", [ev(".gitignore", source=".gitignore")])
+        return passed("Gitignore covers secrets and build/cache artifacts.",
+                       [ev(".gitignore", source=".gitignore")])
     missing = []
     if not has_secret:
         missing.append("secrets (e.g. .env)")
@@ -95,7 +100,8 @@ def dependency_min_age(ctx):
         if "minimumreleaseage" in blob or "stabilitydays" in blob:
             return passed("Dependency minimum release age configured (package.json renovate).",
                           [ev("minimumReleaseAge", source="package.json")])
-    return failed("No dependency minimum-release-age policy (Renovate minimumReleaseAge/stabilityDays).")
+    return failed("No dependency minimum-release-age policy "
+                  "(Renovate minimumReleaseAge/stabilityDays).")
 
 
 _SCRUB_WIRING = [r"redact\s*[:(]|redaction|sanitize_?(log|message|event|data)|maskFields|"
@@ -105,7 +111,8 @@ _SCRUB_WIRING = [r"redact\s*[:(]|redaction|sanitize_?(log|message|event|data)|ma
 def log_scrubbing(ctx):
     wiring = agrep(ctx, _SCRUB_WIRING)
     if wiring:
-        return passed("Sensitive-data log scrubbing wired.", [ev("log scrubbing", source=str(wiring))])
+        return passed("Sensitive-data log scrubbing wired.",
+                       [ev("log scrubbing", source=str(wiring))])
     return failed("No sensitive-data log scrubbing (redaction/sanitizer wired into logging).")
 
 
@@ -118,7 +125,8 @@ def secrets_management(ctx):
         low = (ctx.static.read(f) or "").lower()
         if "${{ secrets." in low or "vault" in low or "doppler" in low \
                 or "secretsmanager" in low or "secret-manager" in low or "keyvault" in low:
-            return passed(f"Managed secrets referenced in CI: {f}", [ev("CI secrets / manager", source=f)])
+            return passed(f"Managed secrets referenced in CI: {f}",
+                           [ev("CI secrets / manager", source=f)])
     dep = adep(ctx, _SECRET_MGR_DEPS)
     if dep:
         return passed(f"Secrets-manager SDK configured: {dep}", [ev("secrets-manager SDK")])

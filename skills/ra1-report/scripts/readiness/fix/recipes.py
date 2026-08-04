@@ -1,11 +1,13 @@
 """The fix engine: plan and apply remediation from a readiness report.
 
 Safety model (from review):
-- AUTO-APPLY only genuinely-missing *config* scaffolds; idempotent, never overwrites a non-empty file.
-- PROPOSE prose/tests as drafts (the engine never writes them — the skill drafts for human review).
+- AUTO-APPLY only genuinely-missing *config* scaffolds; idempotent, never overwrites a
+  non-empty file.
+- PROPOSE prose/tests as drafts (the engine never writes them — the skill drafts for human
+  review).
 - GITHUB settings are a manual checklist, never auto-applied and never bundled with code.
-- Refuses on a dirty worktree unless --force. The engine touches files only; git branch/commit is the
-  skill's controlled action (and never pushes without confirmation).
+- Refuses on a dirty worktree unless --force. The engine touches files only; git
+  branch/commit is the skill's controlled action (and never pushes without confirmation).
 """
 from __future__ import annotations
 
@@ -23,7 +25,8 @@ TEMPLATES_DIR = Path(__file__).resolve().parents[3] / "templates"
 STATIC_SCAFFOLDS = {
     "build.ci_present": (".github/workflows/readiness.yml", "ci/readiness.yml"),
     "security.security_md": ("SECURITY.md", "SECURITY.md"),
-    "taskdisc.issue_templates": (".github/ISSUE_TEMPLATE/bug_report.md", "ISSUE_TEMPLATE/bug_report.md"),
+    "taskdisc.issue_templates": (
+        ".github/ISSUE_TEMPLATE/bug_report.md", "ISSUE_TEMPLATE/bug_report.md"),
     "taskdisc.pr_templates": (".github/pull_request_template.md", "pull_request_template.md"),
     "security.dependency_update_automation": (".github/dependabot.yml", "dependabot.yml"),
     "devenv.devcontainer": (".devcontainer/devcontainer.json", "devcontainer.json"),
@@ -33,13 +36,17 @@ STATIC_SCAFFOLDS = {
     "loop.loop_runs_dir": ("loop-runs/README.md", "loop/loop-runs-README.md"),
     "loop.denylist": (".omp/rules/denylist.md", "loop/denylist.md"),
     "loop.signal_schema": ("signals/README.md", "loop/signals-README.md"),
-    "loop.pr_artifact_template": (".omp/commands/pr-artifact-template.md", "loop/pr-artifact-template.md"),
+    "loop.pr_artifact_template": (
+        ".omp/commands/pr-artifact-template.md", "loop/pr-artifact-template.md"),
 }
 
 _GH_COMMANDS = {
-    "security.branch_protection": "gh api -X PUT repos/{owner}/{repo}/branches/{branch}/protection -f required_pull_request_reviews… (review first)",
+    "security.branch_protection": (
+        "gh api -X PUT repos/{owner}/{repo}/branches/{branch}/protection "
+        "-f required_pull_request_reviews… (review first)"),
     "security.secret_scanning": "Enable in Settings → Code security & analysis (or via gh api).",
-    "taskdisc.issue_labeling": "gh label create 'priority:high' --color B60205 ; gh label create 'area:core' …",
+    "taskdisc.issue_labeling": (
+        "gh label create 'priority:high' --color B60205 ; gh label create 'area:core' …"),
     "taskdisc.backlog_health": "Triage open issues and apply labels.",
 }
 
@@ -125,7 +132,8 @@ def resolve_scaffold(cid, langs):
     if cid == "style.linter_config":
         return (".eslintrc.json", "eslintrc.json") if "npm" in langs else ("ruff.toml", "ruff.toml")
     if cid == "style.formatter":
-        return (".prettierrc.json", "prettierrc.json") if "npm" in langs else ("ruff.toml", "ruff.toml")
+        return ((".prettierrc.json", "prettierrc.json") if "npm" in langs
+                else ("ruff.toml", "ruff.toml"))
     if cid == "security.gitignore_comprehensive":
         return (".gitignore", "__gitignore_append__")
     return None
@@ -136,7 +144,8 @@ def _nonempty(path: Path) -> bool:
 
 
 def load_report(args, root):
-    path = Path(args.report) if getattr(args, "report", None) else root / ".agents" / "readiness" / "latest.json"
+    path = (Path(args.report) if getattr(args, "report", None)
+            else root / ".agents" / "readiness" / "latest.json")
     if not Path(path).exists():
         return None
     try:
@@ -177,7 +186,8 @@ def build_plan(root, report, registry=None, focus=None):
             plan["propose"].append({"id": r["id"], "title": r.get("title", "")})
         elif kind == "github_setting":
             plan["github"].append({"id": r["id"], "title": r.get("title", ""),
-                                   "command": _GH_COMMANDS.get(r["id"], "Configure in repository settings.")})
+                                   "command": _GH_COMMANDS.get(
+                                       r["id"], "Configure in repository settings.")})
         else:
             plan["manual"].append(r["id"])
     _prioritize(plan, focus.get("pillar_prioritize"), by_id)
@@ -198,7 +208,9 @@ def apply_plan(root, plan, templates_dir=None, write=True):
             continue
         if write:
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text((templates_dir / item["template"]).read_text(encoding="utf-8"), encoding="utf-8")
+            target.write_text(
+                (templates_dir / item["template"]).read_text(encoding="utf-8"),
+                encoding="utf-8")
         written.append(item["target"])
     return {"written": written, "skipped": skipped}
 
@@ -215,7 +227,9 @@ def _apply_gitignore(path: Path, write=True):
         return False
     if write:
         sep = "" if (not existing or existing.endswith("\n")) else "\n"
-        path.write_text(existing + sep + "\n# Added by ra1-fix\n" + "\n".join(additions) + "\n", encoding="utf-8")
+        path.write_text(
+            existing + sep + "\n# Added by ra1-fix\n" + "\n".join(additions) + "\n",
+            encoding="utf-8")
     return True
 
 
@@ -229,7 +243,9 @@ def worktree_dirty(root, runner=None):
 
 def _git_status_runner(root, args):  # pragma: no cover - subprocess boundary
     try:
-        p = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=10)
+        p = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         return None
     return p.stdout if p.returncode == 0 else None
@@ -252,14 +268,16 @@ def format_plan(plan, result=None, dry_run=True, notes=None):
         lines += ["", "## Propose (drafts for human review — NOT auto-written)"]
         lines += [f"- {it['id']}: {it['title']}" for it in plan["propose"]]
     if plan["github"]:
-        lines += ["", "## GitHub settings (apply manually, confirm first — never bundled with code)"]
+        lines += ["",
+                  "## GitHub settings (apply manually, confirm first — never bundled with code)"]
         lines += [f"- {it['id']}: {it['command']}" for it in plan["github"]]
     if plan["manual"]:
         lines += ["", "## Manual"] + [f"- {cid}" for cid in plan["manual"]]
     if notes:
         lines += ["", "## Notes"] + [f"- {n}" for n in notes]
     lines += ["", "## Verify",
-              "- Re-run `ra1 report` with the same origin/history settings to confirm the new level."]
+              "- Re-run `ra1 report` with the same origin/history settings to confirm "
+              "the new level."]
     return "\n".join(lines) + "\n"
 
 
@@ -283,7 +301,8 @@ def run_fix(args) -> int:
     root = Path(args.project)
     if getattr(args, "latest", False) and not getattr(args, "report", None):
         from .. import history
-        report, reason = history.resolve_latest(root, history_dir=getattr(args, "history_dir", None))
+        report, reason = history.resolve_latest(
+            root, history_dir=getattr(args, "history_dir", None))
         if report is None:
             sys.stderr.write(f"ra1 fix: {reason}\n")
             return 2
@@ -299,7 +318,8 @@ def run_fix(args) -> int:
         print(format_plan(plan, dry_run=True, notes=notes))
         return 0
     if worktree_dirty(root) and not getattr(args, "force", False):
-        sys.stderr.write("ra1 fix: working tree has uncommitted changes; commit/stash or use --force.\n")
+        sys.stderr.write(
+            "ra1 fix: working tree has uncommitted changes; commit/stash or use --force.\n")
         return 1
     result = apply_plan(root, plan, write=True)
     print(format_plan(plan, result=result, dry_run=False, notes=notes))

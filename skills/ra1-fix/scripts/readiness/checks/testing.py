@@ -33,7 +33,8 @@ def integration_tests_exist(ctx):
 def test_naming(ctx):
     standard = aglob(ctx, _UNIT_PATTERNS)
     if standard:
-        return passed(f"Tests follow standard naming ({len(standard)} files).", [ev(f"{standard[0]}", source=standard[0])])
+        return passed(f"Tests follow standard naming ({len(standard)} files).",
+                       [ev(f"{standard[0]}", source=standard[0])])
     any_tests = aglob(ctx, ["tests/**", "test/**", "spec/**"])
     if any_tests:
         return failed("Test directories exist but files don't match a standard naming convention.")
@@ -104,7 +105,8 @@ def _coverage_config(ctx):
     if ctx.static.has_tool_config("coverage"):
         return "pyproject.toml [tool.coverage]"
     pkg = ctx.static.manifests().get("package.json", (None, None))[1]
-    if isinstance(pkg, dict) and isinstance(pkg.get("jest"), dict) and pkg["jest"].get("coverageThreshold"):
+    if (isinstance(pkg, dict) and isinstance(pkg.get("jest"), dict)
+            and pkg["jest"].get("coverageThreshold")):
         return "package.json jest.coverageThreshold"
     return ""
 
@@ -125,7 +127,8 @@ def coverage_threshold(ctx):
     CI enforcement is a fail (it cannot block a regression)."""
     cfg = _coverage_config(ctx)
     if not cfg:
-        return failed("No coverage threshold configured (coverage config / jest coverageThreshold / codecov).")
+        return failed("No coverage threshold configured "
+                       "(coverage config / jest coverageThreshold / codecov).")
     enforced = _coverage_enforced_in_ci(ctx)
     if not enforced:
         return failed(f"Coverage configured ({cfg}) but not enforced in CI.")
@@ -164,7 +167,8 @@ def new_code_quality_gate(ctx):
         )
 
     sonar_config = next(
-        (path for path in ("sonar-project.properties", ".sonarcloud.properties") if ctx.static.glob([path])),
+        (path for path in ("sonar-project.properties", ".sonarcloud.properties")
+         if ctx.static.glob([path])),
         "",
     )
     if sonar_config:
@@ -190,9 +194,11 @@ def new_code_quality_gate(ctx):
         missing_wiring.append("qodana")
 
     if missing_wiring:
-        return failed(f"New-code gate config present ({missing_wiring[0]}) but no enforcement wiring found.")
+        return failed(f"New-code gate config present ({missing_wiring[0]}) but no "
+                       f"enforcement wiring found.")
     return failed(
-        "No new-code quality gate; nothing bounds the quality of an agent's next code payload (AC/DC outer loop)."
+        "No new-code quality gate; nothing bounds the quality of an agent's next "
+        "code payload (AC/DC outer loop)."
     )
 
 

@@ -60,7 +60,8 @@ def rules_index(ctx):
     text = ctx.static.read(path) or ""
     if not _contains_any(text, ["rules", "denylist"]):
         return failed(".omp/rules/README.md must mention rules or denylist.")
-    return passed(".omp/rules/README.md documents loop rules or denylist.", [ev("loop rules index", source=path, tier="T0")])
+    return passed(".omp/rules/README.md documents loop rules or denylist.",
+                  [ev("loop rules index", source=path, tier="T0")])
 
 def denylist(ctx):
     path = _first(ctx, [".omp/rules/denylist.md"])
@@ -72,8 +73,10 @@ def denylist(ctx):
     text = ctx.static.read(path) or ""
     has_bullet = any(line.lstrip().startswith(("- ", "* ", "+ ")) for line in text.splitlines())
     if not (has_bullet or _contains_any(text, ["deny", "block", "never"])):
-        return failed(".omp/rules/denylist.md must include a deny/block/never policy term or bullet.")
-    return passed(".omp/rules/denylist.md contains a starter blocked-action policy.", [ev("loop denylist", source=path, tier="T0")])
+        return failed(".omp/rules/denylist.md must include a deny/block/never "
+                       "policy term or bullet.")
+    return passed(".omp/rules/denylist.md contains a starter blocked-action policy.",
+                  [ev("loop denylist", source=path, tier="T0")])
 
 def signal_schema(ctx):
     path = _first(ctx, ["signals/README.md"])
@@ -89,7 +92,8 @@ def signal_schema(ctx):
     if not _contains_terms(text, required):
         missing = [term for term in required if term.lower() not in text.lower()]
         return failed(f"signals/README.md missing schema term(s): {', '.join(missing)}.")
-    return passed("signals/README.md documents the minimal signal schema.", [ev("signal schema", source=path, tier="T0")])
+    return passed("signals/README.md documents the minimal signal schema.",
+                  [ev("signal schema", source=path, tier="T0")])
 
 def pr_artifact_template(ctx):
     primary = _first(ctx, [".omp/commands/pr-artifact-template.md"])
@@ -97,20 +101,26 @@ def pr_artifact_template(ctx):
         ok, rationale = _filled(ctx, primary, ".omp/commands/pr-artifact-template.md")
         if not ok:
             return failed(rationale)
-        return passed(".omp/commands/pr-artifact-template.md is filled.", [ev("PR artifact template", source=primary, tier="T0")])
+        return passed(".omp/commands/pr-artifact-template.md is filled.",
+                       [ev("PR artifact template", source=primary, tier="T0")])
 
     fallback = _first(ctx, [".github/pull_request_template.md", ".github/PULL_REQUEST_TEMPLATE.md"])
     if not fallback:
-        return failed("Missing PR artifact evidence template: expected .omp/commands/pr-artifact-template.md or artifact-specific GitHub PR template.")
+        return failed("Missing PR artifact evidence template: expected "
+                       ".omp/commands/pr-artifact-template.md or artifact-specific "
+                       "GitHub PR template.")
     ok, rationale = _filled(ctx, fallback, "GitHub PR template")
     if not ok:
         return failed(rationale)
     text = ctx.static.read(fallback) or ""
     evidence_terms = ["artifact", "evidence"]
-    artifact_terms = ["screenshot", "video", "log", "ci", "test output", ".agents/artifacts", "loop-runs"]
-    if not (_contains_any(text, evidence_terms) and _contains_artifact_language(text, artifact_terms)):
+    artifact_terms = ["screenshot", "video", "log", "ci", "test output",
+                      ".agents/artifacts", "loop-runs"]
+    if not (_contains_any(text, evidence_terms)
+            and _contains_artifact_language(text, artifact_terms)):
         return failed("GitHub PR template lacks artifact/evidence-specific language.")
-    return passed("GitHub PR template includes artifact evidence language.", [ev("artifact-specific PR template", source=fallback, tier="T0")])
+    return passed("GitHub PR template includes artifact evidence language.",
+                  [ev("artifact-specific PR template", source=fallback, tier="T0")])
 
 def skills_present(ctx):
     paths = ctx.static.glob([".omp/skills/*/SKILL.md"])
@@ -121,7 +131,8 @@ def skills_present(ctx):
             filled.append(path)
     if len(filled) < LOOP_SKILL_MIN:
         return failed(f"Only {len(filled)} OMP loop skill artifact(s) found (<3).")
-    return passed(f"Found {len(filled)} filled OMP loop skill artifacts.", [ev("OMP loop skill", source=path, tier="T0") for path in filled])
+    return passed(f"Found {len(filled)} filled OMP loop skill artifacts.",
+                  [ev("OMP loop skill", source=path, tier="T0") for path in filled])
 
 def prompt_contracts(ctx):
     required = [".omp/commands/goal.md", ".omp/commands/loop.md"]
@@ -137,11 +148,17 @@ def prompt_contracts(ctx):
         else:
             evidence.append(ev("loop prompt contract", source=path, tier="T0"))
     if missing_or_unfilled:
-        return failed(f"Missing or unfilled loop prompt contract(s): {', '.join(missing_or_unfilled)}.")
+        return failed(
+            f"Missing or unfilled loop prompt contract(s): {', '.join(missing_or_unfilled)}."
+        )
     return passed("Loop goal and loop prompt contracts are filled.", evidence)
 
 def architecture_doc(ctx):
-    return _pass_filled(ctx, ["ARCHITECTURE.md", "docs/ARCHITECTURE.md", "docs/architecture.md"], "architecture doc")
+    return _pass_filled(
+        ctx,
+        ["ARCHITECTURE.md", "docs/ARCHITECTURE.md", "docs/architecture.md"],
+        "architecture doc",
+    )
 
 def domain_docs(ctx):
     paths = ctx.static.glob(["domains/*/README.md"])
@@ -152,4 +169,5 @@ def domain_docs(ctx):
             filled.append(path)
     if not filled:
         return failed("No filled domains/*/README.md domain docs found.")
-    return passed(f"Found {len(filled)} filled domain README doc(s).", [ev("domain README", source=path, tier="T0") for path in filled])
+    return passed(f"Found {len(filled)} filled domain README doc(s).",
+                  [ev("domain README", source=path, tier="T0") for path in filled])

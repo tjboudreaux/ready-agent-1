@@ -12,9 +12,11 @@ def linter_config(ctx):
                         "biome.json", "biome.jsonc", ".flake8", ".pylintrc", "pylintrc",
                         ".golangci.yml", ".golangci.yaml"])
     if files:
-        return passed(f"Linter config present: {files[0]}", [ev(f"linter config {files[0]}", source=files[0])])
+        return passed(f"Linter config present: {files[0]}",
+                      [ev(f"linter config {files[0]}", source=files[0])])
     if atool(ctx, "ruff") or atool(ctx, "flake8") or atool(ctx, "pylint"):
-        return passed("Linter configured via pyproject [tool.*].", [ev("pyproject linter tool config")])
+        return passed("Linter configured via pyproject [tool.*].",
+                      [ev("pyproject linter tool config")])
     dep = adep(ctx, ["eslint", "ruff", "flake8", "pylint", "biome", "golangci-lint"])
     if dep:
         return passed(f"Linter dependency declared: {dep}", [ev(f"dependency {dep}")])
@@ -22,7 +24,8 @@ def linter_config(ctx):
 
 
 def formatter(ctx):
-    files = aglob(ctx, [".prettierrc*", "prettier.config.*", ".clang-format", "rustfmt.toml", ".rustfmt.toml"])
+    files = aglob(ctx, [".prettierrc*", "prettier.config.*", ".clang-format", "rustfmt.toml",
+                        ".rustfmt.toml"])
     if files:
         return passed(f"Formatter config: {files[0]}", [ev("formatter config", source=files[0])])
     if atool(ctx, "black") or atool(ctx, "ruff"):
@@ -30,15 +33,16 @@ def formatter(ctx):
     dep = adep(ctx, ["prettier", "black"])
     if dep:
         return passed(f"Formatter dependency: {dep}")
-    if any(l in ctx.app.languages for l in ("go", "rust")):
+    if any(lang in ctx.app.languages for lang in ("go", "rust")):
         return passed("Standard formatter (gofmt/rustfmt) available for language.")
     return failed("No formatter (prettier/black/ruff-format).")
 
 
 def type_check(ctx):
-    if any(l in ctx.app.languages for l in _TYPED_LANGS):
+    if any(lang in ctx.app.languages for lang in _TYPED_LANGS):
         return passed("Statically-typed language.")
-    files = aglob(ctx, ["tsconfig.json", "tsconfig.*.json", "mypy.ini", ".mypy.ini", "pyrightconfig.json"])
+    files = aglob(ctx, ["tsconfig.json", "tsconfig.*.json", "mypy.ini", ".mypy.ini",
+                        "pyrightconfig.json"])
     if files:
         return passed(f"Type checker config: {files[0]}", [ev("type config", source=files[0])])
     if atool(ctx, "mypy") or atool(ctx, "pyright"):
@@ -58,7 +62,7 @@ def _read_first(ctx, name):
 
 
 def strict_typing(ctx):
-    if any(l in ctx.app.languages for l in _TYPED_LANGS):
+    if any(lang in ctx.app.languages for lang in _TYPED_LANGS):
         return passed("Statically-typed language (strict by default).")
     path, rel = _read_first(ctx, "tsconfig.json")
     if path is not None:
@@ -122,16 +126,19 @@ def _ruff_select(ctx):
 
 def naming_convention_rule(ctx):
     blob = "\n".join(cfg_texts(ctx, _LINT_CFG)).lower()
-    if any(t in blob for t in ("naming-convention", "filename-case", "pep8-naming", "naming-style")):
+    if any(tok in blob for tok in ("naming-convention", "filename-case", "pep8-naming",
+                                   "naming-style")):
         return passed("Naming-convention lint rule configured.", [ev("naming rule")])
     if any(c.startswith("N") for c in _ruff_select(ctx)):
         return passed("Ruff pep8-naming (N) rules enabled.", [ev("ruff N rules")])
-    return failed("No enforced naming-convention rule (eslint naming-convention / ruff N / pylint naming).")
+    return failed("No enforced naming-convention rule "
+                  "(eslint naming-convention / ruff N / pylint naming).")
 
 
 def complexity_budget(ctx):
     blob = "\n".join(cfg_texts(ctx, _LINT_CFG)).lower()
-    if any(t in blob for t in ("max-complexity", "max_complexity", "cognitive-complexity", '"complexity"')):
+    if any(tok in blob for tok in ("max-complexity", "max_complexity", "cognitive-complexity",
+                                   '"complexity"')):
         return passed("Cyclomatic-complexity budget configured.", [ev("complexity rule")])
     if any(c.startswith("C9") for c in _ruff_select(ctx)):
         return passed("Ruff mccabe (C90) complexity rules enabled.", [ev("ruff C90 rules")])
@@ -167,7 +174,8 @@ def duplicate_code_detection(ctx):
     if wiring:
         return passed(f"Duplicate-code detection wired: {tool}.",
                       [ev("dup-code tool", source=str(tool)), ev("invocation", source=wiring)])
-    return failed(f"Duplicate-code detector present ({tool}) but not wired into CI/pre-commit/scripts.")
+    return failed(f"Duplicate-code detector present ({tool}) but not wired into "
+                  f"CI/pre-commit/scripts.")
 
 
 def large_file_guard(ctx):
@@ -176,7 +184,8 @@ def large_file_guard(ctx):
             return passed("Large-file guard via pre-commit check-added-large-files.",
                           [ev("pre-commit large-file hook", source=f)])
     if "filter=lfs" in (ctx.static.read(".gitattributes") or ""):
-        return passed("Large binaries tracked via Git LFS.", [ev(".gitattributes lfs", source=".gitattributes")])
+        return passed("Large binaries tracked via Git LFS.",
+                      [ev(".gitattributes lfs", source=".gitattributes")])
     if "max-lines" in "\n".join(cfg_texts(ctx, _LINT_CFG)).lower():
         return passed("Max-lines lint rule configured.", [ev("max-lines rule")])
     wiring = tool_invoked(ctx, ["check-added-large-files", "git-sizer"])
@@ -192,8 +201,10 @@ def tech_debt_tracking(ctx):
     if ctx.static.glob(_DEBT_DOCS):
         return passed("Tech-debt register present.", [ev("tech-debt doc")])
     if "no-warning-comments" in "\n".join(cfg_texts(ctx, _LINT_CFG)).lower():
-        return passed("TODO/FIXME lint rule configured (no-warning-comments).", [ev("no-warning-comments rule")])
+        return passed("TODO/FIXME lint rule configured (no-warning-comments).",
+                      [ev("no-warning-comments rule")])
     wiring = tool_invoked(ctx, ["todocheck", "leasot", "todo-to-issue", "no-warning-comments"])
     if wiring:
         return passed("Tech-debt scanner wired into CI.", [ev("CI tech-debt scan", source=wiring)])
-    return failed("No tech-debt tracking (debt register / TODO scanner / no-warning-comments rule).")
+    return failed("No tech-debt tracking "
+                  "(debt register / TODO scanner / no-warning-comments rule).")

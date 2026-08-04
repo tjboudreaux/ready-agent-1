@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import List, Optional
 
 _AGENT_MARKERS = (
     "claude", "droid", "factory", "codex", "cursor", "copilot", "gemini",
@@ -18,7 +17,7 @@ class GitCollector:
         self._runner = runner or self._default_runner
         self._cache: dict = {}
 
-    def _default_runner(self, args: List[str]) -> Optional[str]:  # pragma: no cover - subprocess boundary
+    def _default_runner(self, args: list[str]) -> str | None:  # pragma: no cover - subprocess
         try:
             proc = subprocess.run(
                 ["git", "-C", str(self.root), *args],
@@ -30,7 +29,7 @@ class GitCollector:
             return None
         return proc.stdout
 
-    def _run(self, args: List[str]) -> Optional[str]:
+    def _run(self, args: list[str]) -> str | None:
         key = tuple(args)
         if key not in self._cache:
             self._cache[key] = self._runner(args)
@@ -54,7 +53,7 @@ class GitCollector:
         except ValueError:
             return 0
 
-    def commit_dates(self, n: int = 50) -> List[str]:
+    def commit_dates(self, n: int = 50) -> list[str]:
         out = self._run(["log", f"-{n}", "--format=%cI"])
         return [ln.strip() for ln in out.splitlines()] if out else []
 
@@ -66,19 +65,19 @@ class GitCollector:
         blob = self.recent_messages(n).lower()
         return any(marker in blob for marker in _AGENT_MARKERS)
 
-    def tags(self) -> List[str]:
+    def tags(self) -> list[str]:
         out = self._run(["tag"])
         return [ln.strip() for ln in out.splitlines() if ln.strip()] if out else []
 
-    def file_last_commit_iso(self, relpath: str) -> Optional[str]:
+    def file_last_commit_iso(self, relpath: str) -> str | None:
         out = self._run(["log", "-1", "--format=%cI", "--", relpath])
         return out.strip() if out and out.strip() else None
 
-    def most_recent_commit_iso(self) -> Optional[str]:
+    def most_recent_commit_iso(self) -> str | None:
         dates = self.commit_dates(1)
         return dates[0] if dates else None
 
-    def recent_churn(self, n: int = 50) -> List[int]:
+    def recent_churn(self, n: int = 50) -> list[int]:
         """Per-commit added+deleted LOC for the last ``n`` non-merge commits.
 
         Skips binary numstat rows and vendor/lockfile noise. Unavailable → ``[]``.
@@ -86,8 +85,8 @@ class GitCollector:
         out = self._run(["log", f"-{n}", "--no-merges", "--numstat", "--format=%H"])
         if not out:
             return []
-        churns: List[int] = []
-        current: Optional[int] = None
+        churns: list[int] = []
+        current: int | None = None
         for line in out.splitlines():
             if not line.strip():
                 continue
