@@ -274,22 +274,47 @@ class TestDetectInternals(unittest.TestCase):
         self.addCleanup(rmtree, root)
         self.assertEqual(det._maven_modules(root), [])
 
+    _BOMB = (
+        '<?xml version="1.0"{enc}?>\n'
+        '<!DOCTYPE project [\n'
+        '  <!ENTITY a "aaaaaaaaaa">\n'
+        '  <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">\n'
+        '  <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">\n'
+        '  <!ENTITY d "&c;&c;&c;&c;&c;&c;&c;&c;&c;&c;">\n'
+        ']>\n'
+        '<project><modules><module>&d;</module></modules></project>\n'
+    )
+
     def test_maven_modules_rejects_entity_expansion(self):
         """A billion-laughs pom must be refused, not expanded."""
         from readiness import detect as det
-        bomb = (
-            '<?xml version="1.0"?>\n'
-            '<!DOCTYPE project [\n'
-            '  <!ENTITY a "aaaaaaaaaa">\n'
-            '  <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">\n'
-            '  <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">\n'
-            '  <!ENTITY d "&c;&c;&c;&c;&c;&c;&c;&c;&c;&c;">\n'
-            ']>\n'
-            '<project><modules><module>&d;</module></modules></project>\n'
-        )
-        root = make_repo({"pom.xml": bomb})
+        root = make_repo({"pom.xml": self._BOMB.format(enc="")})
         self.addCleanup(rmtree, root)
         self.assertEqual(det._maven_modules(root), [])
+
+    def test_maven_modules_rejects_utf16_entity_expansion(self):
+        """UTF-16 encodes no ASCII '<!DOCTYPE', so a byte-substring guard would miss this
+        while ElementTree honours the BOM and expands the bomb anyway."""
+        import tempfile
+        from pathlib import Path
+        from readiness import detect as det
+        root = Path(tempfile.mkdtemp(prefix="ar-utf16-"))
+        self.addCleanup(rmtree, root)
+        (root / "pom.xml").write_bytes(self._BOMB.format(enc=' encoding="UTF-16"').encode("utf-16"))
+        self.assertEqual(det._maven_modules(root), [])
+
+    def test_maven_modules_accepts_utf16_pom(self):
+        """Rejecting the bomb must not reject legitimate non-UTF-8 poms."""
+        import tempfile
+        from pathlib import Path
+        from readiness import detect as det
+        root = Path(tempfile.mkdtemp(prefix="ar-utf16ok-"))
+        self.addCleanup(rmtree, root)
+        (root / "svc").mkdir()
+        doc = ('<?xml version="1.0" encoding="UTF-16"?>'
+               '<project><modules><module>svc</module></modules></project>')
+        (root / "pom.xml").write_bytes(doc.encode("utf-16"))
+        self.assertEqual(det._maven_modules(root), ["svc"])
 
     def test_maven_modules_rejects_oversize_pom(self):
         from readiness import detect as det

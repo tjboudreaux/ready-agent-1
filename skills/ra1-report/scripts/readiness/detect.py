@@ -204,15 +204,37 @@ def _go_cmd_apps(root: Path) -> List[str]:
 _POM_MAX_BYTES = 1 << 20
 
 
+def _pom_tree(raw: bytes):
+    """Parse an untrusted pom, refusing any DTD. Returns None if unusable.
+
+    stdlib ElementTree expands internal entities, so a document with a DTD can trigger
+    entity-expansion DoS ("billion laughs" / quadratic blowup). defusedxml is not an option
+    -- engine/ is pure stdlib by contract -- so reject the doctype at the parser level.
+
+    Scanning the bytes for ``<!DOCTYPE`` instead would be bypassable: a UTF-16 document
+    contains no such ASCII substring, yet ElementTree honours the BOM/encoding declaration
+    and would expand it anyway. Hooking the parser is encoding-agnostic.
+    """
+    import xml.etree.ElementTree as ET
+
+    class _NoDoctype(ET.TreeBuilder):
+        def doctype(self, name, pubid, system):
+            raise ET.ParseError("doctype declarations are not accepted")
+
+    try:
+        # B314 asks for exactly the mitigation _NoDoctype provides: every DTD is rejected
+        # at the parser level, which is encoding-agnostic (see docstring).
+        parser = ET.XMLParser(target=_NoDoctype())  # nosec B314
+        parser.feed(raw)
+        return parser.close()
+    except (ET.ParseError, ValueError, UnicodeDecodeError):
+        return None
+
+
 def _maven_modules(root: Path) -> List[str]:
     pom = root / "pom.xml"
     if not pom.exists():
         return []
-    import xml.etree.ElementTree as ET
-    # stdlib ElementTree expands internal entities, so an untrusted document can trigger
-    # entity-expansion DoS ("billion laughs" / quadratic blowup). defusedxml is not an
-    # option here -- engine/ is pure stdlib by contract -- so refuse any doctype or entity
-    # declaration up front. Neither appears in a legitimate pom.
     try:
         with pom.open("rb") as fh:
             # Bounded read: read_bytes() would allocate the entire attacker-sized file
@@ -223,12 +245,8 @@ def _maven_modules(root: Path) -> List[str]:
         return []
     if len(raw) > _POM_MAX_BYTES:
         return []
-    low = raw.lower()
-    if b"<!doctype" in low or b"<!entity" in low:
-        return []
-    try:
-        tree = ET.fromstring(raw)
-    except ET.ParseError:
+    tree = _pom_tree(raw)
+    if tree is None:
         return []
     out = []
     root_abs = root.resolve()
