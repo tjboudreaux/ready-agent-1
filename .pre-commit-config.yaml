@@ -9,7 +9,8 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.1
     hooks:
-      # Same correctness subset CI gates on (see .github/workflows/ci.yml). Kept in sync
-      # deliberately: a hook stricter than CI trains contributors to skip hooks.
+      # No --select override, matching .github/workflows/ci.yml: both defer to the ruleset in
+      # pyproject.toml. Kept in sync deliberately -- a hook stricter than CI trains
+      # contributors to skip hooks, and a looser one lets CI fail on what the hook allowed.
       - id: ruff
-        args: ["--select", "F,E9,B", "--no-cache"]
+        args: ["--no-cache"]

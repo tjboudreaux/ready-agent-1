@@ -53,15 +53,15 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
-      # Scoped to the correctness rules the tree is actually clean on: F (undefined names,
-      # unused imports), E9 (syntax/runtime errors), B (bugbear). The stylistic backlog
-      # (~500 findings, dominated by E501) is tracked separately -- a permanently red job
-      # gates nothing, so it is deliberately not wired in here yet.
-      - name: Ruff (correctness rules)
+      # Enforces the ruleset pyproject actually declares -- select = ["E","F","I","UP","B"]
+      # with line-length 100 -- rather than a subset. No --select override here on purpose:
+      # the config is the single source of truth, so widening or narrowing it is a reviewable
+      # edit to pyproject.toml instead of a hidden flag in CI.
+      - name: Ruff (full configured ruleset)
         run: |
           # Pinned to the same version as .pre-commit-config.yaml so hooks and CI agree.
           python3 -m pip install 'ruff==0.16.1'
-          python3 -m ruff check --select F,E9,B --no-cache engine scripts evals tests
+          python3 -m ruff check --no-cache engine scripts evals tests
       # Workflow/action SAST. This is the gate that would have caught the shell injection
       # in the release workflow and in ci/action.yml (the action we publish to other
       # repositories) -- both reached main and survived human review.
