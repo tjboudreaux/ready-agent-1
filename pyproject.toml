@@ -19,16 +19,13 @@ packages = ["readiness", "readiness.checks", "readiness.collectors", "readiness.
 [tool.setuptools.package-data]
 readiness = ["criteria/*.json"]
 
-# No [project.optional-dependencies]: declaring dev deps here without a lockfile would
-# make build.deps_pinned fail on our own scan, and adding poetry/uv lock machinery to a
-# deliberately zero-dep project is not worth it for three tools. Dev tooling is pinned
-# exactly at its point of use instead -- .github/workflows/ci.yml and the
-# .pre-commit-config.yaml rev, which are kept on the same ruff version.
+# Dev tooling is declared in [dependency-groups] and locked via uv.lock so `uv run`
+# automatically installs and resolves the pinned ruff version across environments.
 
 [tool.ruff]
 # Older ruff cannot parse [tool.ruff.lint] and exits with a TOML error rather than a
 # finding, so an unpinned contributor would silently lint nothing. Fail loudly instead.
-required-version = ">=0.6"
+required-version = ">=0.6.0"
 line-length = 100
 target-version = "py311"
 
@@ -48,3 +45,8 @@ source = ["engine/readiness", "evals", "scripts"]
 
 [tool.coverage.report]
 show_missing = true
+
+[dependency-groups]
+dev = [
+    "ruff==0.16.1",
+]
