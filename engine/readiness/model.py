@@ -6,11 +6,10 @@ deterministic and never leaks Python types. Status values serialize to their str
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 
-class Status(str, Enum):
+class Status(StrEnum):
     PASS = "pass"
     FAIL = "fail"
     SKIPPED = "skipped"
@@ -34,7 +33,8 @@ class Evidence:
     detail: str = ""
 
     def to_dict(self) -> dict:
-        return {"summary": self.summary, "tier": self.tier, "source": self.source, "detail": self.detail}
+        return {"summary": self.summary, "tier": self.tier,
+                "source": self.source, "detail": self.detail}
 
 
 @dataclass
@@ -53,7 +53,8 @@ class App:
     path: str = "."
     languages: list = field(default_factory=list)
     runtime: str = "unknown"
-    deploy_surface: str = "unknown"  # none | library | service | frontend | cli | data | infra | unknown
+    # none | library | service | frontend | cli | data | infra | unknown
+    deploy_surface: str = "unknown"
     prod_facing: object = "unknown"  # True | False | "unknown"
     test_cmd: str = ""
     ci_jobs: list = field(default_factory=list)
@@ -106,8 +107,10 @@ class CriterionResult:
     app_path: str = "."
     fixable: bool = False
     fix_kind: str = ""
-    passed_apps: int = 0      # apps passing this criterion (repository scope: 1 if pass else 0)
-    evaluated_apps: int = 0   # apps assessed (repository scope: 1 if applicable, 0 if skipped/waived)
+    # repository scope: passed_apps is 1 if pass else 0; evaluated_apps is 1 if applicable,
+    # 0 if skipped/waived
+    passed_apps: int = 0
+    evaluated_apps: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -169,7 +172,7 @@ class ScoreSummary:
             "pass_rate": round(self.pass_rate, 3),
             "gating_passed": self.gating_passed,
             "gating_total": self.gating_total,
-            "levels": [l.to_dict() for l in self.levels],
+            "levels": [lvl.to_dict() for lvl in self.levels],
             "pillars": self.pillars,
             "recommendations": list(self.recommendations),
         }
@@ -186,11 +189,12 @@ class Report:
     branch: str = ""
     github_available: bool = False
     generated_at: str = ""
-    repository: Optional[dict] = None
-    detection: Optional[Detection] = None
+    repository: dict | None = None
+    detection: Detection | None = None
     results: list = field(default_factory=list)        # list[CriterionResult]
-    score: Optional[ScoreSummary] = None
-    advisory: list = field(default_factory=list)        # filled by the agent layer; engine leaves []
+    score: ScoreSummary | None = None
+    # advisory is filled by the agent layer; the engine always leaves it empty
+    advisory: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
