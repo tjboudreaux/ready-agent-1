@@ -274,6 +274,53 @@ class TestDetectInternals(unittest.TestCase):
         self.addCleanup(rmtree, root)
         self.assertEqual(det._maven_modules(root), [])
 
+    def test_maven_modules_rejects_entity_expansion(self):
+        """A billion-laughs pom must be refused, not expanded."""
+        from readiness import detect as det
+        bomb = (
+            '<?xml version="1.0"?>\n'
+            '<!DOCTYPE project [\n'
+            '  <!ENTITY a "aaaaaaaaaa">\n'
+            '  <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">\n'
+            '  <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">\n'
+            '  <!ENTITY d "&c;&c;&c;&c;&c;&c;&c;&c;&c;&c;">\n'
+            ']>\n'
+            '<project><modules><module>&d;</module></modules></project>\n'
+        )
+        root = make_repo({"pom.xml": bomb})
+        self.addCleanup(rmtree, root)
+        self.assertEqual(det._maven_modules(root), [])
+
+    def test_maven_modules_rejects_oversize_pom(self):
+        from readiness import detect as det
+        padding = "<!-- " + ("x" * (det._POM_MAX_BYTES + 64)) + " -->"
+        root = make_repo({"pom.xml": f"<project>{padding}<modules><module>svc</module></modules></project>"})
+        self.addCleanup(rmtree, root)
+        (root / "svc").mkdir()
+        self.assertEqual(det._maven_modules(root), [])
+
+    def test_maven_modules_rejects_path_escaping_root(self):
+        """A module pointing outside the project must not become a scanned app."""
+        import tempfile
+        from pathlib import Path
+        from readiness import detect as det
+        # Own the parent directory: root.parent would be the shared system temp dir, so
+        # creating "escaped" there could collide with a concurrent test or delete
+        # unrelated data on cleanup.
+        parent = Path(tempfile.mkdtemp(prefix="ar-escape-"))
+        self.addCleanup(rmtree, parent)
+        root = parent / "repo"
+        (root / "svc").mkdir(parents=True)
+        (parent / "escaped").mkdir()
+        (root / "pom.xml").write_text(
+            "<project><modules>"
+            "<module>../escaped</module>"
+            "<module>svc</module>"
+            "</modules></project>",
+            encoding="utf-8",
+        )
+        self.assertEqual(det._maven_modules(root), ["svc"])
+
     def test_detect_test_cmd_variants(self):
         from readiness import detect as det
         from readiness.collectors.static import StaticCollector

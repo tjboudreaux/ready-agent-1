@@ -199,19 +199,57 @@ def _go_cmd_apps(root: Path) -> List[str]:
             if p.is_dir() and any(p.glob("*.go"))]
 
 
+# pom.xml is attacker-supplied (it comes from the scanned repository) and real module
+# lists are tiny, so cap the read well below anything legitimate.
+_POM_MAX_BYTES = 1 << 20
+
+
 def _maven_modules(root: Path) -> List[str]:
     pom = root / "pom.xml"
     if not pom.exists():
         return []
     import xml.etree.ElementTree as ET
+    # stdlib ElementTree expands internal entities, so an untrusted document can trigger
+    # entity-expansion DoS ("billion laughs" / quadratic blowup). defusedxml is not an
+    # option here -- engine/ is pure stdlib by contract -- so refuse any doctype or entity
+    # declaration up front. Neither appears in a legitimate pom.
     try:
-        tree = ET.parse(pom)
-    except (ET.ParseError, OSError):
+        with pom.open("rb") as fh:
+            # Bounded read: read_bytes() would allocate the entire attacker-sized file
+            # before any cap could reject it. Reading one byte past the cap is enough to
+            # detect oversize without ever holding it in memory.
+            raw = fh.read(_POM_MAX_BYTES + 1)
+    except OSError:
+        return []
+    if len(raw) > _POM_MAX_BYTES:
+        return []
+    low = raw.lower()
+    if b"<!doctype" in low or b"<!entity" in low:
+        return []
+    try:
+        tree = ET.fromstring(raw)
+    except ET.ParseError:
         return []
     out = []
+    root_abs = root.resolve()
     for el in tree.iter():
-        if el.tag.split("}")[-1] == "module" and el.text and (root / el.text.strip()).is_dir():
-            out.append(el.text.strip())
+        if el.tag.split("}")[-1] != "module" or not el.text:
+            continue
+        rel = el.text.strip()
+        if not rel:
+            continue
+        target = (root / rel)
+        if not target.is_dir():
+            continue
+        # A module of "../../.." would otherwise make every downstream collector read
+        # outside the scanned project and quote it back in the report.
+        try:
+            resolved = target.resolve()
+        except OSError:
+            continue
+        if resolved != root_abs and root_abs not in resolved.parents:
+            continue
+        out.append(rel)
     return out
 
 
