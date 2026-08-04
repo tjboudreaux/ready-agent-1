@@ -51,13 +51,16 @@ jobs:
           else
             tag="$GITHUB_REF_NAME"
           fi
-          # Full SemVer 2.0.0, written in POSIX ERE (grep -E has no non-capturing groups).
-          # The earlier '([-+][0-9A-Za-z.]+)?' was a subset that rejected legitimate tags:
-          # prerelease identifiers may contain hyphens (v1.2.3-rc-1) and build metadata may
-          # follow a prerelease (v1.2.3-rc.1+build.7). Both match the v*.*.* trigger, so
-          # rejecting them here produced the same red-X-on-a-valid-tag failure the trigger
-          # narrowing was meant to eliminate.
-          if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'; then
+          # SemVer 2.0.0 in POSIX ERE (grep -E has no non-capturing groups). Verified to
+          # agree with the official semver.org regex across a generated corpus -- see
+          # tests/test_release_tag_policy.py, which cross-checks this exact pattern rather
+          # than a hand-written list of examples.
+          #
+          # Note the prerelease identifier is NOT just [0-9A-Za-z-]+: SemVer forbids leading
+          # zeroes in *numeric* identifiers, so v1.2.3-01 and v1.2.3-alpha.01 are invalid
+          # while v1.2.3-0A and v1.2.3-0.3.7 are fine. Build metadata after '+' has no such
+          # rule, so v1.2.3+build.01 is valid.
+          if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'; then
             echo "refusing tag '$tag': must be a SemVer release tag, e.g. v1.2.3, v1.2.3-rc.1, v1.2.3-rc.1+build.7" >&2
             exit 1
           fi

