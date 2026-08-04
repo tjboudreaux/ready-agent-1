@@ -8,7 +8,8 @@ from __future__ import annotations
 import json
 import sys
 
-from . import contracts, judge as judgemod
+from . import contracts
+from . import judge as judgemod
 from .scenarios import all_scenarios
 
 SKILL_CONTRACT = """You are the ra1-report skill. A deterministic engine has ALREADY scored a

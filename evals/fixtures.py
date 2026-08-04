@@ -26,7 +26,7 @@ import tempfile
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
-if str(_REPO / "engine") not in sys.path:  # pragma: no cover - engine already importable under tests
+if str(_REPO / "engine") not in sys.path:  # pragma: no cover - engine importable under tests
     sys.path.insert(0, str(_REPO / "engine"))
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -207,8 +207,8 @@ def check_thresholds(summary, thresholds, registry):
             violations.append(f"criterion '{cid}': fp={slot['fp']} fn={slot['fn']}")
     violations.extend(f"detection mismatch in fixture '{d['fixture']}' (got {d['detected']})"
                       for d in summary["detection_errors"])
-    violations.extend(f"level mismatch in fixture '{l['fixture']}' (got {l['level']})"
-                      for l in summary["level_errors"])
+    violations.extend(f"level mismatch in fixture '{err['fixture']}' (got {err['level']})"
+                      for err in summary["level_errors"])
     return violations
 
 
