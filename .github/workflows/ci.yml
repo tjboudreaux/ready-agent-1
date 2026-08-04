@@ -79,11 +79,4 @@ jobs:
           mkdir -p "$staged"
           cp templates/ci/*.yml "$staged/"
           zizmor --no-progress --persona=regular --config .github/zizmor-templates.yml "$staged"
-      # Python security SAST. Signal is thin -- B404/B603/B607 flag the subprocess-based
-      # collector design at every call site, and B108 fires on an inert "/tmp/example"
-      # string in eval fixture data -- but it did find the real entity-expansion DoS in the
-      # pom parser, so gate on MEDIUM+ with those architectural/no-value rules off.
-      - name: Bandit (medium+ severity)
-        run: |
-          python3 -m pip install 'bandit==1.9.4'
-          python3 -m bandit -q -ll -s B404,B603,B607,B108 -r engine scripts evals
+      # Bandit lives in .github/workflows/security.yml, not here: one gate, one place.
