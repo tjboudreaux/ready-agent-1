@@ -5,6 +5,7 @@ import unittest
 from contextlib import redirect_stdout
 
 from readiness import cli, history
+
 from tests._util import make_repo, rmtree
 
 
@@ -17,12 +18,15 @@ def run(argv):
 
 
 BASE_NON_LOOP = {
-    "README.md": "# Project\n\n## Setup\n\n```sh\npython -m unittest\n```\n\n" + ("Maintainer detail. " * 30),
+    "README.md": "# Project\n\n## Setup\n\n```sh\npython -m unittest\n```\n\n"
+                  + ("Maintainer detail. " * 30),
     "pyproject.toml": '[project]\nname="lib"\nversion="1.0"\n[tool.ruff]\nline-length=100\n',
     ".gitignore": ".env\n.env.*\n*.pem\n__pycache__/\nnode_modules/\ndist/\nbuild/\n.venv/\n",
-    ".github/workflows/readiness.yml": "name: readiness\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps: []\n",
+    ".github/workflows/readiness.yml": "name: readiness\non: [push]\njobs:\n  test:\n    runs-on: "
+                                       "ubuntu-latest\n    steps: []\n",
     ".github/ISSUE_TEMPLATE/bug_report.md": "---\nname: Bug report\n---\n",
-    ".github/pull_request_template.md": "## Summary\n\nDescribe changes and test coverage for reviewers.\n",
+    ".github/pull_request_template.md": "## Summary\n\nDescribe changes and test coverage for "
+                                        "reviewers.\n",
     ".github/dependabot.yml": "version: 2\nupdates: []\n",
     ".devcontainer/devcontainer.json": "{}\n",
     ".pre-commit-config.yaml": "repos: []\n",
@@ -34,21 +38,35 @@ BASE_NON_LOOP = {
 }
 
 LOOP_ARTIFACTS = {
-    "loop-runs/README.md": "# Loop Runs\n\nThis directory records loop attempts and evidence for maintainers.\n",
-    ".omp/rules/README.md": "# Loop Rules\n\nThis rules index links to the denylist and safety policies.\n",
-    ".omp/rules/denylist.md": "# Loop Denylist\n\n- Never mutate secrets or deploy without confirmation.\n",
-    "signals/README.md": "# Signal Schema\n\n```json\n{\"schema_version\":\"1\",\"signal\":\"loop.run\",\"source\":\"runner\",\"timestamp\":\"2026-01-01T00:00:00Z\",\"evidence\":[]}\n```\n",
-    ".omp/commands/pr-artifact-template.md": "# PR Evidence\n\nCite artifact evidence, CI logs, screenshots, and loop-runs records.\n",
-    ".omp/commands/goal.md": "# Goal Contract\n\nCapture the loop goal, boundaries, evidence requirements, and owner.\n",
-    ".omp/commands/loop.md": "# Loop Contract\n\nCapture loop iteration rules, stop conditions, evidence, and escalation.\n",
-    "ARCHITECTURE.md": "# Architecture\n\nDocument the system shape, critical paths, and ownership boundaries.\n",
-    "domains/billing/README.md": "# Billing Domain\n\nDocument domain vocabulary, invariants, workflows, and maintainer contacts.\n",
-    ".omp/skills/a/SKILL.md": "---\nname: a\ndescription: loop skill artifact\n---\n# A\n\nFilled loop skill artifact for maintainers.\n",
-    ".omp/skills/b/SKILL.md": "---\nname: b\ndescription: loop skill artifact\n---\n# B\n\nFilled loop skill artifact for maintainers.\n",
-    ".omp/skills/c/SKILL.md": "---\nname: c\ndescription: loop skill artifact\n---\n# C\n\nFilled loop skill artifact for maintainers.\n",
+    "loop-runs/README.md": "# Loop Runs\n\nThis directory records loop attempts and evidence for "
+                           "maintainers.\n",
+    ".omp/rules/README.md": "# Loop Rules\n\nThis rules index links to the denylist and safety "
+                            "policies.\n",
+    ".omp/rules/denylist.md": "# Loop Denylist\n\n- Never mutate secrets or deploy without "
+                              "confirmation.\n",
+    "signals/README.md": "# Signal Schema\n\n```json\n{\"schema_version\":\"1\",\"signal\":\"loop."
+                         "run\",\"source\":\"runner\",\"timestamp\":\"2026-01-01T00:00:00Z\","
+                         "\"evidence\":[]}\n```\n",
+    ".omp/commands/pr-artifact-template.md": "# PR Evidence\n\nCite artifact evidence, CI logs, "
+                                             "screenshots, and loop-runs records.\n",
+    ".omp/commands/goal.md": "# Goal Contract\n\nCapture the loop goal, boundaries, evidence "
+                             "requirements, and owner.\n",
+    ".omp/commands/loop.md": "# Loop Contract\n\nCapture loop iteration rules, stop conditions, "
+                             "evidence, and escalation.\n",
+    "ARCHITECTURE.md": "# Architecture\n\nDocument the system shape, critical paths, and ownership "
+                       "boundaries.\n",
+    "domains/billing/README.md": "# Billing Domain\n\nDocument domain vocabulary, invariants, "
+                                 "workflows, and maintainer contacts.\n",
+    ".omp/skills/a/SKILL.md": "---\nname: a\ndescription: loop skill artifact\n---\n# A\n\nFilled "
+                              "loop skill artifact for maintainers.\n",
+    ".omp/skills/b/SKILL.md": "---\nname: b\ndescription: loop skill artifact\n---\n# B\n\nFilled "
+                              "loop skill artifact for maintainers.\n",
+    ".omp/skills/c/SKILL.md": "---\nname: c\ndescription: loop skill artifact\n---\n# C\n\nFilled "
+                              "loop skill artifact for maintainers.\n",
 }
 
-LOOP_CONFIG = {".agents/readiness/config.json": json.dumps({"schema_version": "1", "loop_ready": True})}
+LOOP_CONFIG = {".agents/readiness/config.json"
+               : json.dumps({"schema_version": "1", "loop_ready": True})}
 
 
 def _loop_results(data):
@@ -57,7 +75,8 @@ def _loop_results(data):
 
 class TestCli(unittest.TestCase):
     def setUp(self):
-        self.repo = make_repo({"pyproject.toml": '[project]\nname="lib"\nversion="1.0"\n', "README.md": "# lib"})
+        self.repo = make_repo({"pyproject.toml": '[project]\nname="lib"\nversion="1.0"\n'
+                                                 , "README.md": "# lib"})
         self.addCleanup(rmtree, self.repo)
 
     def test_report_json(self):
@@ -135,7 +154,9 @@ class TestCli(unittest.TestCase):
             self.assertFalse(r["gating"])
             self.assertEqual(r["status"], "fail")
         for field in ("level", "gating_passed", "gating_total"):
-            self.assertEqual(reports["opt_in_missing"]["score"][field], reports["opt_out_missing"]["score"][field])
+            self.assertEqual(
+                             reports["opt_in_missing"]["score"][field],
+                             reports["opt_out_missing"]["score"][field])
 
 
 def _init_git(root, origin=None):
@@ -218,7 +239,8 @@ class TestHistoryCommand(unittest.TestCase):
             rep = {"schema_version": "2", "engine_version": eng, "registry_version": "0.4.0",
                    "detector_version": det, "generated_at": f"2026-06-2{i}T00:00:00+00:00",
                    "commit": f"c{i}", "repository": ident,
-                   "score": {"level": lvl, "pass_rate": 0.5, "gating_passed": lvl, "gating_total": 10},
+                   "score": {"level": lvl, "pass_rate": 0.5, "gating_passed"
+                       : lvl, "gating_total": 10},
                    "results": [{"id": "docs.readme", "status": "fail" if i == 0 else "pass"}]}
             history.store_history(rep, str(root))
 
@@ -267,7 +289,15 @@ class TestHistoryCommand(unittest.TestCase):
         code, md = run(["history", "diff", "--project", str(root), "--from", ids[0], "--to", ids[1],
                         "--format", "markdown"])
         self.assertIn("Not comparable", md)
-        code, out = run(["history", "diff", "--project", str(root), "--from", ids[1], "--to", ids[2]])
+        code, out = run([
+                         "history",
+                         "diff",
+                         "--project",
+                         str(root),
+                         "--from",
+                         ids[1],
+                         "--to",
+                         ids[2]])
         self.assertTrue(json.loads(out)["detector_changed"])
         code, md = run(["history", "diff", "--project", str(root), "--from", ids[1], "--to", ids[2],
                         "--format", "markdown"])
@@ -277,7 +307,15 @@ class TestHistoryCommand(unittest.TestCase):
         root = make_repo({})
         self.addCleanup(rmtree, root)
         self._seed(root, [(2, "0.4.0", "0.4.0")])
-        code, _ = run(["history", "diff", "--project", str(root), "--from", "nope", "--to", "latest"])
+        code, _ = run([
+                       "history",
+                       "diff",
+                       "--project",
+                       str(root),
+                       "--from",
+                       "nope",
+                       "--to",
+                       "latest"])
         self.assertEqual(code, 1)
 
 

@@ -6,7 +6,8 @@ from readiness.collectors.github import GithubCollector
 from readiness.collectors.static import StaticCollector
 from readiness.detect import detect
 from readiness.model import Status
-from tests._util import make_repo, rmtree, fake_runner
+
+from tests._util import fake_runner, make_repo, rmtree
 
 
 class TestScoreInternals(unittest.TestCase):
@@ -22,7 +23,8 @@ class TestScoreInternals(unittest.TestCase):
         self.assertEqual(score._type_match(["service"], "library"), "skip")
 
     def test_load_waivers_from_file(self):
-        root = make_repo({".agents/readiness/waivers.json": '[{"id":"docs.readme","reason":"r","owner":"t"}]'})
+        root = make_repo({".agents/readiness/waivers.json": '[{"id":"docs.readme","reason":"r",'
+                                                            '"owner":"t"}]'})
         self.addCleanup(rmtree, root)
         waivers = score.load_waivers(root, {})
         self.assertIn("docs.readme", waivers)

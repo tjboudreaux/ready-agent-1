@@ -2,6 +2,7 @@ import json
 import unittest
 
 from readiness.detect import detect
+
 from tests._util import make_repo, rmtree
 
 
@@ -19,7 +20,8 @@ class TestDetect(unittest.TestCase):
         self.assertIn("python", d.languages)
 
     def test_fastapi_service_without_dockerfile(self):
-        d = self._detect({"pyproject.toml": '[project]\nname = "svc"\ndependencies = ["fastapi", "uvicorn"]\n'})
+        d = self._detect({"pyproject.toml": '[project]\nname = "svc"\ndependencies = ["fastapi", '
+                                            '"uvicorn"]\n'})
         self.assertEqual(d.project_type, "service")
         self.assertEqual(d.apps[0].prod_facing, "unknown")
 
@@ -40,7 +42,8 @@ class TestDetect(unittest.TestCase):
         self.assertEqual(d.project_type, "cli")
 
     def test_frontend(self):
-        d = self._detect({"package.json": '{"name":"web","dependencies":{"react":"^18","react-dom":"^18"}}'})
+        d = self._detect({"package.json": '{"name":"web","dependencies":{"react":"^18","react-dom":'
+                                          '"^18"}}'})
         self.assertEqual(d.project_type, "frontend")
 
     def test_infra(self):
@@ -81,7 +84,8 @@ class TestDetectPinning(unittest.TestCase):
     def test_pin_overrides_unknown(self):
         d = self._detect({
             "README.md": "# hi",
-            ".agents/readiness/config.json": '{"schema_version":"1","detect":{"project_type":"service"}}',
+            ".agents/readiness/config.json": '{"schema_version":"1","detect":{"project_type":'
+                                             '"service"}}',
         })
         self.assertEqual(d.project_type, "service")
         self.assertGreaterEqual(d.confidence, 0.9)
@@ -107,7 +111,8 @@ class TestDetectPinning(unittest.TestCase):
     def test_loop_ready_config_serializes_opt_in(self):
         d = self._detect({
             "README.md": "# hi",
-            ".agents/readiness/config.json": json.dumps({"schema_version": "1", "loop_ready": True}),
+            ".agents/readiness/config.json"
+            : json.dumps({"schema_version": "1", "loop_ready": True}),
         })
         self.assertEqual(d.opt_in, {"loop_ready": True})
         self.assertIs(d.to_dict()["opt_in"]["loop_ready"], True)
@@ -297,6 +302,7 @@ class TestDetectInternals(unittest.TestCase):
         while ElementTree honours the BOM and expands the bomb anyway."""
         import tempfile
         from pathlib import Path
+
         from readiness import detect as det
         root = Path(tempfile.mkdtemp(prefix="ar-utf16-"))
         self.addCleanup(rmtree, root)
@@ -307,6 +313,7 @@ class TestDetectInternals(unittest.TestCase):
         """Rejecting the bomb must not reject legitimate non-UTF-8 poms."""
         import tempfile
         from pathlib import Path
+
         from readiness import detect as det
         root = Path(tempfile.mkdtemp(prefix="ar-utf16ok-"))
         self.addCleanup(rmtree, root)
@@ -319,7 +326,8 @@ class TestDetectInternals(unittest.TestCase):
     def test_maven_modules_rejects_oversize_pom(self):
         from readiness import detect as det
         padding = "<!-- " + ("x" * (det._POM_MAX_BYTES + 64)) + " -->"
-        root = make_repo({"pom.xml": f"<project>{padding}<modules><module>svc</module></modules></project>"})
+        root = make_repo({"pom.xml": f"<project>{padding}<modules><module>svc</module></modules></"
+                                     f"project>"})
         self.addCleanup(rmtree, root)
         (root / "svc").mkdir()
         self.assertEqual(det._maven_modules(root), [])
@@ -350,6 +358,7 @@ class TestDetectInternals(unittest.TestCase):
         """A module pointing outside the project must not become a scanned app."""
         import tempfile
         from pathlib import Path
+
         from readiness import detect as det
         # Own the parent directory: root.parent would be the shared system temp dir, so
         # creating "escaped" there could collide with a concurrent test or delete

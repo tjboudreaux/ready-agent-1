@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 import readiness  # noqa: F401 — ensures engine is importable
+
 from tests._util import rmtree
 
 REPO = Path(readiness.__file__).resolve().parents[2]
@@ -32,8 +33,11 @@ class TestVendor(unittest.TestCase):
         for s in vendor.SKILLS:
             vcli = tmp / "skills" / s / "scripts" / "readiness" / "cli.py"
             self.assertTrue(vcli.exists())
-            self.assertEqual(vcli.read_bytes(), (tmp / "engine" / "readiness" / "cli.py").read_bytes())
-            self.assertTrue((tmp / "skills" / s / "scripts" / "readiness" / "criteria" / "registry.json").exists())
+            self.assertEqual(
+                             vcli.read_bytes(),
+                             (tmp / "engine" / "readiness" / "cli.py").read_bytes())
+            self.assertTrue((tmp / "skills" / s / "scripts" / "readiness" / "criteria" / "registry."
+                "json").exists())
             self.assertTrue((tmp / "skills" / s / "templates" / "ruff.toml").exists())
             manifest = json.loads((tmp / "skills" / s / "manifest.json").read_text())
             self.assertIn("engine_version", manifest)

@@ -2,6 +2,7 @@
 import unittest
 
 from readiness.collectors.static import StaticCollector
+
 from tests._util import make_repo, rmtree
 
 
@@ -61,13 +62,15 @@ class TestStatic(unittest.TestCase):
         self.assertIn("gin-gonic/gin", deps)
         self.assertIn("github.com/gin-gonic/gin", deps)
         self.assertIn("solo", deps)
-        c = self._c({"Gemfile": "source 'https://rubygems.org'\ngem 'rails', '~> 7'\ngem \"sinatra\"\n"})
+        c = self._c({"Gemfile": "source 'https://rubygems.org'\ngem 'rails', '~> 7'\ngem "
+                                "\"sinatra\"\n"})
         deps = c.declared_deps()
         self.assertIn("rails", deps)
         self.assertIn("sinatra", deps)
 
     def test_has_dep_and_tool_config(self):
-        c = self._c({"pyproject.toml": '[project]\nname="x"\ndependencies=["pytest"]\n[tool.mypy]\nstrict=true\n'})
+        c = self._c({"pyproject.toml": '[project]\nname="x"\ndependencies=["pytest"]\n[tool.mypy]\n'
+                                       'strict=true\n'})
         self.assertEqual(c.has_dep("pytest"), "pytest")
         self.assertIsNone(c.has_dep("nonexistent"))
         self.assertTrue(c.has_tool_config("mypy"))

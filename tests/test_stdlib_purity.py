@@ -60,7 +60,8 @@ class TestStdlibPurity(unittest.TestCase):
 
     def test_detects_a_planted_third_party_import(self):
         # The check above only has value if it would actually fail; prove the detector works.
-        tree = ast.parse("import os\nimport requests\nfrom .x import y\nfrom yaml import safe_load\n")
+        tree = ast.parse("import os\nimport requests\nfrom .x import y\nfrom yaml import safe_"
+                         "load\n")
         roots = {root for root, _ in _imported_roots(tree)}
         self.assertEqual(roots, {"os", "requests", "yaml"})  # relative import excluded
         allowed = set(sys.stdlib_module_names) | LOCAL_ROOTS
