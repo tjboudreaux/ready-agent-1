@@ -9,6 +9,12 @@
 # they will never refresh is worse than a tag Dependabot can bump for them. Every other
 # audit stays live, so template injection, credential persistence and excessive
 # permissions in what users install are still caught.
+#
+# CAVEAT: ref-pin is looser than that intent. zizmor's policy vocabulary is only
+# any / ref-pin / hash-pin (verified against 1.29.0), and ref-pin also accepts a mutable
+# branch such as @main, or a short SHA. The "readable *version tag*" requirement is
+# therefore enforced by tests/test_shipped_templates.py, not here. Do not treat this file
+# alone as the shipped-template pin gate.
 rules:
   unpinned-uses:
     config:
