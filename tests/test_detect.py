@@ -324,6 +324,28 @@ class TestDetectInternals(unittest.TestCase):
         (root / "svc").mkdir()
         self.assertEqual(det._maven_modules(root), [])
 
+    def test_maven_modules_unreadable_pom(self):
+        """pom.xml exists but cannot be opened -- a directory of that name is the simplest
+        real way to hit the OSError path."""
+        from readiness import detect as det
+        root = make_repo({"other.txt": "x"})
+        self.addCleanup(rmtree, root)
+        (root / "pom.xml").mkdir()
+        self.assertEqual(det._maven_modules(root), [])
+
+    def test_maven_modules_skips_empty_and_missing_modules(self):
+        """Blank, self-closing and non-existent module entries are all skipped."""
+        from readiness import detect as det
+        root = make_repo({"pom.xml": "<project><modules>"
+                                     "<module>   </module>"      # blank after strip
+                                     "<module/>"                  # no text at all
+                                     "<module>nope</module>"      # not a directory
+                                     "<module>svc</module>"       # the only real one
+                                     "</modules></project>"})
+        self.addCleanup(rmtree, root)
+        (root / "svc").mkdir()
+        self.assertEqual(det._maven_modules(root), ["svc"])
+
     def test_maven_modules_rejects_path_escaping_root(self):
         """A module pointing outside the project must not become a scanned app."""
         import tempfile

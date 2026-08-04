@@ -260,11 +260,9 @@ def _maven_modules(root: Path) -> List[str]:
         if not target.is_dir():
             continue
         # A module of "../../.." would otherwise make every downstream collector read
-        # outside the scanned project and quote it back in the report.
-        try:
-            resolved = target.resolve()
-        except OSError:
-            continue
+        # outside the scanned project and quote it back in the report. is_dir() already
+        # succeeded above, so resolve() has an existing directory to work on.
+        resolved = target.resolve()
         if resolved != root_abs and root_abs not in resolved.parents:
             continue
         out.append(rel)
