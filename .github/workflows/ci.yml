@@ -64,10 +64,26 @@ jobs:
           python3 -m ruff check --select F,E9,B --no-cache engine scripts evals tests
       # Workflow/action SAST. This is the gate that would have caught the shell injection
       # in the release workflow and in ci/action.yml (the action we publish to other
-      # repositories) -- both reached main and survived human review. Scoped to our own
-      # workflows plus the composite action; templates/ci/ deliberately ships readable tag
-      # refs for consumers, so it is not held to the digest-pinning policy.
+      # repositories) -- both reached main and survived human review.
       - name: Zizmor (workflow + action SAST)
         run: |
           python3 -m pip install 'zizmor==1.29.0'
           zizmor --no-progress --persona=regular .github/workflows/ ci/action.yml
+      # The templates we ship into other repositories get scanned too -- one already had a
+      # real credential-persistence finding. zizmor only accepts workflows under a
+      # .github/workflows path, so stage a copy. The config relaxes pinning (templates ship
+      # readable tag refs on purpose) and nothing else.
+      - name: Zizmor (shipped workflow templates)
+        run: |
+          staged="$(mktemp -d)/.github/workflows"
+          mkdir -p "$staged"
+          cp templates/ci/*.yml "$staged/"
+          zizmor --no-progress --persona=regular --config .github/zizmor-templates.yml "$staged"
+      # Python security SAST. Signal is thin -- B404/B603/B607 flag the subprocess-based
+      # collector design at every call site, and B108 fires on an inert "/tmp/example"
+      # string in eval fixture data -- but it did find the real entity-expansion DoS in the
+      # pom parser, so gate on MEDIUM+ with those architectural/no-value rules off.
+      - name: Bandit (medium+ severity)
+        run: |
+          python3 -m pip install 'bandit==1.9.4'
+          python3 -m bandit -q -ll -s B404,B603,B607,B108 -r engine scripts evals
