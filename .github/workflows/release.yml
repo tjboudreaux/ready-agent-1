@@ -3,7 +3,11 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      # Deliberately NOT "v*": that also matches the floating major-version tags the
+      # published action uses (ready-agent-1/ci@v1). Re-pointing v1 is routine action
+      # maintenance, and under "v*" it would start a release run that then hard-fails the
+      # semver check below -- a red X on every action-version bump.
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       tag:
