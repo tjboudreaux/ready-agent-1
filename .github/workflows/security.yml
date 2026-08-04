@@ -1,0 +1,108 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Offset from CodeQL (Mon 03:24) so the two do not contend. Secret scanning benefits
+    # from a schedule specifically: detectors improve, and a credential that was
+    # unverifiable last week may verify today.
+    - cron: "41 4 * * 2"
+
+permissions:
+  contents: read
+
+jobs:
+  bandit:
+    name: Bandit (Python SAST)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      # Gate on MEDIUM+ with four rules off. B404/B603/B607 flag the subprocess-based
+      # collector design at every call site -- that architecture is deliberate and argv-list
+      # based, so gating on it would only teach people to add `# nosec`. B108 fires on an
+      # inert "/tmp/example" string in eval fixture data. What is left is real: this
+      # configuration is what found the entity-expansion DoS in the pom parser.
+      - name: Bandit
+        run: |
+          python3 -m pip install 'bandit==1.9.4'
+          python3 -m bandit -q -ll -s B404,B603,B607,B108 -r engine scripts evals
+
+  semgrep:
+    name: Semgrep (SAST)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      # Gated at ERROR. The tree currently has 0 ERROR and 7 WARNING findings, and all seven
+      # are `github-actions-mutable-action-tag` on the readable tag refs we ship in
+      # templates/ci/ plus the deliberately floating `ci@main` in readiness.yml. Those are
+      # decisions, not defects -- already governed by zizmor and by
+      # tests/test_shipped_templates.py -- so gating at WARNING would force suppression
+      # comments into files we hand to users.
+      #
+      # Verified locally that this exact invocation exits 0 on a clean tree and 1 on planted
+      # `subprocess(shell=True)` / `eval()`, so the gate is live rather than inert.
+      - name: Semgrep
+        run: |
+          python3 -m pip install 'semgrep==1.172.0'
+          semgrep scan \
+            --config=p/python \
+            --config=p/github-actions \
+            --config=p/secrets \
+            --severity=ERROR \
+            --error --metrics=off --quiet .
+
+  secrets:
+    name: TruffleHog (verified secrets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Needed so the base commit exists locally: on pull_request the action scans the
+          # range with `--since-commit <base.sha> --branch <head.sha>`, which requires that
+          # base to be present.
+          fetch-depth: 0
+          persist-credentials: false
+      # --only-verified: fail only on credentials TruffleHog confirmed live against the
+      # provider. That is a zero-false-positive gate -- a hit is a genuine incident.
+      #
+      # Scope, precisely (read from the pinned action's action.yml, not assumed):
+      #   pull_request -> base.sha..head.sha, i.e. only what the PR introduces
+      #   push         -> event.before..event.after, incremental
+      #   schedule     -> BASE and HEAD both empty, i.e. the FULL history sweep
+      # So the weekly cron is not redundant with the PR runs -- it is the only run that
+      # reaches back through the whole log for a secret committed and later removed.
+      #
+      # The other trade-off, stated plainly: unverified detections are NOT gated, so a
+      # leaked-then-revoked or non-network-verifiable credential will not fail this job.
+      # The repo has six unverified hits, all synthetic fixtures in tests/ (for example
+      # https://user:secrettoken@github.com exercising URL redaction). Gating on those
+      # would mean maintaining a suppression list, which is how secret scanning becomes
+      # noise everyone ignores. GitHub secret scanning with push protection is enabled on
+      # this repo and covers the known-pattern push path.
+      - name: TruffleHog
+        # The action supplies --fail and --no-update itself; repeating --fail is a hard
+        # error ("flag 'fail' cannot be repeated"), so extra_args carries only the gate.
+        # `version` pins the scanner container -- without it the action runs
+        # ghcr.io/trufflesecurity/trufflehog:latest, so digest-pinning the action alone
+        # would leave the tool that does the work unpinned. 3.96.0 is the version whose
+        # exact invocation was verified locally.
+        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11 # v3.96.0
+        with:
+          path: ./
+          version: "3.96.0"
+          extra_args: --only-verified
