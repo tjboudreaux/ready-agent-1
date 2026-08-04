@@ -11,23 +11,26 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
       - name: Install dev tools (coverage is dev-only; runtime is pure stdlib)
         run: python3 -m pip install coverage
       - name: Tests with coverage (gate >90% total + 100% on touched files)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           python3 -m coverage run --branch --source=engine/readiness,evals,scripts -m unittest discover -s tests -t .
           python3 -m coverage json -o .coverage.json
           python3 -m coverage report --fail-under=90
-          base="${{ github.event.pull_request.base.sha }}"
-          if [ -n "$base" ]; then
-            changed=$(git diff --name-only "$base" HEAD -- '*.py' ':!tests/**' ':!skills/**' | tr '\n' ' ')
+          if [ -n "$BASE_SHA" ]; then
+            changed=$(git diff --name-only "$BASE_SHA" HEAD -- '*.py' ':!tests/**' ':!skills/**' | tr '\n' ' ')
           else
             changed=$(git diff --name-only HEAD~1 HEAD -- '*.py' ':!tests/**' ':!skills/**' 2>/dev/null | tr '\n' ' ')
           fi
@@ -39,3 +42,48 @@ jobs:
         run: python3 -m evals.fixtures
       - name: Parity vs Factory reference shapes (offline)
         run: python3 -m evals.parity
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      # Scoped to the correctness rules the tree is actually clean on: F (undefined names,
+      # unused imports), E9 (syntax/runtime errors), B (bugbear). The stylistic backlog
+      # (~500 findings, dominated by E501) is tracked separately -- a permanently red job
+      # gates nothing, so it is deliberately not wired in here yet.
+      - name: Ruff (correctness rules)
+        run: |
+          # Pinned to the same version as .pre-commit-config.yaml so hooks and CI agree.
+          python3 -m pip install 'ruff==0.16.1'
+          python3 -m ruff check --select F,E9,B --no-cache engine scripts evals tests
+      # Workflow/action SAST. This is the gate that would have caught the shell injection
+      # in the release workflow and in ci/action.yml (the action we publish to other
+      # repositories) -- both reached main and survived human review.
+      - name: Zizmor (workflow + action SAST)
+        run: |
+          python3 -m pip install 'zizmor==1.29.0'
+          zizmor --no-progress --persona=regular .github/workflows/ ci/action.yml
+      # The templates we ship into other repositories get scanned too -- one already had a
+      # real credential-persistence finding. zizmor only accepts workflows under a
+      # .github/workflows path, so stage a copy. The config relaxes pinning (templates ship
+      # readable tag refs on purpose) and nothing else.
+      - name: Zizmor (shipped workflow templates)
+        run: |
+          staged="$(mktemp -d)/.github/workflows"
+          mkdir -p "$staged"
+          cp templates/ci/*.yml "$staged/"
+          zizmor --no-progress --persona=regular --config .github/zizmor-templates.yml "$staged"
+      # Python security SAST. Signal is thin -- B404/B603/B607 flag the subprocess-based
+      # collector design at every call site, and B108 fires on an inert "/tmp/example"
+      # string in eval fixture data -- but it did find the real entity-expansion DoS in the
+      # pom parser, so gate on MEDIUM+ with those architectural/no-value rules off.
+      - name: Bandit (medium+ severity)
+        run: |
+          python3 -m pip install 'bandit==1.9.4'
+          python3 -m bandit -q -ll -s B404,B603,B607,B108 -r engine scripts evals

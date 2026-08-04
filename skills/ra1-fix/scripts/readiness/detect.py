@@ -199,19 +199,73 @@ def _go_cmd_apps(root: Path) -> List[str]:
             if p.is_dir() and any(p.glob("*.go"))]
 
 
+# pom.xml is attacker-supplied (it comes from the scanned repository) and real module
+# lists are tiny, so cap the read well below anything legitimate.
+_POM_MAX_BYTES = 1 << 20
+
+
+def _pom_tree(raw: bytes):
+    """Parse an untrusted pom, refusing any DTD. Returns None if unusable.
+
+    stdlib ElementTree expands internal entities, so a document with a DTD can trigger
+    entity-expansion DoS ("billion laughs" / quadratic blowup). defusedxml is not an option
+    -- engine/ is pure stdlib by contract -- so reject the doctype at the parser level.
+
+    Scanning the bytes for ``<!DOCTYPE`` instead would be bypassable: a UTF-16 document
+    contains no such ASCII substring, yet ElementTree honours the BOM/encoding declaration
+    and would expand it anyway. Hooking the parser is encoding-agnostic.
+    """
+    import xml.etree.ElementTree as ET
+
+    class _NoDoctype(ET.TreeBuilder):
+        def doctype(self, name, pubid, system):
+            raise ET.ParseError("doctype declarations are not accepted")
+
+    try:
+        # B314 asks for exactly the mitigation _NoDoctype provides: every DTD is rejected
+        # at the parser level, which is encoding-agnostic (see docstring).
+        parser = ET.XMLParser(target=_NoDoctype())  # nosec B314
+        parser.feed(raw)
+        return parser.close()
+    except (ET.ParseError, ValueError, UnicodeDecodeError):
+        return None
+
+
 def _maven_modules(root: Path) -> List[str]:
     pom = root / "pom.xml"
     if not pom.exists():
         return []
-    import xml.etree.ElementTree as ET
     try:
-        tree = ET.parse(pom)
-    except (ET.ParseError, OSError):
+        with pom.open("rb") as fh:
+            # Bounded read: read_bytes() would allocate the entire attacker-sized file
+            # before any cap could reject it. Reading one byte past the cap is enough to
+            # detect oversize without ever holding it in memory.
+            raw = fh.read(_POM_MAX_BYTES + 1)
+    except OSError:
+        return []
+    if len(raw) > _POM_MAX_BYTES:
+        return []
+    tree = _pom_tree(raw)
+    if tree is None:
         return []
     out = []
+    root_abs = root.resolve()
     for el in tree.iter():
-        if el.tag.split("}")[-1] == "module" and el.text and (root / el.text.strip()).is_dir():
-            out.append(el.text.strip())
+        if el.tag.split("}")[-1] != "module" or not el.text:
+            continue
+        rel = el.text.strip()
+        if not rel:
+            continue
+        target = (root / rel)
+        if not target.is_dir():
+            continue
+        # A module of "../../.." would otherwise make every downstream collector read
+        # outside the scanned project and quote it back in the report. is_dir() already
+        # succeeded above, so resolve() has an existing directory to work on.
+        resolved = target.resolve()
+        if resolved != root_abs and root_abs not in resolved.parents:
+            continue
+        out.append(rel)
     return out
 
 

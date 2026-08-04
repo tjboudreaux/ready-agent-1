@@ -9,13 +9,18 @@ permissions:
   contents: read
   security-events: write   # upload SARIF to code scanning
   actions: read            # upload-sarif + T2 workflow checks need workflow-run reads
-  pull-requests: write
 
 jobs:
   readiness:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          # The readiness scan only reads the tree; it never pushes. Leaving the token in
+          # .git/config would expose it to every later step and to anything that archives
+          # the workspace.
+          persist-credentials: false
       - uses: tjboudreaux/ready-agent-1/ci@v1
         with:
           min-level: "3"

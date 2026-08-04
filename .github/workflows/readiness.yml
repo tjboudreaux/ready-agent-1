@@ -9,15 +9,20 @@ permissions:
   contents: read
   security-events: write   # upload SARIF to code scanning
   actions: read            # upload-sarif + T2 workflow checks need workflow-run reads
-  pull-requests: write
 
 jobs:
   readiness:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      # Dogfood the action from main; the user-facing template pins @v1.
-      - uses: tjboudreaux/ready-agent-1/ci@main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Dogfood the action from main; the user-facing template pins @v1. Deliberately not
+      # digest-pinned: the point is to grade every PR with the action as it currently
+      # stands on main, and a fork PR cannot alter the action that judges it. Same-repo
+      # ref, so this is not third-party supply chain.
+      - uses: tjboudreaux/ready-agent-1/ci@main # zizmor: ignore[unpinned-uses]
         with:
           min-level: "3"
           formats: "markdown,junit,sarif,github"

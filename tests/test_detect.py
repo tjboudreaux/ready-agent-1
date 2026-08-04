@@ -274,6 +274,100 @@ class TestDetectInternals(unittest.TestCase):
         self.addCleanup(rmtree, root)
         self.assertEqual(det._maven_modules(root), [])
 
+    _BOMB = (
+        '<?xml version="1.0"{enc}?>\n'
+        '<!DOCTYPE project [\n'
+        '  <!ENTITY a "aaaaaaaaaa">\n'
+        '  <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">\n'
+        '  <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">\n'
+        '  <!ENTITY d "&c;&c;&c;&c;&c;&c;&c;&c;&c;&c;">\n'
+        ']>\n'
+        '<project><modules><module>&d;</module></modules></project>\n'
+    )
+
+    def test_maven_modules_rejects_entity_expansion(self):
+        """A billion-laughs pom must be refused, not expanded."""
+        from readiness import detect as det
+        root = make_repo({"pom.xml": self._BOMB.format(enc="")})
+        self.addCleanup(rmtree, root)
+        self.assertEqual(det._maven_modules(root), [])
+
+    def test_maven_modules_rejects_utf16_entity_expansion(self):
+        """UTF-16 encodes no ASCII '<!DOCTYPE', so a byte-substring guard would miss this
+        while ElementTree honours the BOM and expands the bomb anyway."""
+        import tempfile
+        from pathlib import Path
+        from readiness import detect as det
+        root = Path(tempfile.mkdtemp(prefix="ar-utf16-"))
+        self.addCleanup(rmtree, root)
+        (root / "pom.xml").write_bytes(self._BOMB.format(enc=' encoding="UTF-16"').encode("utf-16"))
+        self.assertEqual(det._maven_modules(root), [])
+
+    def test_maven_modules_accepts_utf16_pom(self):
+        """Rejecting the bomb must not reject legitimate non-UTF-8 poms."""
+        import tempfile
+        from pathlib import Path
+        from readiness import detect as det
+        root = Path(tempfile.mkdtemp(prefix="ar-utf16ok-"))
+        self.addCleanup(rmtree, root)
+        (root / "svc").mkdir()
+        doc = ('<?xml version="1.0" encoding="UTF-16"?>'
+               '<project><modules><module>svc</module></modules></project>')
+        (root / "pom.xml").write_bytes(doc.encode("utf-16"))
+        self.assertEqual(det._maven_modules(root), ["svc"])
+
+    def test_maven_modules_rejects_oversize_pom(self):
+        from readiness import detect as det
+        padding = "<!-- " + ("x" * (det._POM_MAX_BYTES + 64)) + " -->"
+        root = make_repo({"pom.xml": f"<project>{padding}<modules><module>svc</module></modules></project>"})
+        self.addCleanup(rmtree, root)
+        (root / "svc").mkdir()
+        self.assertEqual(det._maven_modules(root), [])
+
+    def test_maven_modules_unreadable_pom(self):
+        """pom.xml exists but cannot be opened -- a directory of that name is the simplest
+        real way to hit the OSError path."""
+        from readiness import detect as det
+        root = make_repo({"other.txt": "x"})
+        self.addCleanup(rmtree, root)
+        (root / "pom.xml").mkdir()
+        self.assertEqual(det._maven_modules(root), [])
+
+    def test_maven_modules_skips_empty_and_missing_modules(self):
+        """Blank, self-closing and non-existent module entries are all skipped."""
+        from readiness import detect as det
+        root = make_repo({"pom.xml": "<project><modules>"
+                                     "<module>   </module>"      # blank after strip
+                                     "<module/>"                  # no text at all
+                                     "<module>nope</module>"      # not a directory
+                                     "<module>svc</module>"       # the only real one
+                                     "</modules></project>"})
+        self.addCleanup(rmtree, root)
+        (root / "svc").mkdir()
+        self.assertEqual(det._maven_modules(root), ["svc"])
+
+    def test_maven_modules_rejects_path_escaping_root(self):
+        """A module pointing outside the project must not become a scanned app."""
+        import tempfile
+        from pathlib import Path
+        from readiness import detect as det
+        # Own the parent directory: root.parent would be the shared system temp dir, so
+        # creating "escaped" there could collide with a concurrent test or delete
+        # unrelated data on cleanup.
+        parent = Path(tempfile.mkdtemp(prefix="ar-escape-"))
+        self.addCleanup(rmtree, parent)
+        root = parent / "repo"
+        (root / "svc").mkdir(parents=True)
+        (parent / "escaped").mkdir()
+        (root / "pom.xml").write_text(
+            "<project><modules>"
+            "<module>../escaped</module>"
+            "<module>svc</module>"
+            "</modules></project>",
+            encoding="utf-8",
+        )
+        self.assertEqual(det._maven_modules(root), ["svc"])
+
     def test_detect_test_cmd_variants(self):
         from readiness import detect as det
         from readiness.collectors.static import StaticCollector

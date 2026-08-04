@@ -1,0 +1,22 @@
+# zizmor config for the workflow templates under templates/ci/, which we ship into other
+# people's repositories.
+#
+# Deliberately NOT named .github/zizmor.yml: that filename is auto-discovered and would
+# relax the strict gate on our own workflows too. CI passes this with --config.
+#
+# The only relaxation is the pinning policy. Templates ship readable tag refs
+# (actions/checkout@v5, ready-agent-1/ci@v1) on purpose -- handing a consumer a digest
+# they will never refresh is worse than a tag Dependabot can bump for them. Every other
+# audit stays live, so template injection, credential persistence and excessive
+# permissions in what users install are still caught.
+#
+# CAVEAT: ref-pin is looser than that intent. zizmor's policy vocabulary is only
+# any / ref-pin / hash-pin (verified against 1.29.0), and ref-pin also accepts a mutable
+# branch such as @main, or a short SHA. The "readable *version tag*" requirement is
+# therefore enforced by tests/test_shipped_templates.py, not here. Do not treat this file
+# alone as the shipped-template pin gate.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "*": ref-pin

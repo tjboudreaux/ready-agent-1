@@ -89,7 +89,7 @@ class StaticCollector:
         if "deps" in self._cache:
             return self._cache["deps"]
         deps: set = set()
-        for fname, (kind, parsed) in self.manifests().items():
+        for fname, (_kind, parsed) in self.manifests().items():
             if fname == "package.json" and isinstance(parsed, dict):
                 for key in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"):
                     section = parsed.get(key)

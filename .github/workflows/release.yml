@@ -3,7 +3,11 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      # Deliberately NOT "v*": that also matches the floating major-version tags the
+      # published action uses (ready-agent-1/ci@v1). Re-pointing v1 is routine action
+      # maintenance, and under "v*" it would start a release run that then hard-fails the
+      # semver check below -- a red X on every action-version bump.
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       tag:
@@ -12,51 +16,90 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Tag pushes bypass branch protection on main, so the publish step is gated
+    # behind an environment with a required reviewer instead.
+    environment: release
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # OIDC for build provenance
+      attestations: write # record the provenance attestation
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
-      - name: Resolve release tag
+      - name: Resolve and validate release tag
         id: tag
+        # ${{ }} expressions are NEVER interpolated straight into run: scripts -- a crafted
+        # workflow_dispatch input would be substituted into the shell before any check could
+        # reject it. Cross the boundary via env, then validate with a strict regex.
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.tag }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
           else
-            tag="${GITHUB_REF_NAME}"
+            tag="$GITHUB_REF_NAME"
           fi
-          case "$tag" in
-            v*) ;;
-            *) echo "tag must start with v" >&2; exit 1 ;;
-          esac
-          git rev-parse "$tag" >/dev/null
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.]+)?$'; then
+            echo "refusing tag '$tag': must match vMAJOR.MINOR.PATCH[-prerelease]" >&2
+            exit 1
+          fi
+          git rev-parse --verify "refs/tags/$tag" >/dev/null
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Verify tag is reachable from main and check it out
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          # Without this, any v* tag on an arbitrary commit -- one that never passed the
+          # required `test` / `readiness` checks on main -- would publish a release.
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "refs/tags/$TAG^{commit}" origin/main; then
+            echo "refusing to release $TAG: commit is not an ancestor of origin/main" >&2
+            exit 1
+          fi
+          # On workflow_dispatch, checkout landed on the dispatch ref (main), not the tag.
+          # Detach onto the tag so verification below exercises the exact tree that
+          # `git archive` ships, rather than whatever main happens to contain.
+          git checkout --quiet --detach "refs/tags/$TAG"
+          git --no-pager log -1 --format='releasing %H (%d)'
       - name: Verify release readiness
         run: |
           python3 -m unittest discover -s tests -t .
           python3 scripts/vendor.py --check
           ./bin/ra1 report --project . --no-github --min-level 3 >/tmp/ra1-report.json
       - name: Build source archive
+        id: build
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           mkdir -p dist
-          tag="${{ steps.tag.outputs.tag }}"
-          git archive --format=tar.gz --prefix="ready-agent-1-${tag#v}/" "$tag" \
-            -o "dist/ready-agent-1-${tag#v}.tar.gz"
-          shasum -a 256 "dist/ready-agent-1-${tag#v}.tar.gz" > "dist/ready-agent-1-${tag#v}.tar.gz.sha256"
+          archive="dist/ready-agent-1-${TAG#v}.tar.gz"
+          git archive --format=tar.gz --prefix="ready-agent-1-${TAG#v}/" "refs/tags/$TAG" -o "$archive"
+          shasum -a 256 "$archive" > "$archive.sha256"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+      - name: Attest build provenance
+        # The .sha256 sidecar only detects corruption; it proves nothing about origin
+        # because anyone who can replace the archive can replace the hash. This does.
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: ${{ steps.build.outputs.archive }}
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          tag="${{ steps.tag.outputs.tag }}"
-          gh release create "$tag" dist/* \
+          gh release create "$TAG" dist/* \
             --verify-tag \
-            --title "Ready Agent 1 ${tag}" \
-            --notes "Automated release for ${tag}."
+            --title "Ready Agent 1 $TAG" \
+            --notes "Automated release for $TAG."
