@@ -62,3 +62,12 @@ jobs:
           # Pinned to the same version as .pre-commit-config.yaml so hooks and CI agree.
           python3 -m pip install 'ruff==0.16.1'
           python3 -m ruff check --select F,E9,B --no-cache engine scripts evals tests
+      # Workflow/action SAST. This is the gate that would have caught the shell injection
+      # in the release workflow and in ci/action.yml (the action we publish to other
+      # repositories) -- both reached main and survived human review. Scoped to our own
+      # workflows plus the composite action; templates/ci/ deliberately ships readable tag
+      # refs for consumers, so it is not held to the digest-pinning policy.
+      - name: Zizmor (workflow + action SAST)
+        run: |
+          python3 -m pip install 'zizmor==1.29.0'
+          zizmor --no-progress --persona=regular .github/workflows/ ci/action.yml
