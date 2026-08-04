@@ -1,6 +1,7 @@
 import unittest
 
 from readiness import parsers
+
 from tests._util import make_repo, rmtree
 
 
@@ -33,14 +34,40 @@ class TestParsers(unittest.TestCase):
         import json
         self.assertEqual(json.loads(parsers.strip_jsonc(text)), {"url": "http://example.com//x"})
 
+    def test_strip_jsonc_respects_backslash_escapes(self):
+        """An escaped quote must not end the string, so `//` after it stays literal.
+
+        Exercises the escape state machine in both passes -- comment stripping and trailing
+        comma removal -- which a document without backslashes never reaches.
+        """
+        import json
+        # The JSON value is:  say "hi" // not a comment
+        text = '{\n  "a": "say \\"hi\\" // not a comment", // real comment\n  "b": 2,\n}'
+        stripped = parsers.strip_jsonc(text)
+        self.assertEqual(json.loads(stripped),
+                         {"a": 'say "hi" // not a comment', "b": 2})
+
+    def test_strip_jsonc_trailing_backslash_in_string(self):
+        """A string ending in an escaped backslash keeps it and closes correctly."""
+        import json
+        text = '{"win": "C:\\\\dir\\\\", "n": 1,}'
+        self.assertEqual(json.loads(parsers.strip_jsonc(text)), {"win": "C:\\dir\\", "n": 1})
+
+    def test_load_ini_malformed_returns_none(self):
+        # A continuation line with no preceding option is a configparser.Error.
+        (self.root / "bad.cfg").write_text("  orphan = 1\n[section]\nk = v\n")
+        self.assertIsNone(parsers.load_ini(self.root / "bad.cfg"))
+
     def test_load_jsonc(self):
-        (self.root / "tsconfig.json").write_text('{\n  "compilerOptions": { "strict": true, } // c\n}')
+        (self.root / "tsconfig.json").write_text('{\n  "compilerOptions": { "strict": true, } // '
+                                                 'c\n}')
         data = parsers.load_jsonc(self.root / "tsconfig.json")
         self.assertEqual(data, {"compilerOptions": {"strict": True}})
         self.assertIsNone(parsers.load_jsonc(self.root / "missing.json"))
 
     def test_load_toml(self):
-        (self.root / "pyproject.toml").write_text('[project]\nname = "x"\ndependencies = ["requests"]\n')
+        (self.root / "pyproject.toml").write_text('[project]\nname = "x"\ndependencies = '
+                                                  '["requests"]\n')
         data = parsers.load_toml(self.root / "pyproject.toml")
         self.assertEqual(data["project"]["name"], "x")
         (self.root / "bad.toml").write_text("= broken")
