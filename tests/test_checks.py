@@ -1,7 +1,19 @@
 import unittest
+from datetime import UTC
 from unittest import mock
 
-from readiness.checks import build, devenv, docs, loop, observability, product, security, style, taskdisc, testing
+from readiness.checks import (
+    build,
+    devenv,
+    docs,
+    loop,
+    observability,
+    product,
+    security,
+    style,
+    taskdisc,
+    testing,
+)
 from readiness.checks._helpers import acdc_config, check_needles
 from readiness.collectors.git import GitCollector
 from readiness.collectors.github import GithubCollector
@@ -9,7 +21,8 @@ from readiness.collectors.static import StaticCollector
 from readiness.context import Context
 from readiness.detect import detect
 from readiness.model import Status
-from tests._util import make_repo, rmtree, fake_runner
+
+from tests._util import fake_runner, make_repo, rmtree
 
 
 def _gh_available(extra=None):
@@ -39,37 +52,56 @@ class CheckCase(unittest.TestCase):
 
 class TestStyleChecks(CheckCase):
     def test_linter_paths(self):
-        self.assertEqual(self.s(style.linter_config(self.ctx({".eslintrc.json": "{}"}))), Status.PASS)
-        self.assertEqual(self.s(style.linter_config(self.ctx({"pyproject.toml": '[tool.ruff]\nx=1\n'}))), Status.PASS)
-        self.assertEqual(self.s(style.linter_config(self.ctx({"package.json": '{"devDependencies":{"eslint":"^9"}}'}))), Status.PASS)
-        self.assertEqual(self.s(style.linter_config(self.ctx({"package.json": '{"name":"x"}'}))), Status.FAIL)
+        self.assertEqual(self.s(style.linter_config(self.ctx(
+            {".eslintrc.json": "{}"}))), Status.PASS)
+        self.assertEqual(self.s(style.linter_config(self.ctx(
+            {"pyproject.toml": '[tool.ruff]\nx=1\n'}))), Status.PASS)
+        self.assertEqual(self.s(style.linter_config(self.ctx(
+            {"package.json": '{"devDependencies":{"eslint":"^9"}}'}))), Status.PASS)
+        self.assertEqual(self.s(style.linter_config(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
 
     def test_formatter_paths(self):
         self.assertEqual(self.s(style.formatter(self.ctx({".prettierrc": "{}"}))), Status.PASS)
-        self.assertEqual(self.s(style.formatter(self.ctx({"pyproject.toml": "[tool.black]\nx=1\n"}))), Status.PASS)
-        self.assertEqual(self.s(style.formatter(self.ctx({"package.json": '{"devDependencies":{"prettier":"^3"}}'}))), Status.PASS)
+        self.assertEqual(self.s(style.formatter(self.ctx(
+            {"pyproject.toml": "[tool.black]\nx=1\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.formatter(self.ctx(
+            {"package.json": '{"devDependencies":{"prettier":"^3"}}'}))), Status.PASS)
         self.assertEqual(self.s(style.formatter(self.ctx({"go.mod": "module x\n"}))), Status.PASS)
-        self.assertEqual(self.s(style.formatter(self.ctx({"package.json": '{"name":"x"}'}))), Status.FAIL)
+        self.assertEqual(self.s(style.formatter(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
 
     def test_type_check_paths(self):
         self.assertEqual(self.s(style.type_check(self.ctx({"go.mod": "module x\n"}))), Status.PASS)
         self.assertEqual(self.s(style.type_check(self.ctx({"tsconfig.json": "{}"}))), Status.PASS)
-        self.assertEqual(self.s(style.type_check(self.ctx({"package.json": '{"devDependencies":{"typescript":"^5"}}'}))), Status.PASS)
-        self.assertEqual(self.s(style.type_check(self.ctx({"pyproject.toml": "[tool.mypy]\nx=1\n"}))), Status.PASS)
-        self.assertEqual(self.s(style.type_check(self.ctx({"package.json": '{"name":"x"}'}))), Status.FAIL)
+        self.assertEqual(self.s(style.type_check(self.ctx(
+            {"package.json": '{"devDependencies":{"typescript":"^5"}}'}))), Status.PASS)
+        self.assertEqual(self.s(style.type_check(self.ctx(
+            {"pyproject.toml": "[tool.mypy]\nx=1\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.type_check(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
 
     def test_strict_typing_paths(self):
-        self.assertEqual(self.s(style.strict_typing(self.ctx({"go.mod": "module x\n"}))), Status.PASS)
-        self.assertEqual(self.s(style.strict_typing(self.ctx({"tsconfig.json": '{"compilerOptions":{"strict":true}}'}))), Status.PASS)
-        self.assertEqual(self.s(style.strict_typing(self.ctx({"tsconfig.json": '{"compilerOptions":{}}'}))), Status.FAIL)
-        self.assertEqual(self.s(style.strict_typing(self.ctx({"pyproject.toml": "[tool.mypy]\nstrict=true\n"}))), Status.PASS)
-        self.assertEqual(self.s(style.strict_typing(self.ctx({"pyproject.toml": "[tool.mypy]\nx=1\n"}))), Status.FAIL)
-        self.assertEqual(self.s(style.strict_typing(self.ctx({"package.json": '{"name":"x"}'}))), Status.FAIL)
+        self.assertEqual(self.s(style.strict_typing(self.ctx(
+            {"go.mod": "module x\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.strict_typing(self.ctx(
+            {"tsconfig.json": '{"compilerOptions":{"strict":true}}'}))), Status.PASS)
+        self.assertEqual(self.s(style.strict_typing(self.ctx(
+            {"tsconfig.json": '{"compilerOptions":{}}'}))), Status.FAIL)
+        self.assertEqual(self.s(style.strict_typing(self.ctx(
+            {"pyproject.toml": "[tool.mypy]\nstrict=true\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.strict_typing(self.ctx(
+            {"pyproject.toml": "[tool.mypy]\nx=1\n"}))), Status.FAIL)
+        self.assertEqual(self.s(style.strict_typing(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
 
     def test_precommit_paths(self):
-        self.assertEqual(self.s(style.precommit_hooks(self.ctx({".pre-commit-config.yaml": "repos: []\n"}))), Status.PASS)
-        self.assertEqual(self.s(style.precommit_hooks(self.ctx({"package.json": '{"lint-staged":{}}'}))), Status.PASS)
-        self.assertEqual(self.s(style.precommit_hooks(self.ctx({"package.json": '{"name":"x"}'}))), Status.FAIL)
+        self.assertEqual(self.s(style.precommit_hooks(self.ctx(
+            {".pre-commit-config.yaml": "repos: []\n"}))), Status.PASS)
+        self.assertEqual(self.s(style.precommit_hooks(self.ctx(
+            {"package.json": '{"lint-staged":{}}'}))), Status.PASS)
+        self.assertEqual(self.s(style.precommit_hooks(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
 
     def test_atool_root_fallback_in_monorepo(self):
         files = {
@@ -79,7 +111,8 @@ class TestStyleChecks(CheckCase):
             "packages/b/package.json": '{"name":"b"}',
         }
         ctx = self.ctx(files, app_path="packages/a")
-        self.assertEqual(self.s(style.linter_config(ctx)), Status.PASS)  # via root [tool.ruff] fallback
+        # via root [tool.ruff] fallback
+        self.assertEqual(self.s(style.linter_config(ctx)), Status.PASS)
 
     def test_strict_typing_uses_root_mypy_config_in_monorepo(self):
         files = {
@@ -109,13 +142,15 @@ class TestBuildChecks(CheckCase):
         self.assertEqual(self.s(build.agentic_development(self.ctx({}, git=git_repo))), Status.FAIL)
 
     def test_ci_present_via_gh(self):
-        ctx = self.ctx({}, gh=_gh_available({("api", "repos/o/r/actions/workflows"): '{"workflows":[{"name":"ci"}]}'}))
+        ctx = self.ctx({}, gh=_gh_available(
+            {("api", "repos/o/r/actions/workflows"): '{"workflows":[{"name":"ci"}]}'}))
         self.assertEqual(self.s(build.ci_present(ctx)), Status.PASS)
         self.assertEqual(self.s(build.ci_present(self.ctx({}))), Status.FAIL)
 
     def test_ci_runs_tests_variants(self):
         self.assertEqual(self.s(build.ci_runs_tests(self.ctx({}))), Status.SKIPPED)
-        no_wf = self.ctx({}, gh=_gh_available({("api", "repos/o/r/actions/workflows"): '{"workflows":[]}'}))
+        no_wf = self.ctx({}, gh=_gh_available(
+            {("api", "repos/o/r/actions/workflows"): '{"workflows":[]}'}))
         self.assertEqual(self.s(build.ci_runs_tests(no_wf)), Status.FAIL)
         wf_no_tests = self.ctx({}, gh=_gh_available({
             ("api", "repos/o/r/actions/workflows"): '{"workflows":[{"name":"ci"}]}',
@@ -129,7 +164,8 @@ class TestBuildChecks(CheckCase):
         self.assertEqual(self.s(build.ci_runs_tests(wf_tests_no_runs)), Status.FAIL)
 
     def test_release_automation(self):
-        self.assertEqual(self.s(build.release_automation(self.ctx({"package.json": '{"devDependencies":{"semantic-release":"^x"}}'}))), Status.PASS)
+        self.assertEqual(self.s(build.release_automation(self.ctx(
+            {"package.json": '{"devDependencies":{"semantic-release":"^x"}}'}))), Status.PASS)
         self.assertEqual(self.s(build.release_automation(self.ctx({}))), Status.FAIL)
 
 
@@ -137,26 +173,32 @@ class TestDocsChecks(CheckCase):
     def test_readme_variants(self):
         self.assertEqual(self.s(docs.readme(self.ctx({}))), Status.FAIL)
         self.assertEqual(self.s(docs.readme(self.ctx({"README.md": "# tiny"}))), Status.FAIL)
-        self.assertEqual(self.s(docs.readme(self.ctx({"README.md": "plain text " * 40}))), Status.FAIL)
+        self.assertEqual(self.s(docs.readme(self.ctx(
+            {"README.md": "plain text " * 40}))), Status.FAIL)
 
     def test_agents_md_validation_variants(self):
-        self.assertEqual(self.s(docs.agents_md_validation(self.ctx({"AGENTS.md": "# only one heading\n\ntext"}))), Status.FAIL)
+        self.assertEqual(self.s(docs.agents_md_validation(self.ctx(
+            {"AGENTS.md": "# only one heading\n\ntext"}))), Status.FAIL)
         long_doc = "# A\n## B\n" + ("\n" * 420)
-        self.assertEqual(self.s(docs.agents_md_validation(self.ctx({"AGENTS.md": long_doc}))), Status.FAIL)
+        self.assertEqual(self.s(docs.agents_md_validation(self.ctx(
+            {"AGENTS.md": long_doc}))), Status.FAIL)
 
     def test_doc_freshness_variants(self):
-        self.assertEqual(self.s(docs.doc_freshness(self.ctx({"README.md": "# x"}))), Status.UNKNOWN)  # no git
+        # no git
+        self.assertEqual(self.s(docs.doc_freshness(self.ctx({"README.md": "# x"}))), Status.UNKNOWN)
         no_docs_git = {("log", "-1", "--format=%cI"): "2026-06-01T00:00:00+00:00\n"}
         self.assertEqual(self.s(docs.doc_freshness(self.ctx({}, git=no_docs_git))), Status.UNKNOWN)
         stale_git = {
             ("log", "-1", "--format=%cI"): "2026-06-01T00:00:00+00:00\n",
             ("log", "-1", "--format=%cI", "--", "README.md"): "2024-01-01T00:00:00+00:00\n",
         }
-        self.assertEqual(self.s(docs.doc_freshness(self.ctx({"README.md": "# x"}, git=stale_git))), Status.FAIL)
+        self.assertEqual(self.s(docs.doc_freshness(self.ctx(
+            {"README.md": "# x"}, git=stale_git))), Status.FAIL)
 
     def test_doc_freshness_edge_branches(self):
         # agents_md_validation: AGENTS.md absent/unreadable
-        self.assertEqual(self.s(docs.agents_md_validation(self.ctx({"README.md": "# x"}))), Status.FAIL)
+        self.assertEqual(self.s(docs.agents_md_validation(self.ctx(
+            {"README.md": "# x"}))), Status.FAIL)
         # doc exists but no per-file commit date -> skipped in loop -> nothing tracked
         git_no_file_date = {("log", "-1", "--format=%cI"): "2026-06-01T00:00:00+00:00\n"}
         self.assertEqual(self.s(docs.doc_freshness(
@@ -170,8 +212,10 @@ class TestDocsChecks(CheckCase):
             self.ctx({"README.md": "# x"}, git=git_bad_date))), Status.UNKNOWN)
 
     def test_api_schema_via_dep(self):
-        self.assertEqual(self.s(docs.api_schema_docs(self.ctx({"pyproject.toml": '[project]\nname="x"\ndependencies=["fastapi"]\n'}))), Status.PASS)
-        self.assertEqual(self.s(docs.api_schema_docs(self.ctx({"package.json": '{"name":"x"}'}))), Status.FAIL)
+        self.assertEqual(self.s(docs.api_schema_docs(self.ctx(
+            {"pyproject.toml": '[project]\nname="x"\ndependencies=["fastapi"]\n'}))), Status.PASS)
+        self.assertEqual(self.s(docs.api_schema_docs(self.ctx(
+            {"package.json": '{"name":"x"}'}))), Status.FAIL)
 
     def test_skills_fail(self):
         self.assertEqual(self.s(docs.skills(self.ctx({"README.md": "# x"}))), Status.FAIL)
@@ -189,7 +233,9 @@ class TestSecurityChecks(CheckCase):
         self.assertEqual(self.s(security.branch_protection(ctx)), Status.FAIL)
 
     def test_secret_scanning_fail(self):
-        ctx = self.ctx({}, gh=_gh_available({("api", "repos/o/r"): '{"default_branch":"main","security_and_analysis":{"secret_scanning":{"status":"disabled"}}}'}))
+        ctx = self.ctx({}, gh=_gh_available(
+            {("api", "repos/o/r"): '{"default_branch":"main","security_and_analysis":{"secret_'
+                'scanning":{"status":"disabled"}}}'}))
         self.assertEqual(self.s(security.secret_scanning(ctx)), Status.FAIL)
 
     def test_simple_fails(self):
@@ -198,27 +244,40 @@ class TestSecurityChecks(CheckCase):
         self.assertEqual(self.s(security.security_md(self.ctx({}))), Status.FAIL)
 
     def test_automated_security_review(self):
-        self.assertEqual(self.s(security.automated_security_review(self.ctx({"pyproject.toml": '[project]\nname="x"\ndependencies=["bandit"]\n'}))), Status.PASS)
+        self.assertEqual(self.s(security.automated_security_review(self.ctx(
+            {"pyproject.toml": '[project]\nname="x"\ndependencies=["bandit"]\n'}))), Status.PASS)
         self.assertEqual(self.s(security.automated_security_review(self.ctx({}))), Status.FAIL)
 
     def test_gitignore_partial(self):
-        self.assertEqual(self.s(security.gitignore_comprehensive(self.ctx({".gitignore": ".env\n"}))), Status.FAIL)  # secret only
-        self.assertEqual(self.s(security.gitignore_comprehensive(self.ctx({".gitignore": "dist/\n"}))), Status.FAIL)  # artifact only
-        self.assertEqual(self.s(security.gitignore_comprehensive(self.ctx({}))), Status.FAIL)  # none
+        # secret only
+        self.assertEqual(self.s(security.gitignore_comprehensive(self.ctx(
+            {".gitignore": ".env\n"}))), Status.FAIL)
+        # artifact only
+        self.assertEqual(self.s(security.gitignore_comprehensive(self.ctx(
+            {".gitignore": "dist/\n"}))), Status.FAIL)
+        # none
+        self.assertEqual(self.s(security.gitignore_comprehensive(self.ctx({}))), Status.FAIL)
 
 
 class TestTestingChecks(CheckCase):
     def test_unit_fail(self):
-        self.assertEqual(self.s(testing.unit_tests_exist(self.ctx({"src/app.py": "x=1"}))), Status.FAIL)
+        self.assertEqual(self.s(testing.unit_tests_exist(self.ctx(
+            {"src/app.py": "x=1"}))), Status.FAIL)
 
     def test_integration_via_dep(self):
-        self.assertEqual(self.s(testing.integration_tests_exist(self.ctx({"package.json": '{"devDependencies":{"cypress":"^13"}}'}))), Status.PASS)
-        self.assertEqual(self.s(testing.integration_tests_exist(self.ctx({"src/app.py": "x"}))), Status.FAIL)
+        self.assertEqual(self.s(testing.integration_tests_exist(self.ctx(
+            {"package.json": '{"devDependencies":{"cypress":"^13"}}'}))), Status.PASS)
+        self.assertEqual(self.s(testing.integration_tests_exist(self.ctx(
+            {"src/app.py": "x"}))), Status.FAIL)
 
     def test_naming_variants(self):
-        self.assertEqual(self.s(testing.test_naming(self.ctx({"tests/test_x.py": "x"}))), Status.PASS)
-        self.assertEqual(self.s(testing.test_naming(self.ctx({"tests/helper.py": "x"}))), Status.FAIL)  # dir but nonstandard
-        self.assertEqual(self.s(testing.test_naming(self.ctx({"src/app.py": "x"}))), Status.SKIPPED)  # no tests
+        self.assertEqual(self.s(testing.test_naming(self.ctx(
+            {"tests/test_x.py": "x"}))), Status.PASS)
+        # dir but nonstandard
+        self.assertEqual(self.s(testing.test_naming(self.ctx(
+            {"tests/helper.py": "x"}))), Status.FAIL)
+        # no tests
+        self.assertEqual(self.s(testing.test_naming(self.ctx({"src/app.py": "x"}))), Status.SKIPPED)
 
 
 class TestTaskDiscChecks(CheckCase):
@@ -227,67 +286,113 @@ class TestTaskDiscChecks(CheckCase):
         self.assertEqual(self.s(taskdisc.pr_templates(self.ctx({}))), Status.FAIL)
 
     def test_issue_labeling(self):
-        only_default = self.ctx({}, gh=_gh_available({("api", "repos/o/r/labels?per_page=100"): '[{"name":"bug"},{"name":"enhancement"}]'}))
+        only_default = self.ctx({}, gh=_gh_available(
+            {("api", "repos/o/r/labels?per_page=100"): '[{"name":"bug"},{"name":"enhancement"}]'}))
         self.assertEqual(self.s(taskdisc.issue_labeling(only_default)), Status.FAIL)
-        via_file = self.ctx({".github/labels.yml": "x"}, gh=_gh_available({("api", "repos/o/r/labels?per_page=100"): '[{"name":"bug"}]'}))
+        via_file = self.ctx({".github/labels.yml": "x"}, gh=_gh_available(
+            {("api", "repos/o/r/labels?per_page=100"): '[{"name":"bug"}]'}))
         self.assertEqual(self.s(taskdisc.issue_labeling(via_file)), Status.PASS)
 
     def test_backlog_health_low(self):
         ctx = self.ctx({}, gh=_gh_available({
-            ("api", "repos/o/r/issues?state=open&per_page=50"): '[{"number":1,"labels":[{"name":"bug"}]},{"number":2,"labels":[]},{"number":3,"labels":[]}]',
+            ("api", "repos/o/r/issues?state=open&per_page=50"): (
+                '[{"number":1,"labels":[{"name":"bug"}]},{"number":2,"labels":[]},{"number":3,'
+                '"labels":[]}]'
+            ),
         }))
         self.assertEqual(self.s(taskdisc.backlog_health(ctx)), Status.FAIL)
 
 
 
 class TestLoopChecks(CheckCase):
-    FILLED = "# Artifact\n\nThis filled loop readiness artifact documents a stable maintainer-owned convention with enough detail.\n"
-    RULES = "# Loop Rules\n\nThis rules index points maintainers to the denylist and related loop policies.\n"
-    DENY = "# Loop Denylist\n\nNever mutate secrets or deploy without confirmation. Block unsafe paths.\n"
+    FILLED = (
+        "# Artifact\n\nThis filled loop readiness artifact documents a stable maintainer-owned "
+        "convention with enough detail.\n"
+    )
+    RULES = (
+        "# Loop Rules\n\nThis rules index points maintainers to the denylist and related loop "
+        "policies.\n"
+    )
+    DENY = (
+        "# Loop Denylist\n\nNever mutate secrets or deploy without confirmation. Block unsafe "
+        "paths.\n"
+    )
     SIGNAL = (
         "# Signal Schema\n\n```json\n"
         "{\"schema_version\":\"1\",\"signal\":\"loop.run\",\"source\":\"runner\","
         "\"timestamp\":\"2026-01-01T00:00:00Z\",\"evidence\":[]}\n"
         "```\n"
     )
-    PR_ARTIFACT = "# PR Evidence\n\nCite the loop-runs log, CI output, screenshot, video, and artifact evidence.\n"
-    SKILL = "---\nname: loop-skill\ndescription: Filled OMP loop skill artifact\n---\n# Skill\n\nUse this loop skill artifact for safe loop operations.\n"
+    PR_ARTIFACT = (
+        "# PR Evidence\n\nCite the loop-runs log, CI output, screenshot, video, and artifact "
+        "evidence.\n"
+    )
+    SKILL = (
+        "---\nname: loop-skill\ndescription: Filled OMP loop skill artifact\n---\n# Skill\n\nUse "
+        "this loop skill artifact for safe loop operations.\n"
+    )
 
     def test_loop_runs_dir_pass_and_fail(self):
-        self.assertEqual(self.s(loop.loop_runs_dir(self.ctx({"loop-runs/README.md": self.FILLED}))), Status.PASS)
+        self.assertEqual(self.s(loop.loop_runs_dir(self.ctx(
+            {"loop-runs/README.md": self.FILLED}))), Status.PASS)
         self.assertEqual(self.s(loop.loop_runs_dir(self.ctx({}))), Status.FAIL)
-        v = loop.loop_runs_dir(self.ctx({"loop-runs/README.md": "# Loop\n\nTODO write the loop run convention in detail.\n"}))
+        v = loop.loop_runs_dir(self.ctx({"loop-runs/README.md": "# Loop\n\nTODO write the loop run "
+            "convention in detail.\n"}))
         self.assertEqual(v.status, Status.FAIL)
         self.assertIn("placeholder", v.rationale)
 
     def test_rules_index_pass_and_fail(self):
-        self.assertEqual(self.s(loop.rules_index(self.ctx({".omp/rules/README.md": self.RULES}))), Status.PASS)
+        self.assertEqual(self.s(loop.rules_index(self.ctx(
+            {".omp/rules/README.md": self.RULES}))), Status.PASS)
         self.assertEqual(self.s(loop.rules_index(self.ctx({}))), Status.FAIL)
-        self.assertEqual(self.s(loop.rules_index(self.ctx({".omp/rules/README.md": "# Policy\n\nThis describes safe execution without the required index terms.\n"}))), Status.FAIL)
+        self.assertEqual(self.s(loop.rules_index(self.ctx(
+            {".omp/rules/README.md": "# Policy\n\nThis describes safe execution without the "
+                "required index terms.\n"}))), Status.FAIL)
 
     def test_denylist_pass_and_fail(self):
-        self.assertEqual(self.s(loop.denylist(self.ctx({".omp/rules/denylist.md": self.DENY}))), Status.PASS)
+        self.assertEqual(self.s(loop.denylist(self.ctx(
+            {".omp/rules/denylist.md": self.DENY}))), Status.PASS)
         self.assertEqual(self.s(loop.denylist(self.ctx({}))), Status.FAIL)
-        no_policy = "# Policy\n\nThis document has prose about safe execution but no required policy vocabulary.\n"
-        self.assertEqual(self.s(loop.denylist(self.ctx({".omp/rules/denylist.md": no_policy}))), Status.FAIL)
+        no_policy = (
+            "# Policy\n\nThis document has prose about safe execution but no required policy "
+            "vocabulary.\n"
+        )
+        self.assertEqual(self.s(loop.denylist(self.ctx(
+            {".omp/rules/denylist.md": no_policy}))), Status.FAIL)
 
     def test_signal_schema_pass_and_fail(self):
-        self.assertEqual(self.s(loop.signal_schema(self.ctx({"signals/README.md": self.SIGNAL}))), Status.PASS)
+        self.assertEqual(self.s(loop.signal_schema(self.ctx(
+            {"signals/README.md": self.SIGNAL}))), Status.PASS)
         self.assertEqual(self.s(loop.signal_schema(self.ctx({}))), Status.FAIL)
-        no_fence = "# Signal\n\nschema_version signal source timestamp evidence are documented without code.\n"
-        self.assertEqual(self.s(loop.signal_schema(self.ctx({"signals/README.md": no_fence}))), Status.FAIL)
+        no_fence = (
+            "# Signal\n\nschema_version signal source timestamp evidence are documented without "
+            "code.\n"
+        )
+        self.assertEqual(self.s(loop.signal_schema(self.ctx(
+            {"signals/README.md": no_fence}))), Status.FAIL)
 
     def test_pr_artifact_template_variants(self):
-        generic = "# Pull Request\n\nSummarize the change and testing for reviewers in a normal template.\n"
-        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({".github/pull_request_template.md": generic}))), Status.FAIL)
+        generic = (
+            "# Pull Request\n\nSummarize the change and testing for reviewers in a normal template."
+            "\n"
+        )
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx(
+            {".github/pull_request_template.md": generic}))), Status.FAIL)
         evidence_heading_with_incidental_ci = (
             "# Pull Request\n\n"
             "## Evidence\n\n"
-            "Reviewer decisions need sufficient context and logical explanations, but no artifacts.\n"
+            "Reviewer decisions need sufficient context and logical explanations, but no artifacts."
+                "\n"
         )
-        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({".github/pull_request_template.md": evidence_heading_with_incidental_ci}))), Status.FAIL)
-        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({".github/pull_request_template.md": self.PR_ARTIFACT}))), Status.PASS)
-        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({".omp/commands/pr-artifact-template.md": self.FILLED}))), Status.PASS)
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({
+            ".github/pull_request_template.md": evidence_heading_with_incidental_ci,
+            }))), Status.FAIL)
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({
+            ".github/pull_request_template.md": self.PR_ARTIFACT,
+            }))), Status.PASS)
+        self.assertEqual(self.s(loop.pr_artifact_template(self.ctx({
+            ".omp/commands/pr-artifact-template.md": self.FILLED,
+            }))), Status.PASS)
 
     def test_skills_present_minimum(self):
         files = {f".omp/skills/s{i}/SKILL.md": self.SKILL for i in range(loop.LOOP_SKILL_MIN)}
@@ -305,7 +410,9 @@ class TestLoopChecks(CheckCase):
         self.assertIn(".omp/commands/loop.md", v.rationale)
 
     def test_architecture_doc_pass_and_fail(self):
-        self.assertEqual(self.s(loop.architecture_doc(self.ctx({"docs/architecture.md": self.FILLED}))), Status.PASS)
+        self.assertEqual(self.s(loop.architecture_doc(self.ctx({
+            "docs/architecture.md": self.FILLED,
+            }))), Status.PASS)
         self.assertEqual(self.s(loop.architecture_doc(self.ctx({}))), Status.FAIL)
 
     def test_domain_docs_pass_and_fail(self):
@@ -314,10 +421,16 @@ class TestLoopChecks(CheckCase):
             "- [ ] Keep the billing workflow documented for maintainers.\n"
             "See [reference](https://example.com) for external context and examples.\n"
         )
-        self.assertEqual(self.s(loop.domain_docs(self.ctx({"domains/billing/README.md": ordinary_markdown}))), Status.PASS)
+        self.assertEqual(self.s(loop.domain_docs(self.ctx({
+            "domains/billing/README.md": ordinary_markdown,
+            }))), Status.PASS)
         self.assertEqual(self.s(loop.domain_docs(self.ctx({}))), Status.FAIL)
-        placeholder = "# Domain\n\n[owner] should replace this placeholder with domain documentation.\n"
-        self.assertEqual(self.s(loop.domain_docs(self.ctx({"domains/core/README.md": placeholder}))), Status.FAIL)
+        placeholder = (
+            "# Domain\n\n[owner] should replace this placeholder with domain documentation.\n"
+        )
+        self.assertEqual(self.s(loop.domain_docs(self.ctx({
+            "domains/core/README.md": placeholder,
+            }))), Status.FAIL)
 class TestPhase5BuildChecks(CheckCase):
     def test_build_command_documented(self):
         self.assertEqual(self.s(build.build_command_documented(
@@ -406,7 +519,9 @@ class TestPhase5TaskdiscChecks(CheckCase):
 class TestG1CodeHealth(CheckCase):
     def test_naming_convention_rule(self):
         self.assertEqual(self.s(style.naming_convention_rule(self.ctx(
-            {".eslintrc.json": '{"rules":{"@typescript-eslint/naming-convention":"error"}}'}))), Status.PASS)
+            {
+                ".eslintrc.json": '{"rules":{"@typescript-eslint/naming-convention":"error"}}',
+            }))), Status.PASS)
         self.assertEqual(self.s(style.naming_convention_rule(self.ctx(
             {"ruff.toml": 'select = ["N", "E"]\n'}))), Status.PASS)
         self.assertEqual(self.s(style.naming_convention_rule(self.ctx(
@@ -430,19 +545,25 @@ class TestG1CodeHealth(CheckCase):
         self.assertEqual(self.s(style.dead_code_detection(self.ctx(
             {"package.json": '{"name":"x"}'}))), Status.FAIL)
         self.assertEqual(self.s(style.dead_code_detection(self.ctx(
-            {"package.json": '{"devDependencies":{"knip":"^5"},"scripts":{"deadcode":"knip"}}'}))), Status.PASS)
+            {
+                "package.json": '{"devDependencies":{"knip":"^5"},"scripts":{"deadcode":"knip"}}',
+            }))), Status.PASS)
         files = {
             "package.json": '{"workspaces":["packages/*"]}',
-            "packages/a/package.json": '{"devDependencies":{"knip":"^5"},"scripts":{"deadcode":"knip"}}',
+            "packages/a/package.json": (
+                '{"devDependencies":{"knip":"^5"},"scripts":{"deadcode":"knip"}}'
+            ),
             "packages/b/package.json": '{"name":"b"}',
         }
-        self.assertEqual(self.s(style.dead_code_detection(self.ctx(files, app_path="packages/a"))), Status.PASS)
+        self.assertEqual(self.s(style.dead_code_detection(self.ctx(
+            files, app_path="packages/a"))), Status.PASS)
         files = {
             "package.json": '{"workspaces":["packages/*"],"scripts":{"deadcode":"knip"}}',
             "packages/a/package.json": '{"devDependencies":{"knip":"^5"}}',
             "packages/b/package.json": '{"name":"b"}',
         }
-        self.assertEqual(self.s(style.dead_code_detection(self.ctx(files, app_path="packages/a"))), Status.PASS)
+        self.assertEqual(self.s(style.dead_code_detection(self.ctx(
+            files, app_path="packages/a"))), Status.PASS)
         self.assertEqual(self.s(style.dead_code_detection(self.ctx(
             {"knip.json": "{}", "package.json": '{"name":"x"}'}))), Status.FAIL)
 
@@ -450,13 +571,20 @@ class TestG1CodeHealth(CheckCase):
         self.assertEqual(self.s(style.duplicate_code_detection(self.ctx(
             {"package.json": '{"name":"x"}'}))), Status.FAIL)
         self.assertEqual(self.s(style.duplicate_code_detection(self.ctx(
-            {".jscpd.json": "{}", ".github/workflows/ci.yml": "name: ci\nrun: npx jscpd src\n"}))), Status.PASS)
+            {
+                ".jscpd.json": "{}",
+                ".github/workflows/ci.yml": "name: ci\nrun: npx jscpd src\n",
+            }))), Status.PASS)
         self.assertEqual(self.s(style.duplicate_code_detection(self.ctx(
             {"package.json": '{"devDependencies":{"jscpd":"^4"}}'}))), Status.FAIL)
 
     def test_large_file_guard(self):
         self.assertEqual(self.s(style.large_file_guard(self.ctx(
-            {".pre-commit-config.yaml": "repos:\n  - hooks:\n      - id: check-added-large-files\n"}))), Status.PASS)
+            {
+                ".pre-commit-config.yaml": (
+                    "repos:\n  - hooks:\n      - id: check-added-large-files\n"
+                ),
+            }))), Status.PASS)
         self.assertEqual(self.s(style.large_file_guard(self.ctx(
             {".gitattributes": "*.psd filter=lfs diff=lfs merge=lfs -text\n"}))), Status.PASS)
         self.assertEqual(self.s(style.large_file_guard(self.ctx(
@@ -484,40 +612,67 @@ class TestG1CodeHealth(CheckCase):
             "packages/b/package.json": '{"name":"b"}',
         }
         ctx = self.ctx(files, app_path="packages/a")
-        self.assertEqual(self.s(style.naming_convention_rule(ctx)), Status.PASS)  # root config via fallback
+        # root config via fallback
+        self.assertEqual(self.s(style.naming_convention_rule(ctx)), Status.PASS)
 
 
 class TestG2Depth(CheckCase):
     def test_error_tracking(self):
         self.assertEqual(self.s(observability.error_tracking(self.ctx(
-            {"package.json": '{"dependencies":{"@sentry/node":"^7"}}', "src/i.js": "Sentry.init({dsn:'x'})\n"}))), Status.PASS)
+            {
+                "package.json": '{"dependencies":{"@sentry/node":"^7"}}',
+                "src/i.js": "Sentry.init({dsn:'x'})\n",
+            }))), Status.PASS)
         self.assertEqual(self.s(observability.error_tracking(self.ctx(
-            {"package.json": '{"dependencies":{"@sentry/node":"^7"}}'}))), Status.FAIL)  # import-only
+            # import-only
+            {
+                "package.json": '{"dependencies":{"@sentry/node":"^7"}}',
+            }))), Status.FAIL)
 
     def test_runbooks(self):
-        rb = "# Runbook\n\n## Restart procedure\n\n" + "Follow the operational steps carefully. " * 8
+        rb = (
+            "# Runbook\n\n## Restart procedure\n\n" + "Follow the operational steps carefully. " * 8
+        )
         self.assertEqual(self.s(observability.runbooks(self.ctx({"RUNBOOK.md": rb}))), Status.PASS)
-        self.assertEqual(self.s(observability.runbooks(self.ctx({"docs/RUNBOOK.md": "# tiny\n"}))), Status.FAIL)
+        self.assertEqual(self.s(observability.runbooks(self.ctx({
+            "docs/RUNBOOK.md": "# tiny\n",
+            }))), Status.FAIL)
         prose = "Runbook " * 40  # >=200 chars but no sections/steps
-        self.assertEqual(self.s(observability.runbooks(self.ctx({"RUNBOOK.md": prose}))), Status.FAIL)
+        self.assertEqual(self.s(observability.runbooks(self.ctx({
+            "RUNBOOK.md": prose,
+            }))), Status.FAIL)
         self.assertEqual(self.s(observability.runbooks(self.ctx({}))), Status.FAIL)
 
     def test_profiling(self):
         self.assertEqual(self.s(observability.profiling(self.ctx(
-            {"package.json": '{"dependencies":{"@pyroscope/nodejs":"^0.3"}}', "src/p.js": "pyroscope.start()\n"}))), Status.PASS)
+            {
+                "package.json": '{"dependencies":{"@pyroscope/nodejs":"^0.3"}}',
+                "src/p.js": "pyroscope.start()\n",
+            }))), Status.PASS)
         self.assertEqual(self.s(observability.profiling(self.ctx({}))), Status.FAIL)
 
     def test_circuit_breakers(self):
         self.assertEqual(self.s(observability.circuit_breakers(self.ctx(
-            {"package.json": '{"dependencies":{"opossum":"^8"}}', "src/cb.js": "const b = new Opossum(fn)\n"}))), Status.PASS)
+            {
+                "package.json": '{"dependencies":{"opossum":"^8"}}',
+                "src/cb.js": "const b = new Opossum(fn)\n",
+            }))), Status.PASS)
         self.assertEqual(self.s(observability.circuit_breakers(self.ctx({}))), Status.FAIL)
 
     def test_deployment_markers(self):
         self.assertEqual(self.s(observability.deployment_markers(self.ctx(
-            {".github/workflows/deploy.yml": "name: deploy\nsteps:\n  - uses: sentry/action-release@v1\n"}))), Status.PASS)
+            {
+                ".github/workflows/deploy.yml": (
+                    "name: deploy\nsteps:\n  - uses: sentry/action-release@v1\n"
+                ),
+            }))), Status.PASS)
         self.assertEqual(self.s(observability.deployment_markers(self.ctx(
-            {".github/workflows/ci.yml": "name: ci\nrun: echo hi\n"}))), Status.FAIL)  # entered, no marker
-        self.assertEqual(self.s(observability.deployment_markers(self.ctx({}))), Status.FAIL)  # no workflows
+            # entered, no marker
+            {
+                ".github/workflows/ci.yml": "name: ci\nrun: echo hi\n",
+            }))), Status.FAIL)
+        # no workflows
+        self.assertEqual(self.s(observability.deployment_markers(self.ctx({}))), Status.FAIL)
 
     def test_dependency_min_age(self):
         self.assertEqual(self.s(security.dependency_min_age(self.ctx(
@@ -525,7 +680,10 @@ class TestG2Depth(CheckCase):
         self.assertEqual(self.s(security.dependency_min_age(self.ctx(
             {"package.json": '{"renovate":{"stabilityDays":3}}'}))), Status.PASS)
         self.assertEqual(self.s(security.dependency_min_age(self.ctx(
-            {"renovate.json": '{"extends":["config:base"]}'}))), Status.FAIL)  # renovate w/o age policy
+            # renovate w/o age policy
+            {
+                "renovate.json": '{"extends":["config:base"]}',
+            }))), Status.FAIL)
         self.assertEqual(self.s(security.dependency_min_age(self.ctx(
             {"package.json": '{"name":"x"}'}))), Status.FAIL)
 
@@ -539,16 +697,26 @@ class TestG2Depth(CheckCase):
         self.assertEqual(self.s(security.secrets_management(self.ctx(
             {".github/workflows/ci.yml": "env:\n  T: ${{ secrets.TOKEN }}\n"}))), Status.PASS)
         self.assertEqual(self.s(security.secrets_management(self.ctx(
-            {"package.json": '{"dependencies":{"@google-cloud/secret-manager":"^5"}}'}))), Status.PASS)
+            {
+                "package.json": '{"dependencies":{"@google-cloud/secret-manager":"^5"}}',
+            }))), Status.PASS)
         self.assertEqual(self.s(security.secrets_management(self.ctx(
-            {".github/workflows/ci.yml": "name: ci\nrun: echo hi\n"}))), Status.FAIL)  # entered, no secret ref
+            # entered, no secret ref
+            {
+                ".github/workflows/ci.yml": "name: ci\nrun: echo hi\n",
+            }))), Status.FAIL)
         self.assertEqual(self.s(security.secrets_management(self.ctx({}))), Status.FAIL)
 
     def test_dast(self):
         self.assertEqual(self.s(security.dast(self.ctx(
-            {".github/workflows/sec.yml": "steps:\n  - uses: zaproxy/action-baseline@v0\n"}))), Status.PASS)
+            {
+                ".github/workflows/sec.yml": "steps:\n  - uses: zaproxy/action-baseline@v0\n",
+            }))), Status.PASS)
         self.assertEqual(self.s(security.dast(self.ctx(
-            {".github/workflows/ci.yml": "name: ci\nrun: echo\n"}))), Status.FAIL)  # entered, no dast
+            # entered, no dast
+            {
+                ".github/workflows/ci.yml": "name: ci\nrun: echo\n",
+            }))), Status.FAIL)
         self.assertEqual(self.s(security.dast(self.ctx({}))), Status.FAIL)
 
 
@@ -557,13 +725,20 @@ class TestG3Hygiene(CheckCase):
         self.assertEqual(self.s(build.unused_dependencies(self.ctx(
             {"package.json": '{"name":"x"}'}))), Status.FAIL)
         self.assertEqual(self.s(build.unused_dependencies(self.ctx(
-            {"package.json": '{"devDependencies":{"depcheck":"^1"},"scripts":{"deps":"depcheck"}}'}))), Status.PASS)
+            {
+                "package.json": (
+                    '{"devDependencies":{"depcheck":"^1"},"scripts":{"deps":"depcheck"}}'
+                ),
+            }))), Status.PASS)
         files = {
             "package.json": '{"workspaces":["packages/*"]}',
-            "packages/a/package.json": '{"devDependencies":{"depcheck":"^1"},"scripts":{"deps":"depcheck"}}',
+            "packages/a/package.json": (
+                '{"devDependencies":{"depcheck":"^1"},"scripts":{"deps":"depcheck"}}'
+            ),
             "packages/b/package.json": '{"name":"b"}',
         }
-        self.assertEqual(self.s(build.unused_dependencies(self.ctx(files, app_path="packages/a"))), Status.PASS)
+        self.assertEqual(self.s(build.unused_dependencies(self.ctx(
+            files, app_path="packages/a"))), Status.PASS)
         self.assertEqual(self.s(build.unused_dependencies(self.ctx(
             {"knip.json": "{}", "package.json": '{"name":"x"}'}))), Status.FAIL)  # tool, no wiring
 
@@ -576,27 +751,40 @@ class TestG3Hygiene(CheckCase):
             {"package.json": '{"name":"x"}'}))), Status.FAIL)
 
     def test_monorepo_tooling(self):
-        self.assertEqual(self.s(build.monorepo_tooling(self.ctx({"turbo.json": "{}"}))), Status.PASS)
+        self.assertEqual(self.s(build.monorepo_tooling(self.ctx({
+            "turbo.json": "{}",
+            }))), Status.PASS)
         self.assertEqual(self.s(build.monorepo_tooling(self.ctx(
             {"package.json": '{"devDependencies":{"nx":"^18"}}'}))), Status.PASS)
         self.assertEqual(self.s(build.monorepo_tooling(self.ctx(
             {"package.json": '{"workspaces":["packages/*"]}'}))), Status.PASS)
         self.assertEqual(self.s(build.monorepo_tooling(self.ctx(
             {"package.json": '{"name":"x"}'}))), Status.FAIL)
-        self.assertEqual(self.s(build.monorepo_tooling(self.ctx({"README.md": "# x"}))), Status.FAIL)  # no manifest
+        # no manifest
+        self.assertEqual(self.s(build.monorepo_tooling(self.ctx({
+            "README.md": "# x",
+            }))), Status.FAIL)
 
     def test_single_command_setup(self):
-        self.assertEqual(self.s(build.single_command_setup(self.ctx({"bin/setup": "#!/bin/sh\n"}))), Status.PASS)
+        self.assertEqual(self.s(build.single_command_setup(self.ctx({
+            "bin/setup": "#!/bin/sh\n",
+            }))), Status.PASS)
         self.assertEqual(self.s(build.single_command_setup(self.ctx(
             {"Makefile": "setup:\n\tpip install -e .\n"}))), Status.PASS)
         self.assertEqual(self.s(build.single_command_setup(self.ctx(
-            {".devcontainer/devcontainer.json": '{"postCreateCommand":"make setup"}'}))), Status.PASS)
+            {
+                ".devcontainer/devcontainer.json": '{"postCreateCommand":"make setup"}',
+            }))), Status.PASS)
         self.assertEqual(self.s(build.single_command_setup(self.ctx(
             {"package.json": '{"scripts":{"setup":"npm i"}}'}))), Status.PASS)
-        self.assertEqual(self.s(build.single_command_setup(self.ctx({"README.md": "# x"}))), Status.FAIL)
+        self.assertEqual(self.s(build.single_command_setup(self.ctx({
+            "README.md": "# x",
+            }))), Status.FAIL)
 
     def test_release_notes_automation(self):
-        self.assertEqual(self.s(build.release_notes_automation(self.ctx({".releaserc": "{}"}))), Status.PASS)
+        self.assertEqual(self.s(build.release_notes_automation(self.ctx({
+            ".releaserc": "{}",
+            }))), Status.PASS)
         self.assertEqual(self.s(build.release_notes_automation(self.ctx(
             {"package.json": '{"devDependencies":{"@changesets/cli":"^2"}}'}))), Status.PASS)
         self.assertEqual(self.s(build.release_notes_automation(self.ctx(
@@ -610,10 +798,19 @@ class TestG3Hygiene(CheckCase):
         self.assertEqual(self.s(build.dependency_weight_budget(self.ctx(
             {".size-limit.json": "[]", "package.json": '{"name":"x"}'}))), Status.PASS)
         self.assertEqual(self.s(build.dependency_weight_budget(self.ctx(
-            {"package.json": '{"devDependencies":{"size-limit":"^11"},"scripts":{"size":"size-limit"}}'}))), Status.PASS)
+            {
+                "package.json": (
+                    '{"devDependencies":{"size-limit":"^11"},"scripts":{"size":"size-limit"}}'
+                ),
+            }))), Status.PASS)
         self.assertEqual(self.s(build.dependency_weight_budget(self.ctx(
-            {"package.json": '{"devDependencies":{"webpack-bundle-analyzer":"^4"}}'}))), Status.FAIL)  # dep, no wiring
-        self.assertEqual(self.s(build.dependency_weight_budget(self.ctx({"README.md": "# x"}))), Status.FAIL)
+            # dep, no wiring
+            {
+                "package.json": '{"devDependencies":{"webpack-bundle-analyzer":"^4"}}',
+            }))), Status.FAIL)
+        self.assertEqual(self.s(build.dependency_weight_budget(self.ctx({
+            "README.md": "# x",
+            }))), Status.FAIL)
 
     def test_local_services(self):
         self.assertEqual(self.s(devenv.local_services(self.ctx(
@@ -623,41 +820,77 @@ class TestG3Hygiene(CheckCase):
     def test_database_schema(self):
         self.assertEqual(self.s(devenv.database_schema(self.ctx(
             {"migrations/001_init.sql": "CREATE TABLE x(id int);"}))), Status.PASS)
-        self.assertEqual(self.s(devenv.database_schema(self.ctx({"src/app.py": "x = 1\n"}))), Status.FAIL)
+        self.assertEqual(self.s(devenv.database_schema(self.ctx({
+            "src/app.py": "x = 1\n",
+            }))), Status.FAIL)
 
 
 class TestG4DocsProduct(CheckCase):
     def test_auto_generation(self):
         self.assertEqual(self.s(docs.auto_generation(self.ctx({"README.md": "# x"}))), Status.FAIL)
         self.assertEqual(self.s(docs.auto_generation(self.ctx(
-            {"mkdocs.yml": "site_name: X\n", ".github/workflows/docs.yml": "name: docs\nrun: mkdocs build\n"}))), Status.PASS)
+            {
+                "mkdocs.yml": "site_name: X\n",
+                ".github/workflows/docs.yml": "name: docs\nrun: mkdocs build\n",
+            }))), Status.PASS)
         self.assertEqual(self.s(docs.auto_generation(self.ctx(
-            {"typedoc.json": "{}", "package.json": '{"name":"x"}'}))), Status.FAIL)  # tool, no wiring
+            # tool, no wiring
+            {
+                "typedoc.json": "{}",
+                "package.json": '{"name":"x"}',
+            }))), Status.FAIL)
 
     def test_agents_md_ci_validation(self):
-        self.assertEqual(self.s(docs.agents_md_ci_validation(self.ctx({"README.md": "# x"}))), Status.FAIL)
+        self.assertEqual(self.s(docs.agents_md_ci_validation(self.ctx({
+            "README.md": "# x",
+            }))), Status.FAIL)
         self.assertEqual(self.s(docs.agents_md_ci_validation(self.ctx(
-            {"AGENTS.md": "# A\n", ".github/workflows/ci.yml": "name: ci\nrun: validate AGENTS.md commands\n"}))), Status.PASS)
-        self.assertEqual(self.s(docs.agents_md_ci_validation(self.ctx({"AGENTS.md": "# A\n"}))), Status.FAIL)  # no CI
+            {
+                "AGENTS.md": "# A\n",
+                ".github/workflows/ci.yml": "name: ci\nrun: validate AGENTS.md commands\n",
+            }))), Status.PASS)
+        # no CI
+        self.assertEqual(self.s(docs.agents_md_ci_validation(self.ctx({
+            "AGENTS.md": "# A\n",
+            }))), Status.FAIL)
         self.assertEqual(self.s(docs.agents_md_ci_validation(self.ctx(
-            {"AGENTS.md": "# A\n", ".github/workflows/ci.yml": "name: ci\nrun: echo\n"}))), Status.FAIL)  # CI, no check
+            # CI, no check
+            {
+                "AGENTS.md": "# A\n",
+                ".github/workflows/ci.yml": "name: ci\nrun: echo\n",
+            }))), Status.FAIL)
 
     def test_architecture_doc(self):
         self.assertEqual(self.s(docs.architecture_doc(self.ctx(
-            {"ARCHITECTURE.md": "# Architecture\n\n" + "Layered design described in depth. " * 8}))), Status.PASS)
-        self.assertEqual(self.s(docs.architecture_doc(self.ctx({"ARCHITECTURE.md": "# tiny\n"}))), Status.FAIL)
+            {
+                "ARCHITECTURE.md": "# Architecture\n\n" + "Layered design described in depth. " * 8,
+            }))), Status.PASS)
+        self.assertEqual(self.s(docs.architecture_doc(self.ctx({
+            "ARCHITECTURE.md": "# tiny\n",
+            }))), Status.FAIL)
         self.assertEqual(self.s(docs.architecture_doc(self.ctx({"README.md": "# x"}))), Status.FAIL)
 
     def test_error_to_insight(self):
         self.assertEqual(self.s(product.error_to_insight(self.ctx(
             {"package.json": '{"dependencies":{"@sentry/node":"^7"}}',
-             ".github/workflows/sentry.yml": "name: s\nsteps:\n  - uses: getsentry/action-release@v1\n"}))), Status.PASS)
+             ".github/workflows/sentry.yml": (
+                 "name: s\nsteps:\n  - uses: getsentry/action-release@v1\n"
+             ),
+            }))), Status.PASS)
         self.assertEqual(self.s(product.error_to_insight(self.ctx(
             {".github/workflows/ci.yml": "name: ci\nrun: echo\n"}))), Status.FAIL)  # neither
         self.assertEqual(self.s(product.error_to_insight(self.ctx(
-            {"package.json": '{"dependencies":{"@sentry/node":"^7"}}'}))), Status.FAIL)  # tracker only
+            # tracker only
+            {
+                "package.json": '{"dependencies":{"@sentry/node":"^7"}}',
+            }))), Status.FAIL)
         self.assertEqual(self.s(product.error_to_insight(self.ctx(
-            {".github/workflows/s.yml": "name: s\nsteps:\n  - uses: getsentry/action-release@v1\n"}))), Status.FAIL)  # integ only
+            # integ only
+            {
+                ".github/workflows/s.yml": (
+                    "name: s\nsteps:\n  - uses: getsentry/action-release@v1\n"
+                ),
+            }))), Status.FAIL)
 
 
 class TestAcdcVerificationLoop(CheckCase):
@@ -666,7 +899,11 @@ class TestAcdcVerificationLoop(CheckCase):
         self.assertEqual(check_needles("node scripts/gen-tsconfig.js"), set())
         self.assertEqual(check_needles("jest --coverage"), {"jest"})
         self.assertEqual(check_needles("cargo test"), {"cargo test"})
-        valid = self.ctx({".agents/readiness/config.json": '{"acdc":{"verify_command":"make check"}}'})
+        valid = self.ctx({
+            ".agents/readiness/config.json": (
+                '{"acdc":{"verify_command":"make check"}}'
+            ),
+        })
         self.assertEqual(acdc_config(valid), {"verify_command": "make check"})
         invalid = self.ctx({".agents/readiness/config.json": '{"acdc":[]}'})
         self.assertEqual(acdc_config(invalid), {})
@@ -684,10 +921,14 @@ class TestAcdcVerificationLoop(CheckCase):
             "package.json": '{"scripts":{"check":"eslint . && tsc"}}',
         }))), Status.PASS)
         self.assertEqual(self.s(build.check_command(self.ctx({
-            "package.json": '{"scripts":{"check":"run-s lint test","lint":"eslint .","test":"vitest run"}}',
+            "package.json": (
+                '{"scripts":{"check":"run-s lint test","lint":"eslint .","test":"vitest run"}}'
+            ),
         }))), Status.PASS)
         self.assertEqual(self.s(build.check_command(self.ctx({
-            "package.json": '{"scripts":{"verify":"npm run lint && yarn test","lint":"eslint .","test":"jest"}}',
+            "package.json": (
+                '{"scripts":{"verify":"npm run lint && yarn test","lint":"eslint .","test":"jest"}}'
+            ),
         }))), Status.PASS)
 
     def test_check_command_file_entrypoints(self):
@@ -698,7 +939,10 @@ class TestAcdcVerificationLoop(CheckCase):
             "justfile": "check:\n    ruff check .\n    pytest\n",
         }))), Status.PASS)
         self.assertEqual(self.s(build.check_command(self.ctx({
-            "Taskfile.yml": "version: '3'\ntasks:\n  check:\n    cmds:\n      - ruff check .\n      - pytest\n  other:\n    cmds: [echo]\n",
+            "Taskfile.yml": (
+                "version: '3'\ntasks:\n  check:\n    cmds:\n      - ruff check .\n      - pytest\n "
+                " other:\n    cmds: [echo]\n"
+            ),
         }))), Status.PASS)
 
     def test_check_command_config_designations(self):
@@ -758,7 +1002,9 @@ class TestAcdcVerificationLoop(CheckCase):
             with self.subTest(files=files):
                 self.assertEqual(self.s(docs.agent_verify_contract(self.ctx(files))), Status.PASS)
         configured = docs.agent_verify_contract(self.ctx({
-            ".agents/readiness/config.json": '{"acdc":{"instruction_files":["docs/agent-guide.md",42]}}',
+            ".agents/readiness/config.json": (
+                '{"acdc":{"instruction_files":["docs/agent-guide.md",42]}}'
+            ),
             "docs/agent-guide.md": "Execute verification with `ra1 report --project .`.\n",
         }))
         self.assertEqual(self.s(configured), Status.PASS)
@@ -770,7 +1016,9 @@ class TestAcdcVerificationLoop(CheckCase):
             {"AGENTS.md": "## Setup\n```sh\npython3 -m pytest\n```\n"},
             {"AGENTS.md": "## Verification\nNo command is documented.\n"},
             {
-                ".agents/readiness/config.json": '{"acdc":{"instruction_files":["docs/agent-guide.md"]}}',
+                ".agents/readiness/config.json": (
+                    '{"acdc":{"instruction_files":["docs/agent-guide.md"]}}'
+                ),
                 "docs/agent-guide.md": "## Verification\nDescribe checks without a command.\n",
             },
             {},
@@ -781,13 +1029,18 @@ class TestAcdcVerificationLoop(CheckCase):
 
     def test_agent_hooks_passes(self):
         self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
-            ".claude/settings.json": '{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"ruff check ."}]}]}}',
+            ".claude/settings.json": (
+                '{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"ruff check ."}]}]}'
+                '}'
+            ),
         }))), Status.PASS)
         self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
             ".claude/settings.json": '{"hooks":{"Stop":{"command":"ra1 report --project ."}}}',
         }))), Status.PASS)
         configured = devenv.agent_hooks(self.ctx({
-            ".agents/readiness/config.json": '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh",7]}}',
+            ".agents/readiness/config.json": (
+                '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh",7]}}'
+            ),
             ".agents/hooks/post-edit.sh": "#!/bin/sh\nruff check .\n",
         }))
         self.assertEqual(self.s(configured), Status.PASS)
@@ -797,7 +1050,9 @@ class TestAcdcVerificationLoop(CheckCase):
         cases = [
             {".agents/readiness/config.json": '{"acdc":{"hook_files":["missing/*.sh"]}}'},
             {
-                ".agents/readiness/config.json": '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh"]}}',
+                ".agents/readiness/config.json": (
+                    '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh"]}}'
+                ),
                 ".agents/hooks/post-edit.sh": "#!/bin/sh\necho done\n",
             },
             {".claude/settings.json": '{"permissions":{}}'},
@@ -813,7 +1068,9 @@ class TestAcdcVerificationLoop(CheckCase):
     def test_new_code_quality_gate_passes(self):
         cases = [
             {
-                "codecov.yml": "coverage:\n  status:\n    patch:\n      default:\n        target: 80%\n",
+                "codecov.yml": (
+                    "coverage:\n  status:\n    patch:\n      default:\n        target: 80%\n"
+                ),
                 ".github/workflows/ci.yml": "uses: codecov/codecov-action@v5\n",
             },
             {
@@ -829,7 +1086,8 @@ class TestAcdcVerificationLoop(CheckCase):
         ]
         for files in cases:
             with self.subTest(files=files):
-                self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx(files))), Status.PASS)
+                self.assertEqual(
+                    self.s(testing.new_code_quality_gate(self.ctx(files))), Status.PASS)
 
     def test_new_code_quality_gate_failures(self):
         cases = [
@@ -839,7 +1097,8 @@ class TestAcdcVerificationLoop(CheckCase):
         ]
         for files in cases:
             with self.subTest(files=files):
-                self.assertEqual(self.s(testing.new_code_quality_gate(self.ctx(files))), Status.FAIL)
+                self.assertEqual(
+                    self.s(testing.new_code_quality_gate(self.ctx(files))), Status.FAIL)
 
 
     def test_check_command_edge_branches(self):
@@ -866,7 +1125,12 @@ class TestAcdcVerificationLoop(CheckCase):
                 "scripts/check.sh": "pytest\n",
             },
             {"Makefile": "check: absent\n\truff check . && pytest\n"},
-            {"package.json": '{"scripts":{"validate":"run-p --print-label lint missing test","lint":"eslint .","test":"jest"}}'},
+            {
+                "package.json": (
+                    '{"scripts":{"validate":"run-p --print-label lint missing test","lint":"eslint '
+                    '.","test":"jest"}}'
+                ),
+            },
         ]
         for files in passes:
             with self.subTest(pass_files=files):
@@ -908,7 +1172,9 @@ class TestAcdcVerificationLoop(CheckCase):
 
     def test_agent_hook_vendor_needles(self):
         self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
-            ".agents/readiness/config.json": '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh"]}}',
+            ".agents/readiness/config.json": (
+                '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh"]}}'
+            ),
             ".agents/hooks/post-edit.sh": "sonar analyze --file src/a.py\n",
         }))), Status.PASS)
         self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
@@ -980,7 +1246,7 @@ class TestDoraAdvisoryChecks(CheckCase):
         }))), Status.FAIL)
 
     def test_build_integration_frequency(self):
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta
 
         self.assertEqual(self.s(build.integration_frequency(self.ctx({}))), Status.UNKNOWN)
         old = "2020-01-01T00:00:00+00:00\n" * 5
@@ -988,7 +1254,7 @@ class TestDoraAdvisoryChecks(CheckCase):
             **self._GIT_AVAIL,
             ("log", "-200", "--format=%cI"): old,
         }))), Status.SKIPPED)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         pass_dates = "\n".join((now - timedelta(weeks=w)).isoformat() for w in range(5)) + "\n"
         self.assertEqual(self.s(build.integration_frequency(self.ctx({}, git={
             **self._GIT_AVAIL,
@@ -1177,14 +1443,14 @@ class TestDoraAdvisoryChecks(CheckCase):
         self.assertIsNone(_helpers.parse_iso("not-a-date"))
 
     def test_build_integration_frequency_edge_branches(self):
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta
 
         self.assertEqual(self.s(build.integration_frequency(self.ctx({}, git={
             **self._GIT_AVAIL,
             ("log", "-200", "--format=%cI"): "not-a-date\n",
         }))), Status.UNKNOWN)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         naive_anchor = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S")
         dates = "\n".join([
             naive_anchor,

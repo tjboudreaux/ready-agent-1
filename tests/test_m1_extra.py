@@ -5,13 +5,14 @@ import unittest
 from contextlib import redirect_stdout
 
 from readiness import cli
-from readiness.context import Context
-from readiness.collectors.static import StaticCollector
 from readiness.collectors.git import GitCollector
 from readiness.collectors.github import GithubCollector
+from readiness.collectors.static import StaticCollector
+from readiness.context import Context
 from readiness.detect import detect
 from readiness.model import App, Detection
-from tests._util import make_repo, rmtree, fake_runner
+
+from tests._util import fake_runner, make_repo, rmtree
 
 
 class TestContext(unittest.TestCase):
@@ -39,11 +40,13 @@ class TestDetectBranches(unittest.TestCase):
         return detect(root)
 
     def test_cli_via_pyproject_scripts(self):
-        d = self._detect({"pyproject.toml": '[project]\nname="t"\n[project.scripts]\nt = "t:main"\n'})
+        d = self._detect({"pyproject.toml": '[project]\nname="t"\n[project.scripts]\nt = "t:main"\n'
+                                            })
         self.assertEqual(d.project_type, "cli")
 
     def test_data_pipeline(self):
-        d = self._detect({"pyproject.toml": '[project]\nname="p"\ndependencies=["apache-airflow"]\n'})
+        d = self._detect({"pyproject.toml": '[project]\nname="p"\ndependencies=["apache-airflow"]\n'
+                                            })
         self.assertEqual(d.project_type, "data")
 
     def test_monorepo_via_turbo_tooling(self):
@@ -62,11 +65,13 @@ class TestDetectBranches(unittest.TestCase):
             "cargo test",
         )
         self.assertEqual(
-            self._detect({"pyproject.toml": '[project]\nname="x"\ndependencies=["pytest"]\n'}).apps[0].test_cmd,
+            self._detect({"pyproject.toml": '[project]\nname="x"\ndependencies=["pytest"]\n'
+                                            }).apps[0].test_cmd,
             "pytest",
         )
         self.assertEqual(
-            self._detect({"package.json": '{"name":"x","scripts":{"test":"jest"}}'}).apps[0].test_cmd,
+            self._detect({"package.json": '{"name":"x","scripts":{"test":"jest"}}'
+                                          }).apps[0].test_cmd,
             "npm test",
         )
 
@@ -131,12 +136,14 @@ class TestCliBranches(unittest.TestCase):
         self.assertEqual(code, 2)
 
     def test_markdown_renders(self):
-        code, out = self._run(["report", "--project", str(self.repo), "--no-github", "--format", "markdown"])
+        code, out = self._run(["report", "--project", str(self.repo), "--no-github"
+            , "--format", "markdown"])
         self.assertEqual(code, 0)
         self.assertIn("# Agent Readiness Report", out)
 
     def test_fail_on_with_no_results_is_clean(self):
-        code, _ = self._run(["report", "--project", str(self.repo), "--no-github", "--fail-on", "x.y"])
+        code, _ = self._run(["report", "--project", str(self.repo), "--no-github"
+            , "--fail-on", "x.y"])
         self.assertEqual(code, 0)
 
 
@@ -144,7 +151,8 @@ class TestRealGitIntegration(unittest.TestCase):
     """End-to-end: real git repo, real (non-injected) GitCollector + CLI."""
 
     def test_real_repo(self):
-        repo = make_repo({"pyproject.toml": '[project]\nname="lib"\nversion="1.0"\n', "README.md": "# lib"})
+        repo = make_repo({"pyproject.toml": '[project]\nname="lib"\nversion="1.0"\n'
+                                            , "README.md": "# lib"})
         self.addCleanup(rmtree, repo)
         env_cmds = [
             ["git", "init", "-q"],

@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import List, Optional
 
 
 class GithubCollector:
@@ -20,7 +19,7 @@ class GithubCollector:
         self._slug = None
         self._available = None
 
-    def _default_runner(self, args: List[str]) -> Optional[str]:  # pragma: no cover - subprocess boundary
+    def _default_runner(self, args: list[str]) -> str | None:  # pragma: no cover - subprocess
         try:
             proc = subprocess.run(
                 ["gh", *args], cwd=str(self.root),
@@ -32,13 +31,13 @@ class GithubCollector:
             return None
         return proc.stdout
 
-    def _run(self, args: List[str]) -> Optional[str]:
+    def _run(self, args: list[str]) -> str | None:
         key = tuple(args)
         if key not in self._cache:
             self._cache[key] = self._runner(args)
         return self._cache[key]
 
-    def _api(self, path: str) -> Optional[object]:
+    def _api(self, path: str) -> object | None:
         out = self._run(["api", path])
         if not out:
             return None
@@ -63,21 +62,21 @@ class GithubCollector:
         return self._available
 
     @property
-    def slug(self) -> Optional[str]:
+    def slug(self) -> str | None:
         return self._slug if self.available else None
 
     # ----- facts ------------------------------------------------------------------------
-    def repo(self) -> Optional[dict]:
+    def repo(self) -> dict | None:
         if not self.available:
             return None
         data = self._api(f"repos/{self.slug}")
         return data if isinstance(data, dict) else None
 
-    def default_branch(self) -> Optional[str]:
+    def default_branch(self) -> str | None:
         repo = self.repo()
         return repo.get("default_branch") if repo else None
 
-    def topics(self) -> List[str]:
+    def topics(self) -> list[str]:
         if not self.available:
             return []
         data = self._api(f"repos/{self.slug}/topics")
@@ -88,7 +87,7 @@ class GithubCollector:
             return repo["topics"]
         return []
 
-    def branch_protected(self, branch: Optional[str] = None) -> Optional[bool]:
+    def branch_protected(self, branch: str | None = None) -> bool | None:
         if not self.available:
             return None
         branch = branch or self.default_branch() or "main"
@@ -97,7 +96,7 @@ class GithubCollector:
         # because availability was already confirmed.
         return bool(data) if data is not None else False
 
-    def secret_scanning_enabled(self) -> Optional[bool]:
+    def secret_scanning_enabled(self) -> bool | None:
         repo = self.repo()
         if not repo:
             return None
@@ -106,7 +105,7 @@ class GithubCollector:
         pp = (saa.get("secret_scanning_push_protection") or {}).get("status")
         return ss == "enabled" or pp == "enabled"
 
-    def workflows(self) -> List[dict]:
+    def workflows(self) -> list[dict]:
         if not self.available:
             return []
         data = self._api(f"repos/{self.slug}/actions/workflows")
@@ -114,7 +113,7 @@ class GithubCollector:
             return data["workflows"]
         return []
 
-    def recent_runs(self, n: int = 20) -> List[dict]:
+    def recent_runs(self, n: int = 20) -> list[dict]:
         if not self.available:
             return []
         data = self._api(f"repos/{self.slug}/actions/runs?per_page={n}")
@@ -122,15 +121,15 @@ class GithubCollector:
             return data["workflow_runs"]
         return []
 
-    def labels(self) -> List[str]:
+    def labels(self) -> list[str]:
         if not self.available:
             return []
         data = self._api(f"repos/{self.slug}/labels?per_page=100")
         if isinstance(data, list):
-            return [l.get("name", "") for l in data if isinstance(l, dict)]
+            return [label.get("name", "") for label in data if isinstance(label, dict)]
         return []
 
-    def open_issues(self, n: int = 50) -> List[dict]:
+    def open_issues(self, n: int = 50) -> list[dict]:
         """Real issues only (the issues endpoint also returns PRs)."""
         if not self.available:
             return []
@@ -139,11 +138,11 @@ class GithubCollector:
             return [i for i in data if isinstance(i, dict) and "pull_request" not in i]
         return []
 
-    def recent_merged_prs(self, n: int = 20) -> List[dict]:
+    def recent_merged_prs(self, n: int = 20) -> list[dict]:
         """Up to ``n`` recently updated closed PRs that were merged."""
         if not self.available:
             return []
-        merged: List[dict] = []
+        merged: list[dict] = []
         for page in range(1, 4):
             data = self._api(
                 f"repos/{self.slug}/pulls?state=closed&sort=updated&direction=desc&per_page=50&page={page}"
@@ -159,7 +158,7 @@ class GithubCollector:
                         return merged
         return merged
 
-    def pr_first_review_iso(self, number: int) -> Optional[str]:
+    def pr_first_review_iso(self, number: int) -> str | None:
         """Earliest review ``submitted_at`` for a PR (any reviewer, including bots)."""
         if not self.available:
             return None

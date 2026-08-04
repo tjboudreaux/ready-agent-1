@@ -106,7 +106,9 @@ def main(argv=None):
     drift = vendor(ROOT, write=not check)
     if check:
         if drift:
-            sys.stderr.write("VENDOR DRIFT (run scripts/vendor.py to sync):\n" + "\n".join(drift) + "\n")
+            sys.stderr.write(
+                "VENDOR DRIFT (run scripts/vendor.py to sync):\n" + "\n".join(drift) + "\n"
+            )
             return 1
         print("vendored skills are in sync")
         return 0

@@ -16,12 +16,14 @@ def _two_part(kind, cfg, wiring):
     """Pass only when both a configuration signal and a wiring/usage signal are present."""
     if cfg and wiring:
         return passed(f"{kind}: configured and wired into the application.",
-                      [ev(f"{kind} config", source=str(cfg)), ev(f"{kind} wiring", source=str(wiring))])
+                      [ev(f"{kind} config", source=str(cfg)),
+                       ev(f"{kind} wiring", source=str(wiring))])
     if not cfg and not wiring:
         return failed(f"No {kind}: neither configuration nor usage found.")
     if not cfg:
         return failed(f"{kind} referenced in code but not configured (no library/config).")
-    return failed(f"{kind} dependency/config present but not wired into the application (import-only).")
+    return failed(f"{kind} dependency/config present but not wired into the "
+                  f"application (import-only).")
 
 
 _LOG_DEPS = ["structlog", "loguru", "pino", "winston", "bunyan", "zap", "go.uber.org/zap",
@@ -50,8 +52,10 @@ def tracing(ctx):
     return _two_part("Distributed tracing", cfg, agrep(ctx, _TRACE_WIRING))
 
 
-_METRIC_DEPS = ["prometheus-client", "prom-client", "micrometer", "go.opentelemetry.io/otel/metric",
-                "github.com/prometheus/client_golang", "statsd", "datadog", "opentelemetry-exporter-prometheus"]
+_METRIC_DEPS = ["prometheus-client", "prom-client", "micrometer",
+                "go.opentelemetry.io/otel/metric",
+                "github.com/prometheus/client_golang", "statsd", "datadog",
+                "opentelemetry-exporter-prometheus"]
 _METRIC_CONFIG = ["prometheus.y*ml", "**/prometheus.y*ml", "**/servicemonitor*.y*ml"]
 _METRIC_WIRING = [r"Counter\(|Histogram\(|Gauge\(|Summary\(|/metrics|make_asgi_app|"
                   r"MeterProvider|meter\.|prometheus\.|promhttp|registry\.(register|MustRegister)"]
@@ -78,7 +82,8 @@ def health_endpoints(ctx):
         if "livenessprobe" in low or "readinessprobe" in low:
             return passed("Health/readiness probe declared in platform config.",
                           [ev("k8s probe", source=wf)])
-    return failed("No health/readiness endpoint in code or platform probe (a doc mention is not enough).")
+    return failed("No health/readiness endpoint in code or platform probe "
+                  "(a doc mention is not enough).")
 
 
 _ALERT_FILES = ["**/*.rules.y*ml", "**/alerts*.y*ml", "**/alertmanager.y*ml", "**/*alert*.y*ml",
@@ -95,7 +100,8 @@ def alerting_rules(ctx):
     return failed("No owned alerting rules (alert config with owner/team/service/runbook).")
 
 
-_DASH_FILES = ["**/dashboards/*.json", "**/*dashboard*.json", "**/*dashboard*.tf", "grafana/**/*.json"]
+_DASH_FILES = ["**/dashboards/*.json", "**/*dashboard*.json", "**/*dashboard*.tf",
+               "grafana/**/*.json"]
 
 
 def dashboards_as_code(ctx):
@@ -104,9 +110,11 @@ def dashboards_as_code(ctx):
     for f in ctx.static.glob(_DASH_FILES):
         low = (ctx.static.read(f) or "").lower()
         if "panels" in low and any(k in low for k in ("targets", "expr", "datasource", "query")):
-            return passed("Dashboards defined as code with metric targets.", [ev("dashboard", source=f)])
+            return passed("Dashboards defined as code with metric targets.",
+                           [ev("dashboard", source=f)])
         if "grafana_dashboard" in low:
-            return passed("Dashboard provisioned as code (Terraform).", [ev("dashboard tf", source=f)])
+            return passed("Dashboard provisioned as code (Terraform).",
+                           [ev("dashboard tf", source=f)])
     return failed("No dashboards-as-code with metric targets (screenshots/docs do not count).")
 
 
@@ -177,7 +185,8 @@ _SLO_TOOL_NAMES = ("openslo", "sloth", "nobl9", "sloctl", "pyrra")
 _SLO_WIRING_GLOBS = [
     ".github/workflows/*.yml", ".github/workflows/*.yaml",
     "Dockerfile", "**/Dockerfile", "**/Dockerfile.*",
-    "docker-compose.yml", "docker-compose.yaml", "**/docker-compose*.yml", "**/docker-compose*.yaml",
+    "docker-compose.yml", "docker-compose.yaml", "**/docker-compose*.yml",
+    "**/docker-compose*.yaml",
     "**/Chart.yaml", "**/kustomization.yaml",
     "deploy/**", "k8s/**", "kubernetes/**", "helm/**",
     "Makefile", "Taskfile.yml", "Taskfile.yaml",

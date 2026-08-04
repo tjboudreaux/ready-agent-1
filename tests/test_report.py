@@ -4,9 +4,11 @@ import unittest
 from contextlib import redirect_stdout
 from xml.etree import ElementTree as ET
 
-from readiness import cli, report as report_mod
+from readiness import cli
+from readiness import report as report_mod
 from readiness.model import CriterionResult, Evidence, Report, Status
 from readiness.run import analyze
+
 from tests._util import make_repo, rmtree
 
 BARE = {"README.md": "# x"}
@@ -46,10 +48,14 @@ class TestMarkdown(unittest.TestCase):
                      registry_version="0.3.0", detector_version="0.3.0")
         rep.results = [
             CriterionResult(id="docs.readme", title="README", pillar="Documentation", level=1,
-                            scope="repository", gating=True, status=Status.FAIL, rationale="missing",
+                            scope="repository"
+                                  , gating=True, status=Status.FAIL, rationale="missing",
                             passed_apps=0, evaluated_apps=1),
-            CriterionResult(id="loop.loop_runs_dir", title="Loop Run Log README", pillar="Documentation", level=2,
-                            scope="repository", gating=False, status=Status.FAIL, rationale="missing loop log",
+            CriterionResult(id=
+                "loop.loop_runs_dir", title="Loop Run Log README", pillar="Documentation", level=2,
+                            scope=
+                                "repository", gating=False, status=Status.FAIL, rationale="missing "
+                                    "loop log",
                             fix_kind="scaffold", passed_apps=0, evaluated_apps=1),
         ]
         md = report_mod.render_markdown(rep)
@@ -79,7 +85,8 @@ class TestGithub(unittest.TestCase):
                                                           source="src/big,file.py")])]
         gh = report_mod.render_github(rep)
         self.assertIn(
-            "::warning title=Readiness%3A Large File,file=src/big%2Cfile.py::src/big,file.py is huge",
+            "::warning title=Readiness%3A Large File,file=src/big%2Cfile.py::src/big,file.py is "
+            "huge",
             gh,
         )
 
@@ -126,7 +133,9 @@ class TestSarif(unittest.TestCase):
         res = doc["runs"][0]["results"]
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0]["ruleId"], "style.large_file")
-        self.assertEqual(res[0]["locations"][0]["physicalLocation"]["artifactLocation"]["uri"], "src/big.py")
+        self.assertEqual(
+                         res[0]["locations"][0]["physicalLocation"]["artifactLocation"]["uri"],
+                         "src/big.py")
 
     def test_non_gating_failures_omitted_from_sarif(self):
         rep = Report(project_path=".", schema_version="1", engine_version="0.3.0",
@@ -193,7 +202,8 @@ class TestRenderCoverage(unittest.TestCase):
 
     def test_github_annotation_with_source_skips_non_file_evidence(self):
         r = CriterionResult(id="docs.api_schema_docs", title="API Schema", pillar="Docs", level=3,
-                            scope="repository", gating=True, status=Status.FAIL, rationale="missing",
+                            scope="repository"
+                                  , gating=True, status=Status.FAIL, rationale="missing",
                             evidence=[Evidence(summary="api", source="repos/o/r"),
                                       Evidence(summary="schema", source="src/openapi.yaml")])
         gh = report_mod.render_github(self._rep([r]))
@@ -203,9 +213,11 @@ class TestRenderCoverage(unittest.TestCase):
         ev = [Evidence(summary="x", source="src/a.py")]
         results = [
             CriterionResult(id="x.y", title="X", pillar="P", level=2, scope="application",
-                            gating=True, status=Status.FAIL, rationale="r", evidence=ev, app_path="a"),
+                            gating=
+                                True, status=Status.FAIL, rationale="r", evidence=ev, app_path="a"),
             CriterionResult(id="x.y", title="X", pillar="P", level=2, scope="application",
-                            gating=True, status=Status.FAIL, rationale="r", evidence=ev, app_path="b"),
+                            gating=
+                                True, status=Status.FAIL, rationale="r", evidence=ev, app_path="b"),
         ]
         doc = json.loads(report_mod.render_sarif(self._rep(results)))
         rule_ids = [ru["id"] for ru in doc["runs"][0]["tool"]["driver"]["rules"]]
@@ -214,7 +226,8 @@ class TestRenderCoverage(unittest.TestCase):
 
     def test_judgment_disclosure_both(self):
         results = [
-            CriterionResult(id="judgment.naming_consistency", title="Naming Consistency", pillar="Style",
+            CriterionResult(id=
+                "judgment.naming_consistency", title="Naming Consistency", pillar="Style",
                             level=2, scope="repository", gating=False, status=Status.UNKNOWN),
             CriterionResult(id="judgment.pii_handling", title="PII Handling", pillar="Security",
                             level=3, scope="repository", gating=False, status=Status.WAIVED,
@@ -262,7 +275,8 @@ class TestCliFormats(unittest.TestCase):
     def test_fail_on_hits_real_failure(self):
         root = make_repo(BARE)
         self.addCleanup(rmtree, root)
-        code, _ = self._run(["report", "--project", str(root), "--no-github", "--fail-on", "docs.readme"])
+        code, _ = self._run(["report", "--project", str(root), "--no-github"
+            , "--fail-on", "docs.readme"])
         self.assertEqual(code, 1)
 
     def test_min_level_on_real_score(self):

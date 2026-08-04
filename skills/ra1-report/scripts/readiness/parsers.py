@@ -11,17 +11,16 @@ import configparser
 import json
 import tomllib
 from pathlib import Path
-from typing import Optional
 
 
-def read_text(path) -> Optional[str]:
+def read_text(path) -> str | None:
     try:
         return Path(path).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
 
 
-def load_json(path) -> Optional[object]:
+def load_json(path) -> object | None:
     text = read_text(path)
     if text is None:
         return None
@@ -110,7 +109,7 @@ def strip_jsonc(text: str) -> str:
     return "".join(result)
 
 
-def load_jsonc(path) -> Optional[object]:
+def load_jsonc(path) -> object | None:
     text = read_text(path)
     if text is None:
         return None
@@ -120,7 +119,7 @@ def load_jsonc(path) -> Optional[object]:
         return None
 
 
-def load_toml(path) -> Optional[dict]:
+def load_toml(path) -> dict | None:
     try:
         with open(path, "rb") as fh:
             return tomllib.load(fh)
@@ -128,7 +127,7 @@ def load_toml(path) -> Optional[dict]:
         return None
 
 
-def load_ini(path) -> Optional[configparser.ConfigParser]:
+def load_ini(path) -> configparser.ConfigParser | None:
     text = read_text(path)
     if text is None:
         return None

@@ -13,7 +13,11 @@ def _engine(level, passed, total, results, project_type="library"):
         "engine_version": "0.1.0",
         "registry_version": "0.1.0",
         "project_path": "/tmp/example",
-        "detection": {"project_type": project_type, "confidence": 0.9, "apps": [{"path": ".", "languages": ["python"]}]},
+        "detection": {
+            "project_type": project_type,
+            "confidence": 0.9,
+            "apps": [{"path": ".", "languages": ["python"]}],
+        },
         "score": {
             "level": level,
             "level_name": _LEVEL_NAMES[level],

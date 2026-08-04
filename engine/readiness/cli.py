@@ -14,8 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from readiness import version                       # noqa: E402
-from readiness.run import analyze                   # noqa: E402
+from readiness import version  # noqa: E402
+from readiness.run import analyze  # noqa: E402
 
 _SUN = ["  ▟█████▙ ", " ▐███████▌", "  ╲╲╲┃╱╱╱ "]
 
@@ -113,9 +113,13 @@ def cmd_formats(args) -> int:
 
 
 def cmd_history_list(args) -> int:
-    from readiness import history, report as report_mod
+    from readiness import history
+    from readiness import report as report_mod
     payload, reason = history.list_history(args.project, history_dir=args.history_dir)
-    if payload is None:  # pragma: no cover - unreachable: list has no --require-origin, local id always resolves
+    # Unreachable: `history list` has no --require-origin and a local id always resolves.
+    # The pragma MUST stay on the `if` line -- coverage only honours it there, and moving it
+    # to its own line silently re-enables the branch and breaks the 100%-on-touched gate.
+    if payload is None:  # pragma: no cover
         sys.stderr.write(f"ra1 history: {reason}\n")
         return 1
     if args.format == "markdown":
@@ -126,7 +130,8 @@ def cmd_history_list(args) -> int:
 
 
 def cmd_history_diff(args) -> int:
-    from readiness import history, report as report_mod
+    from readiness import history
+    from readiness import report as report_mod
     old = history.load_snapshot(args.project, args.from_id, history_dir=args.history_dir)
     new = history.load_snapshot(args.project, args.to_id, history_dir=args.history_dir)
     if old is None or new is None:
@@ -151,21 +156,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_report = sub.add_parser("report", help="Readiness scan — score the repo (clear the gates)")
     p_report.add_argument("--project", default=".", help="Path to the repo (default: cwd)")
-    p_report.add_argument("--format", default="json", help="Comma list: json,markdown,github,junit,sarif")
+    p_report.add_argument("--format", default="json",
+                          help="Comma list: json,markdown,github,junit,sarif")
     p_report.add_argument("--out", default=None, help="Directory to write report artifacts")
     p_report.add_argument("--no-github", action="store_true", help="Disable T2 GitHub API checks")
     p_report.add_argument("--exec", dest="exec_t3", action="store_true",
-                          help="Opt in to T3 execution (sandboxed copy, allowlisted test cmd; advisory only)")
+                          help="Opt in to T3 execution (sandboxed copy, allowlisted test cmd; "
+                               "advisory only)")
     p_report.add_argument("--exec-timeout", type=int, default=120,
                           help="T3 execution timeout in seconds (default 120)")
-    p_report.add_argument("--min-level", type=int, default=None, help="Exit non-zero if below this level")
-    p_report.add_argument("--fail-on", nargs="*", default=None, help="Exit non-zero if these criterion ids fail")
+    p_report.add_argument("--min-level", type=int, default=None,
+                          help="Exit non-zero if below this level")
+    p_report.add_argument("--fail-on", nargs="*", default=None,
+                          help="Exit non-zero if these criterion ids fail")
     p_report.add_argument("--require-origin", action="store_true",
                           help="Fail if the repo has no 'origin' remote (Droid prerequisite)")
     p_report.add_argument("--store-history", action="store_true",
                           help="Write timestamped local history keyed by repository identity")
     p_report.add_argument("--history-dir", default=None,
-                          help="History root (default <out>/history, else <project>/.agents/readiness/history)")
+                          help="History root (default <out>/history, else "
+                               "<project>/.agents/readiness/history)")
     p_report.set_defaults(func=cmd_report)
 
     p_detect = sub.add_parser("detect", help="Print project-type detection")
@@ -180,7 +190,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_fix.add_argument("--latest", action="store_true",
                        help="Resolve the latest stored report by repository identity")
     p_fix.add_argument("--history-dir", default=None,
-                       help="History root for --latest (default <project>/.agents/readiness/history)")
+                       help="History root for --latest "
+                            "(default <project>/.agents/readiness/history)")
     p_fix.add_argument("--include", nargs="*", default=None,
                        help="Only remediate these criterion ids (authoritative filter)")
     p_fix.add_argument("--exclude", nargs="*", default=None,

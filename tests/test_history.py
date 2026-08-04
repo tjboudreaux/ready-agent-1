@@ -78,13 +78,16 @@ class TestRepoIdentity(unittest.TestCase):
         self.assertNotIn(str(tmp), json.dumps(ident))
 
     def test_require_origin_without_origin_returns_none(self):
-        self.assertIsNone(history.repo_identity("/tmp/x", require_origin=True, git_runner=_no_origin()))
+        self.assertIsNone(history.repo_identity(
+                                                "/tmp/x",
+                                                require_origin=True,
+                                                git_runner=_no_origin()))
 
     def test_origin_and_local_hashes_differ(self):
         o = history.repo_identity("/tmp/x", git_runner=_origin("https://github.com/o/r.git"))
         with tempfile.TemporaryDirectory() as tmp:
-            l = history.repo_identity(tmp, git_runner=_no_origin())
-        self.assertNotEqual(o["identity_hash"], l["identity_hash"])
+            ident = history.repo_identity(tmp, git_runner=_no_origin())
+        self.assertNotEqual(o["identity_hash"], ident["identity_hash"])
 
 
 class TestPaths(unittest.TestCase):
@@ -122,7 +125,13 @@ class TestIndex(unittest.TestCase):
             self.assertEqual(history.load_index(p), [])
 
 
-def _report(project, *, schema="2", detector="0.3.0", level=2, generated_at="2026-06-20T00:00:00+00:00"):
+def _report(
+            project,
+            *,
+            schema="2",
+            detector="0.3.0",
+            level=2,
+            generated_at="2026-06-20T00:00:00+00:00"):
     ident = history.repo_identity(project, git_runner=_no_origin())
     return {
         "schema_version": schema, "engine_version": "0.3.0", "registry_version": "0.3.0",
@@ -152,7 +161,10 @@ class TestStoreHistory(unittest.TestCase):
     def test_second_write_appends_and_is_immutable(self):
         with tempfile.TemporaryDirectory() as tmp:
             rep1 = _report(tmp, generated_at="2026-06-20T00:00:00+00:00", level=2)
-            rep2 = _report(tmp, generated_at="2026-06-20T00:00:00+00:00", level=3)  # same ts -> unique name
+            rep2 = _report(
+                           tmp,
+                           generated_at="2026-06-20T00:00:00+00:00",
+                           level=3)  # same ts -> unique name
             p1 = history.store_history(rep1, tmp)
             p2 = history.store_history(rep2, tmp)
             self.assertNotEqual(p1["snapshot"].name, p2["snapshot"].name)  # immutable, no clobber
@@ -162,7 +174,10 @@ class TestStoreHistory(unittest.TestCase):
 
 class TestResolveLatest(unittest.TestCase):
     def test_no_identity(self):
-        report, reason = history.resolve_latest("/tmp/x", require_origin=True, git_runner=_no_origin())
+        report, reason = history.resolve_latest(
+                                                "/tmp/x",
+                                                require_origin=True,
+                                                git_runner=_no_origin())
         self.assertIsNone(report)
         self.assertIn("origin", reason)
 
@@ -177,7 +192,9 @@ class TestResolveLatest(unittest.TestCase):
             ident = history.repo_identity(tmp, git_runner=_no_origin())
             bucket = history.history_root(tmp) / ident["identity_hash"]
             bucket.mkdir(parents=True)
-            (bucket / "index.json").write_text(json.dumps([{"timestamp": "t", "file": "gone.json"}]))
+            (bucket / "index.json").write_text(json.dumps([{
+                "timestamp": "t",
+                "file": "gone.json"}]))
             report, reason = history.resolve_latest(tmp, git_runner=_no_origin())
             self.assertIsNone(report)
             self.assertIn("unreadable", reason)
@@ -234,20 +251,35 @@ class TestDelta(unittest.TestCase):
 
 class TestListAndSnapshot(unittest.TestCase):
     def test_list_no_identity(self):
-        payload, reason = history.list_history("/tmp/x", require_origin=True, git_runner=_no_origin())
+        payload, reason = history.list_history(
+                                               "/tmp/x",
+                                               require_origin=True,
+                                               git_runner=_no_origin())
         self.assertIsNone(payload)
         self.assertIn("origin", reason)
 
     def test_list_and_load(self):
         with tempfile.TemporaryDirectory() as tmp:
-            history.store_history(_report(tmp, level=2, generated_at="2026-06-20T00:00:00+00:00"), tmp)
-            history.store_history(_report(tmp, level=3, generated_at="2026-06-21T00:00:00+00:00"), tmp)
+            history.store_history(_report(
+                                          tmp,
+                                          level=2,
+                                          generated_at="2026-06-20T00:00:00+00:00"), tmp)
+            history.store_history(_report(
+                                          tmp,
+                                          level=3,
+                                          generated_at="2026-06-21T00:00:00+00:00"), tmp)
             payload, reason = history.list_history(tmp, git_runner=_no_origin())
             self.assertEqual(reason, "")
             ids = [e["id"] for e in payload["entries"]]
             self.assertEqual(len(ids), 2)
-            self.assertEqual(history.load_snapshot(tmp, ids[-1], git_runner=_no_origin())["score"]["level"], 3)
-            self.assertEqual(history.load_snapshot(tmp, "latest", git_runner=_no_origin())["score"]["level"], 3)
+            self.assertEqual(history.load_snapshot(
+                tmp,
+                ids[-1],
+                git_runner=_no_origin())["score"]["level"], 3)
+            self.assertEqual(history.load_snapshot(
+                tmp,
+                "latest",
+                git_runner=_no_origin())["score"]["level"], 3)
             self.assertIsNone(history.load_snapshot(tmp, "nope", git_runner=_no_origin()))
 
     def test_load_no_identity(self):

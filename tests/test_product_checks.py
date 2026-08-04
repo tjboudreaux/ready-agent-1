@@ -3,6 +3,7 @@ import unittest
 
 from readiness.checks import product
 from readiness.model import Status
+
 from tests.test_checks import CheckCase
 
 
@@ -54,7 +55,8 @@ class TestFeatureFlags(CheckCase):
 class TestExperimentConfig(CheckCase):
     def test_pass_owned_registry(self):
         ctx = self.ctx({"experiments.yml":
-                        "checkout_color:\n  owner: growth\n  variants: [control, blue]\n  metric: conversion\n"})
+                        "checkout_color:\n  owner: growth\n  variants: [control, blue]\n  "
+                        "metric: conversion\n"})
         self.assertEqual(self.s(product.experiment_config(ctx)), Status.PASS)
 
     def test_fail_missing_fields(self):

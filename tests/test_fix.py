@@ -5,8 +5,9 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from readiness.fix import recipes
 from readiness import cli, history
+from readiness.fix import recipes
+
 from tests._util import make_repo, rmtree
 
 REPORT = {
@@ -28,7 +29,8 @@ LOOP_REPORT = {
         {"id": "loop.rules_index", "title": "Loop Rules Index", "status": "fail"},
         {"id": "loop.denylist", "title": "Loop Denylist", "status": "fail"},
         {"id": "loop.signal_schema", "title": "Signal Schema README", "status": "fail"},
-        {"id": "loop.pr_artifact_template", "title": "PR Artifact Evidence Template", "status": "fail"},
+        {"id": "loop.pr_artifact_template", "title": "PR Artifact Evidence Template"
+                                                     , "status": "fail"},
         {"id": "loop.skills_present", "title": "OMP Loop Skills", "status": "fail"},
         {"id": "loop.prompt_contracts", "title": "Loop Prompt Contracts", "status": "fail"},
         {"id": "loop.architecture_doc", "title": "Architecture Doc", "status": "fail"},
@@ -68,12 +70,22 @@ def _args(root, apply=False, force=False, report=None):
 
 class TestResolveScaffold(unittest.TestCase):
     def test_language_aware_and_static(self):
-        self.assertEqual(recipes.resolve_scaffold("style.linter_config", ["python"]), ("ruff.toml", "ruff.toml"))
-        self.assertEqual(recipes.resolve_scaffold("style.linter_config", ["npm"]), (".eslintrc.json", "eslintrc.json"))
-        self.assertEqual(recipes.resolve_scaffold("style.formatter", ["npm"]), (".prettierrc.json", "prettierrc.json"))
-        self.assertEqual(recipes.resolve_scaffold("style.formatter", ["python"]), ("ruff.toml", "ruff.toml"))
+        self.assertEqual(
+                         recipes.resolve_scaffold("style.linter_config", ["python"]),
+                         ("ruff.toml", "ruff.toml"))
+        self.assertEqual(
+                         recipes.resolve_scaffold("style.linter_config", ["npm"]),
+                         (".eslintrc.json", "eslintrc.json"))
+        self.assertEqual(
+                         recipes.resolve_scaffold("style.formatter", ["npm"]),
+                         (".prettierrc.json", "prettierrc.json"))
+        self.assertEqual(
+                         recipes.resolve_scaffold("style.formatter", ["python"]),
+                         ("ruff.toml", "ruff.toml"))
         self.assertEqual(recipes.resolve_scaffold("security.security_md", [])[0], "SECURITY.md")
-        self.assertEqual(recipes.resolve_scaffold("security.gitignore_comprehensive", [])[1], "__gitignore_append__")
+        self.assertEqual(
+                         recipes.resolve_scaffold("security.gitignore_comprehensive", [])[1],
+                         "__gitignore_append__")
         self.assertIsNone(recipes.resolve_scaffold("unknown.criterion", []))
 
     def test_loop_scaffolds_are_only_safe_four(self):
@@ -81,7 +93,9 @@ class TestResolveScaffold(unittest.TestCase):
             "loop.loop_runs_dir": ("loop-runs/README.md", "loop/loop-runs-README.md"),
             "loop.denylist": (".omp/rules/denylist.md", "loop/denylist.md"),
             "loop.signal_schema": ("signals/README.md", "loop/signals-README.md"),
-            "loop.pr_artifact_template": (".omp/commands/pr-artifact-template.md", "loop/pr-artifact-template.md"),
+            "loop.pr_artifact_template": (
+                                          ".omp/commands/pr-artifact-template.md",
+                                          "loop/pr-artifact-template.md"),
         }
         for cid, scaffold in expected.items():
             self.assertEqual(recipes.resolve_scaffold(cid, []), scaffold)
@@ -332,39 +346,48 @@ class TestFocusControls(unittest.TestCase):
                 | {g["id"] for g in plan["github"]} | set(plan["manual"]))
 
     def test_advisory_scaffold_auto_nonscaffold_excluded(self):
-        root = make_repo({}); self.addCleanup(rmtree, root)
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
         ids = self._ids(recipes.build_plan(root, self._report()))
         self.assertIn("loop.denylist", ids)
         self.assertNotIn("loop.rules_index", ids)
 
     def test_include_is_authoritative(self):
-        root = make_repo({}); self.addCleanup(rmtree, root)
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
         plan = recipes.build_plan(root, self._report(), focus={"include": ["style.linter_config"]})
         self.assertEqual(self._ids(plan), {"style.linter_config"})
 
     def test_include_overrides_advisory_rule(self):
-        root = make_repo({}); self.addCleanup(rmtree, root)
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
         plan = recipes.build_plan(root, self._report(), focus={"include": ["loop.rules_index"]})
         self.assertIn("loop.rules_index", self._ids(plan))
 
     def test_exclude_removes(self):
-        root = make_repo({}); self.addCleanup(rmtree, root)
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
         plan = recipes.build_plan(root, self._report(), focus={"exclude": ["style.linter_config"]})
         self.assertNotIn("style.linter_config", self._ids(plan))
 
     def test_pillar_exclude(self):
-        root = make_repo({}); self.addCleanup(rmtree, root)
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
         plan = recipes.build_plan(root, self._report(),
                                   focus={"pillar_exclude": {"Security & Governance"}})
         self.assertNotIn("security.branch_protection", self._ids(plan))
 
     def test_prioritize_orders_pillar_first(self):
-        root = make_repo({}); self.addCleanup(rmtree, root)
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
         report = {"detection": {"languages": ["python"]}, "results": [
             {"id": "style.linter_config", "status": "fail", "gating": True},
             {"id": "security.codeowners", "status": "fail", "gating": True},
         ]}
-        plan = recipes.build_plan(root, report, focus={"pillar_prioritize": {"Security & Governance"}})
+        plan = recipes.build_plan(
+                                  root,
+                                  report,
+                                  focus={"pillar_prioritize": {"Security & Governance"}})
         self.assertEqual(plan["auto"][0]["id"], "security.codeowners")
 
 
@@ -407,27 +430,32 @@ class TestFixCliFocus(unittest.TestCase):
         return ident, report
 
     def test_instructions_unsupported_note_and_verify(self):
-        root = make_repo({}); self.addCleanup(rmtree, root)
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
         _, report = self._seed(root)
         history.store_history(report, str(root))
-        code, out = _cli(["fix", "--project", str(root), "--latest", "--instructions", "make it nice"])
+        code, out = _cli(["fix", "--project", str(root), "--latest", "--instructions"
+            , "make it nice"])
         self.assertEqual(code, 0)
         self.assertIn("## Notes", out)
         self.assertIn("not recognized", out)
         self.assertIn("## Verify", out)
 
     def test_exclude_via_cli(self):
-        root = make_repo({}); self.addCleanup(rmtree, root)
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
         _, report = self._seed(root)
         history.store_history(report, str(root))
-        code, out = _cli(["fix", "--project", str(root), "--latest", "--exclude", "style.linter_config"])
+        code, out = _cli(["fix", "--project", str(root), "--latest", "--exclude", "style.linter_"
+            "config"])
         self.assertEqual(code, 0)
         self.assertNotIn("ruff.toml", out)
 
     def test_custom_store_needs_history_dir(self):
         import io
         from contextlib import redirect_stderr
-        root = make_repo({}); self.addCleanup(rmtree, root)
+        root = make_repo({})
+        self.addCleanup(rmtree, root)
         custom = root / "custom"
         _, report = self._seed(root)
         history.store_history(report, str(root), out=str(custom))

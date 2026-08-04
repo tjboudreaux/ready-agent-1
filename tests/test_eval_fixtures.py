@@ -1,12 +1,21 @@
 """Labeled-fixture eval pipeline: classification, thresholds, graduation gate, parity."""
 import unittest
 
-from evals.contracts import gating_total_matches
-from evals.fixtures import (build_fixture, canned_github_runner, check_thresholds, compare,
-                            load_fixtures, load_thresholds, materialize, run_fixture,
-                            score_fixtures)
-from evals.parity import compare_parity, score_parity
 from readiness.score import load_registry
+
+from evals.contracts import gating_total_matches
+from evals.fixtures import (
+    build_fixture,
+    canned_github_runner,
+    check_thresholds,
+    compare,
+    load_fixtures,
+    load_thresholds,
+    materialize,
+    run_fixture,
+    score_fixtures,
+)
+from evals.parity import compare_parity, score_parity
 
 
 class TestCompare(unittest.TestCase):
@@ -147,6 +156,7 @@ class TestThresholdRates(unittest.TestCase):
 class TestEngineInvariants(unittest.TestCase):
     def _analyze(self, files):
         import tempfile
+
         from readiness.run import analyze
         with tempfile.TemporaryDirectory(prefix="ra1-inv-") as tmp:
             materialize(build_fixture("inv", files), tmp)

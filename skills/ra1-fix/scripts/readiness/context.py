@@ -8,9 +8,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .collectors.static import StaticCollector
 from .collectors.git import GitCollector
 from .collectors.github import GithubCollector
+from .collectors.static import StaticCollector
 from .model import App, Detection
 
 

@@ -66,9 +66,12 @@ class TestChecks(unittest.TestCase):
 
     def test_no_fabricated_pass(self):
         engine = {"score": self.score, "results": [{"id": "security.codeowners", "status": "fail"}]}
-        flip = ('```json\n' + json.dumps({**self.score, "results": [{"id": "security.codeowners", "status": "pass"}]}) + '\n```')
+        flip = ('```json\n' + json.dumps({**self.score, "results": [{"id": "security.codeowners"
+            , "status": "pass"}]}) + '\n```')
         self.assertFalse(contracts.no_fabricated_pass(engine, flip))
-        self.assertTrue(contracts.no_fabricated_pass(engine, good_output(self.engine)))  # no results block
+        self.assertTrue(contracts.no_fabricated_pass(
+            engine,
+            good_output(self.engine)))  # no results block
 
     def test_no_fabricated_pass_results_present_but_clean(self):
         engine = {"score": self.score, "results": [{"id": "security.codeowners", "status": "fail"}]}
@@ -105,10 +108,14 @@ class TestAutonomyClaim(unittest.TestCase):
         engine = {"score": {"level": 3}}
         self.assertFalse(contracts.no_autonomy_claim(
             engine, "This repo is ready for unattended autonomous operation."))
-        self.assertTrue(contracts.no_autonomy_claim(engine, "Solid coverage; consider tracing next."))
+        self.assertTrue(contracts.no_autonomy_claim(
+            engine,
+            "Solid coverage; consider tracing next."))
 
     def test_allows_at_level5(self):
-        self.assertTrue(contracts.no_autonomy_claim({"score": {"level": 5}}, "Cleared for autonomy."))
+        self.assertTrue(contracts.no_autonomy_claim(
+            {"score": {"level": 5}},
+            "Cleared for autonomy."))
 
     def test_part_of_default_checks(self):
         checks = contracts.run_contract_checks({"score": {"level": 2}}, "ready for autonomy now")

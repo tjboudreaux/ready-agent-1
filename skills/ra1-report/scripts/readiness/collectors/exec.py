@@ -23,7 +23,6 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 ALLOWED_TEST_CMDS = {
     "pytest": ["pytest", "-q"],
@@ -53,7 +52,7 @@ class ExecCollector:
         self._runner = runner or options.get("exec_runner") or self._default_runner
         self._cache: dict = {}
 
-    def run_allowed(self, allowlist, cmd, app_path: str = ".") -> Optional[dict]:
+    def run_allowed(self, allowlist, cmd, app_path: str = ".") -> dict | None:
         """Run an allowlisted ``cmd`` under the contract.
 
         ``None`` when disabled; ``{"allowed": False, ...}`` when ``cmd`` is not on ``allowlist``
@@ -68,15 +67,15 @@ class ExecCollector:
             self._cache[key] = self._runner(argv, app_path)
         return {"cmd": cmd, "allowed": True, "argv": argv, **self._cache[key]}
 
-    def run_test_cmd(self, test_cmd: str, app_path: str = ".") -> Optional[dict]:
+    def run_test_cmd(self, test_cmd: str, app_path: str = ".") -> dict | None:
         """Execute the detected test command under the contract (see ``run_allowed``)."""
         return self.run_allowed(ALLOWED_TEST_CMDS, test_cmd, app_path)
 
-    def run_smoke_cmd(self, smoke_cmd: str, app_path: str = ".") -> Optional[dict]:
+    def run_smoke_cmd(self, smoke_cmd: str, app_path: str = ".") -> dict | None:
         """Execute a declared smoke/healthcheck command under the contract."""
         return self.run_allowed(ALLOWED_SMOKE_CMDS, smoke_cmd, app_path)
 
-    def run_build_cmd(self, build_cmd: str, app_path: str = ".") -> Optional[dict]:
+    def run_build_cmd(self, build_cmd: str, app_path: str = ".") -> dict | None:
         """Execute an environment build command (e.g. devcontainer build) under the contract."""
         return self.run_allowed(ALLOWED_BUILD_CMDS, build_cmd, app_path)
 

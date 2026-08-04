@@ -2,17 +2,17 @@
 import unittest
 from types import SimpleNamespace
 
-from readiness.checks.testing import tests_pass
-from readiness.collectors.exec import ALLOWED_TEST_CMDS, ExecCollector
-from readiness.run import analyze
-from tests._util import make_repo, rmtree
-from readiness.checks.testing import behavioral_smoke
 from readiness.checks.devenv import devcontainer_runnable
-from readiness.collectors.static import StaticCollector
+from readiness.checks.testing import behavioral_smoke, tests_pass
+from readiness.collectors.exec import ALLOWED_TEST_CMDS, ExecCollector
 from readiness.collectors.git import GitCollector
 from readiness.collectors.github import GithubCollector
+from readiness.collectors.static import StaticCollector
 from readiness.context import Context
 from readiness.detect import detect
+from readiness.run import analyze
+
+from tests._util import make_repo, rmtree
 
 
 def _counting_runner(result=None):
@@ -148,7 +148,9 @@ class TestBehavioralSmoke(unittest.TestCase):
         self.assertEqual(behavioral_smoke(ctx).status.value, "skipped")
 
     def test_skips_when_disabled(self):
-        root, ctx = _real_ctx({"package.json": '{"scripts":{"smoke":"node s.js"}}'}, _ex(enabled=False))
+        root, ctx = _real_ctx(
+                              {"package.json": '{"scripts":{"smoke":"node s.js"}}'},
+                              _ex(enabled=False))
         self.addCleanup(rmtree, root)
         self.assertEqual(behavioral_smoke(ctx).status.value, "skipped")
 

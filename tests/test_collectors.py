@@ -1,16 +1,19 @@
 import unittest
 
-from readiness.collectors.static import StaticCollector
 from readiness.collectors.git import GitCollector
 from readiness.collectors.github import GithubCollector
-from tests._util import make_repo, rmtree, fake_runner
+from readiness.collectors.static import StaticCollector
+
+from tests._util import fake_runner, make_repo, rmtree
 
 
 class TestStaticCollector(unittest.TestCase):
     def setUp(self):
         self.root = make_repo({
-            "package.json": '{"name":"x","dependencies":{"express":"^4"},"devDependencies":{"eslint":"^9"}}',
-            "pyproject.toml": '[project]\nname="y"\ndependencies=["requests>=2"]\n[tool.ruff]\nline-length=100\n',
+            "package.json": '{"name":"x","dependencies":{"express":"^4"},"devDependencies":'
+                            '{"eslint":"^9"}}',
+            "pyproject.toml": '[project]\nname="y"\ndependencies=["requests>=2"]\n[tool.ruff]\n'
+                              'line-length=100\n',
             ".eslintrc.json": "{}",
             ".gitignore": "node_modules/\n# comment\n.env\n",
             "package-lock.json": "{}",
@@ -66,8 +69,16 @@ class TestGitCollector(unittest.TestCase):
             ("rev-parse", "HEAD"): "abc123\n",
             ("rev-parse", "--abbrev-ref", "HEAD"): "main\n",
             ("rev-list", "--count", "HEAD"): "42\n",
-            ("log", "-3", "--format=%cI"): "2026-06-01T00:00:00+00:00\n2026-05-01T00:00:00+00:00\n2026-04-01T00:00:00+00:00\n",
-            ("log", "-100", "--format=%an%n%ae%n%B%n==="): "Travis\nt@x\nfix\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n===\n",
+            (
+             "log",
+             "-3",
+             "--format=%cI"
+             ): "2026-06-01T00:00:00+00:00\n2026-05-01T00:00:00+00:00\n2026-04-01T00:00:00+00:00\n",
+            (
+             "log",
+             "-100",
+             "--format=%an%n%ae%n%B%n==="
+             ): "Travis\nt@x\nfix\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n===\n",
             ("tag",): "v1.0.0\nv1.1.0\n",
             ("log", "-1", "--format=%cI", "--", "README.md"): "2026-06-01T00:00:00+00:00\n",
         })
@@ -131,10 +142,18 @@ class TestGithubCollector(unittest.TestCase):
             ),
             ("api", "repos/o/r/topics"): '{"names":["agent-skills","python"]}',
             ("api", "repos/o/r/branches/main/protection"): '{"required_pull_request_reviews":{}}',
-            ("api", "repos/o/r/actions/workflows"): '{"workflows":[{"name":"ci","path":".github/workflows/ci.yml"}]}',
-            ("api", "repos/o/r/actions/runs?per_page=20"): '{"workflow_runs":[{"conclusion":"success"}]}',
+            (
+             "api",
+             "repos/o/r/actions/workflows"
+             ): '{"workflows":[{"name":"ci","path":".github/workflows/ci.yml"}]}',
+            (
+             "api",
+             "repos/o/r/actions/runs?per_page=20"): '{"workflow_runs":[{"conclusion":"success"}]}',
             ("api", "repos/o/r/labels?per_page=100"): '[{"name":"bug"},{"name":"enhancement"}]',
-            ("api", "repos/o/r/issues?state=open&per_page=50"): '[{"number":1,"labels":[{"name":"bug"}]},{"number":2,"pull_request":{}}]',
+            (
+             "api",
+             "repos/o/r/issues?state=open&per_page=50"
+             ): '[{"number":1,"labels":[{"name":"bug"}]},{"number":2,"pull_request":{}}]',
         }
         if extra:
             responses.update(extra)
@@ -310,7 +329,8 @@ class TestGithubCollectorCoverageGaps(unittest.TestCase):
         self.assertEqual([p["number"] for p in merged], [1, 2, 3])
 
         # Exhaust all three pages without early return or empty-page break.
-        page2 = [{"number": 10, "merged_at": "2026-06-02T00:00:00Z"}, {"number": 11, "merged_at": None}]
+        page2 = [{"number": 10, "merged_at": "2026-06-02T00:00:00Z"
+                                             }, {"number": 11, "merged_at": None}]
         page3 = [{"number": 12, "merged_at": "2026-06-03T00:00:00Z"}, "skip"]
         gh2 = GithubCollector("/tmp/x", runner=fake_runner({
             ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner":"o/r"}',

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from ._helpers import adep, aglob, agrep, ev, failed, passed
 
-
 _ANALYTICS_DEPS = ["segment", "@segment/analytics-node", "analytics-node", "amplitude",
                    "@amplitude/analytics-node", "mixpanel", "posthog", "posthog-node",
                    "rudder-sdk-js", "@rudderstack/rudder-sdk-node"]
@@ -41,12 +40,14 @@ def feature_flags(ctx):
     wiring = agrep(ctx, _FLAG_WIRING)
     if cfg and wiring:
         return passed("Feature flags: provider/config plus in-code flag evaluation.",
-                      [ev("flag provider/config", source=str(cfg)), ev("flag evaluation", source=str(wiring))])
+                      [ev("flag provider/config", source=str(cfg)),
+                       ev("flag evaluation", source=str(wiring))])
     if not cfg and not wiring:
         return failed("No feature-flag tooling (provider/config + in-code evaluation).")
     if not cfg:
         return failed("Flag evaluation referenced but no provider/config configured.")
-    return failed("Feature-flag provider/config present but no in-code evaluation (docs/config only).")
+    return failed("Feature-flag provider/config present but no in-code evaluation "
+                  "(docs/config only).")
 
 
 _EXPERIMENT_FILES = ["experiments.y*ml", "experiments.json", "**/experiments/*.y*ml",
@@ -83,9 +84,11 @@ def error_to_insight(ctx):
             break
     if tracker and integ:
         return passed("Error-to-insight pipeline: error tracker plus issue integration.",
-                      [ev("error tracker", source=str(tracker)), ev("issue integration", source=integ)])
+                      [ev("error tracker", source=str(tracker)),
+                       ev("issue integration", source=integ)])
     if not tracker and not integ:
         return failed("No error-to-insight pipeline (error tracker + issue-tracker integration).")
     if not tracker:
         return failed("Issue integration referenced but no error tracker configured.")
-    return failed("Error tracker present but no issue-tracker integration (errors not routed to work).")
+    return failed("Error tracker present but no issue-tracker integration "
+                  "(errors not routed to work).")

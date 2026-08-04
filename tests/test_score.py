@@ -1,7 +1,7 @@
 import json
 import tempfile
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 from readiness import judgments, score
 from readiness.collectors.git import GitCollector
@@ -9,11 +9,13 @@ from readiness.collectors.github import GithubCollector
 from readiness.collectors.static import StaticCollector
 from readiness.detect import detect
 from readiness.model import CriterionResult, Status
-from tests._util import make_repo, rmtree, fake_runner
+
+from tests._util import fake_runner, make_repo, rmtree
 
 RICH_GH = {
     ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner":"o/r"}',
-    ("api", "repos/o/r"): '{"default_branch":"main","topics":["agent-skills"],"security_and_analysis":{"secret_scanning":{"status":"enabled"}}}',
+    ("api", "repos/o/r"): '{"default_branch":"main","topics":["agent-skills"],'
+                          '"security_and_analysis":{"secret_scanning":{"status":"enabled"}}}',
     ("api", "repos/o/r/topics"): '{"names":["agent-skills"]}',
     ("api", "repos/o/r/branches/main/protection"): '{"required_pull_request_reviews":{}}',
     ("api", "repos/o/r/actions/workflows"): '{"workflows":[{"name":"ci"}]}',
@@ -32,11 +34,14 @@ RICH_GIT = {
 }
 
 RICH_FILES = {
-    "README.md": "# Project\n\n## Setup\n\n```\nnpm install\n```\n\n## Usage\n\n" + ("Detailed docs. " * 30),
+    "README.md": "# Project\n\n## Setup\n\n```\nnpm install\n```\n\n## Usage\n\n"
+                  + ("Detailed docs. " * 30),
     "AGENTS.md": "# Agents\n\n## Build\n\nnpm test\n\n## Conventions\n\nUse TS.\n",
     ".gitignore": ".env\nnode_modules/\n__pycache__/\ndist/\n",
     "package-lock.json": "{}",
-    "package.json": '{"name":"app","dependencies":{"express":"^4"},"devDependencies":{"eslint":"^9","prettier":"^3","typescript":"^5"},"scripts":{"test":"jest"},"lint-staged":{}}',
+    "package.json": '{"name":"app","dependencies":{"express":"^4"},"devDependencies":{"eslint":'
+                    '"^9","prettier":"^3","typescript":"^5"},"scripts":{"test":"jest"},"lint-'
+                    'staged":{}}',
     ".eslintrc.json": "{}",
     ".prettierrc": "{}",
     "tsconfig.json": '{"compilerOptions":{"strict":true}}',
@@ -148,7 +153,9 @@ class TestWaivers(unittest.TestCase):
 
     def test_expired_waiver_reactivates(self):
         waivers = [{"id": "docs.readme", "reason": "x", "owner": "t", "expires": "2020-01-01"}]
-        root, results, _ = _evaluate({"README.md": "# x"}, options={"waivers": waivers, "now": "2026-06-01"})
+        root, results, _ = _evaluate(
+                                     {"README.md": "# x"},
+                                     options={"waivers": waivers, "now": "2026-06-01"})
         self.addCleanup(rmtree, root)
         r = next(r for r in results if r.id == "docs.readme")
         self.assertEqual(r.status, Status.FAIL)
@@ -208,7 +215,11 @@ class TestLoopOptIn(unittest.TestCase):
             "decide": "deterministic",
             "gating": False,
             "check": "build.deps_pinned",
-            "applies_when": {"project_types": ["*"], "languages": ["*"], "requires": [], "opt_in": "loop_ready"},
+            "applies_when": {
+                             "project_types": ["*"],
+                             "languages": ["*"],
+                             "requires": [],
+                             "opt_in": "loop_ready"},
             "engine_min_version": "0.3.0",
         }]
         reg = self._registry_file(registry)
@@ -217,18 +228,32 @@ class TestLoopOptIn(unittest.TestCase):
         self.addCleanup(rmtree, root)
         static = StaticCollector(root)
         det = detect(root, static)
-        results, _summary = score.evaluate(root, det, static, GitCollector(root), GithubCollector(root), {"registry_path": str(reg)})
+        results, _summary = score.evaluate(
+                                           root,
+                                           det,
+                                           static,
+                                           GitCollector(root),
+                                           GithubCollector(root),
+                                           {"registry_path": str(reg)})
         self.assertEqual(results[0].status, Status.SKIPPED)
         self.assertEqual(results[0].rationale, "not opted into loop readiness")
 
         opted = make_repo({
             "README.md": "# x\n",
-            ".agents/readiness/config.json": json.dumps({"schema_version": "1", "loop_ready": True}),
+            ".agents/readiness/config.json": json.dumps({
+                "schema_version": "1",
+                "loop_ready": True}),
         })
         self.addCleanup(rmtree, opted)
         static = StaticCollector(opted)
         det = detect(opted, static)
-        results, _summary = score.evaluate(opted, det, static, GitCollector(opted), GithubCollector(opted), {"registry_path": str(reg)})
+        results, _summary = score.evaluate(
+                                           opted,
+                                           det,
+                                           static,
+                                           GitCollector(opted),
+                                           GithubCollector(opted),
+                                           {"registry_path": str(reg)})
         self.assertEqual(results[0].status, Status.PASS)
 
     def test_real_loop_criteria_skip_when_not_opted_in(self):
@@ -245,13 +270,18 @@ class TestLoopOptIn(unittest.TestCase):
         root_out, out_results, out_summary = _evaluate(RICH_FILES, RICH_GH, RICH_GIT)
         self.addCleanup(rmtree, root_out)
         root_in, in_results, in_summary = _evaluate(
-            {**RICH_FILES, ".agents/readiness/config.json": json.dumps({"schema_version": "1", "loop_ready": True})},
+            {**RICH_FILES, ".agents/readiness/config.json": json.dumps({
+                "schema_version": "1",
+                "loop_ready": True})},
             RICH_GH,
             RICH_GIT,
         )
         self.addCleanup(rmtree, root_in)
-        self.assertTrue(any(r.id.startswith("loop.") and r.status == Status.FAIL and not r.gating for r in in_results))
-        self.assertTrue(all(r.status == Status.SKIPPED for r in out_results if r.id.startswith("loop.")))
+        self.assertTrue(any(
+            r.id.startswith("loop.") and r.status == Status.FAIL and not r.gating
+            for r in in_results))
+        self.assertTrue(all(
+            r.status == Status.SKIPPED for r in out_results if r.id.startswith("loop.")))
         self.assertEqual(in_summary.level, out_summary.level)
         self.assertEqual(in_summary.gating_passed, out_summary.gating_passed)
         self.assertEqual(in_summary.gating_total, out_summary.gating_total)
@@ -268,7 +298,10 @@ class TestRegistryIntegrity(unittest.TestCase):
             self.assertIn(crit["scope"], ("repository", "application"))
             score._resolve_check(crit["check"])  # must import without error
             aw = crit.get("applies_when", {})
-            self.assertLessEqual(set(aw), allowed_aw_keys, f"{crit['id']} has unsupported applies_when keys")
+            self.assertLessEqual(
+                                 set(aw),
+                                 allowed_aw_keys,
+                                 f"{crit['id']} has unsupported applies_when keys")
             if "opt_in" in aw:
                 self.assertEqual(aw["opt_in"], "loop_ready")
                 for key in ("project_types", "languages", "requires"):
@@ -339,7 +372,9 @@ class TestEvalCriterionBranches(unittest.TestCase):
         self.assertIn("language", r.rationale)
 
     def test_repository_unknown_type(self):
-        r = self._eval(self._crit(types=["service"]), {"README.md": "# x", "Makefile": "all:\n\techo\n"})
+        r = self._eval(
+                       self._crit(types=["service"]),
+                       {"README.md": "# x", "Makefile": "all:\n\techo\n"})
         self.assertEqual(r.status, Status.UNKNOWN)
 
     def test_app_scope_language_skip_yields_not_applicable(self):
@@ -422,8 +457,9 @@ class TestAggregateUnknownAndWaiverFuture(unittest.TestCase):
 
 class TestRecommendationSelector(unittest.TestCase):
     def _r(self, cid, level, status, gating=True, fix_kind=""):
-        return CriterionResult(id=cid, title=cid.upper(), pillar="P", level=level, scope="repository",
-                               gating=gating, status=status, fix_kind=fix_kind)
+        return CriterionResult(id=cid, title=cid.upper(), pillar="P", level=level,
+                               scope="repository", gating=gating, status=status,
+                               fix_kind=fix_kind)
 
     def test_next_level_first_lowest_effort_capped(self):
         results = [
@@ -456,7 +492,9 @@ class TestJudgmentsDecide(unittest.TestCase):
         self.assertEqual(judgments.decide(cfg, "judgment.code_modularization"), ("advisory", ""))
 
     def test_star_default(self):
-        self.assertEqual(judgments.decide({"judgments": {"*": "off"}}, "judgment.readme_quality")[0], "off")
+        self.assertEqual(judgments.decide(
+                                          {"judgments": {"*": "off"}},
+                                          "judgment.readme_quality")[0], "off")
 
     def test_dict_entry_with_reason(self):
         cfg = {"judgments": {"pii_handling": {"severity": "off", "reason": "no PII"}}}
@@ -472,14 +510,25 @@ class TestJudgmentsDecide(unittest.TestCase):
 
     def test_path_override(self):
         cfg = {"judgments": {"naming_consistency": "advisory"},
-               "judgment_overrides": [{"paths": ["legacy/**"], "judgments": {"naming_consistency": "off"}}]}
-        self.assertEqual(judgments.decide(cfg, "judgment.naming_consistency", path="legacy/x.py")[0], "off")
-        self.assertEqual(judgments.decide(cfg, "judgment.naming_consistency", path="src/x.py")[0], "advisory")
+               "judgment_overrides": [{
+                                       "paths": ["legacy/**"],
+                                       "judgments": {"naming_consistency": "off"}}]}
+        self.assertEqual(judgments.decide(
+                                          cfg,
+                                          "judgment.naming_consistency",
+                                          path="legacy/x.py")[0], "off")
+        self.assertEqual(judgments.decide(
+                                          cfg,
+                                          "judgment.naming_consistency",
+                                          path="src/x.py")[0], "advisory")
 
     def test_path_override_malformed_entries(self):
         cfg = {"judgments": {}, "judgment_overrides": ["bad", {"paths": ["x/**"]},
                                                         {"judgments": {"a": "off"}}]}
-        self.assertEqual(judgments.decide(cfg, "judgment.naming_consistency", path="x/y")[0], "advisory")
+        self.assertEqual(judgments.decide(
+                                          cfg,
+                                          "judgment.naming_consistency",
+                                          path="x/y")[0], "advisory")
 
 
 class TestAgentJudgments(unittest.TestCase):

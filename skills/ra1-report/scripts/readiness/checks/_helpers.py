@@ -121,7 +121,8 @@ def agrep(ctx, patterns, exts=_SOURCE_EXTS, limit=400):
 
     Used for *wiring* evidence: a dependency or config file proves something is available, but only
     a usage site in source proves it is actually wired in. Searches the app dir, falling back to the
-    repo root for single-app repos, and skips vendored/build dirs via the collector's ignore list."""
+    repo root for single-app repos, and skips vendored/build dirs via the collector's
+    ignore list."""
     compiled = [re.compile(p) for p in patterns]
     coll = ctx.app_static()
     globs = [f"**/*.{e}" for e in exts]
