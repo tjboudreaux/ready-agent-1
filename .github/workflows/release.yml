@@ -51,6 +51,16 @@ jobs:
           else
             tag="$GITHUB_REF_NAME"
           fi
+          # The anchored match below is LINE-oriented, so it succeeds when ANY line matches
+          # and an embedded newline ("v1.2.3" then "v9.9.9") would slip through it. git
+          # forbids control characters in refnames, so a tag push cannot carry one, but
+          # workflow_dispatch input is free-form. Reject anything outside the SemVer
+          # character set first, which is what makes the anchored match sound.
+          case "$tag" in
+            *[!0-9A-Za-z.+-]*)
+              echo "refusing tag '$tag': characters outside [0-9A-Za-z.+-]" >&2
+              exit 1 ;;
+          esac
           # SemVer 2.0.0 in POSIX ERE (grep -E has no non-capturing groups). Verified to
           # agree with the official semver.org regex across a generated corpus -- see
           # tests/test_release_tag_policy.py, which cross-checks this exact pattern rather
