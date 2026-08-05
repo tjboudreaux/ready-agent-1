@@ -168,6 +168,14 @@ def _status_counts(status):
     return 0, 0  # skipped / waived -> not applicable
 
 
+def _app_label(path):
+    """Human name for an application path. The root app is "." , which reads as a stray
+
+    period when a sentence ends right after it ("Undetermined for ..").
+    """
+    return "the repository root" if path == "." else path
+
+
 def _aggregate(base, per):
     if not per:
         return CriterionResult(status=Status.SKIPPED,
@@ -196,18 +204,18 @@ def _aggregate(base, per):
     counts = {"passed_apps": passes, "evaluated_apps": total}
 
     if fails:
-        crit = [a.path for a in fails if a.prod_facing is True]
+        crit = [_app_label(a.path) for a in fails if a.prod_facing is True]
         note = f"{passes}/{total} application(s) pass."
         note += (" Production-facing failing: " + ", ".join(crit) + ".") if crit else \
-                (" Failing: " + ", ".join(a.path for a in fails) + ".")
+                (" Failing: " + ", ".join(_app_label(a.path) for a in fails) + ".")
         return CriterionResult(status=Status.FAIL, rationale=note, evidence=evidence,
                                app_path=app_path, **counts, **base)
     if unknown_apps:
+        named = ", ".join(_app_label(p) for p in unknown_apps)
         if passes > 0:
-            rationale = (f"{passes}/{total} application(s) pass; "
-                         f"undetermined for {', '.join(unknown_apps)}.")
+            rationale = f"{passes}/{total} application(s) pass; undetermined for {named}."
         else:
-            rationale = f"Undetermined for {', '.join(unknown_apps)}."
+            rationale = f"Undetermined for {named}."
         return CriterionResult(status=Status.UNKNOWN, rationale=rationale,
                                evidence=evidence, app_path=app_path, **counts, **base)
     if passes > 0:
