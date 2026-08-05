@@ -4,9 +4,13 @@ JUnit / SARIF are CI surfaces. SARIF carries ONLY criteria with real source loca
 """
 from __future__ import annotations
 
+import html
 import json
+import math
+import os
 from xml.etree import ElementTree as ET
 
+from . import theme
 from .model import Status
 from .score import _recommendations
 
@@ -21,25 +25,108 @@ _EFFORT = {
     "": "Manual remediation",
 }
 
+# Inline glyph set. Lucide's grammar (24-unit box, round caps, currentColor) drawn by hand,
+# because the artifact may not fetch an icon library. `dot` is the fallback for any pillar
+# a future registry adds.
+_ICON_PATHS = {
+    "check": '<path d="M20 6 9 17l-5-5"/>',
+    "x": '<path d="M18 6 6 18M6 6l12 12"/>',
+    "minus": '<path d="M5 12h14"/>',
+    "question": ('<circle cx="12" cy="12" r="9"/>'
+                 '<path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.4-1 1-1 1.7v.5"/>'
+                 '<path d="M12 17.6v.01"/>'),
+    "ban": '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
+    "book": '<path d="M4 19.5V5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2Z"/><path d="M8 3v14"/>',
+    "wrench": ('<path d="M15.5 3a5.5 5.5 0 0 0-5.1 7.6L3 18l3 3 7.4-7.4A5.5 5.5 0 0 0 21 8.5'
+               'c0-.6-.1-1.2-.3-1.7l-3 3-2.5-2.5 3-3A5.5 5.5 0 0 0 15.5 3Z"/>'),
+    "shield": '<path d="M12 3 5 6v5.5c0 4.2 2.9 7.6 7 8.5 4.1-.9 7-4.3 7-8.5V6l-7-3Z"/>',
+    "beaker": ('<path d="M9 3h6"/><path d="M10 3v6.5L5.4 17A2 2 0 0 0 7.1 20h9.8a2 2 0 0 0'
+               ' 1.7-3L14 9.5V3"/><path d="M7 15h10"/>'),
+    "type": '<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>',
+    "list": ('<path d="M10 6h11M10 12h11M10 18h11"/><path d="m3 6 1.5 1.5L7 5"/>'
+             '<path d="m3 12 1.5 1.5L7 11"/><path d="m3 18 1.5 1.5L7 17"/>'),
+    "laptop": ('<path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9"/>'
+               '<path d="M2.5 16h19l-1 3H3.5l-1-3Z"/>'),
+    "dot": '<circle cx="12" cy="12" r="9"/>',
+}
+_STATUS_ICONS = {"pass": "check", "fail": "x", "skipped": "minus",
+                 "unknown": "question", "waived": "ban"}
+_PILLAR_ICONS = {
+    "Documentation": "book",
+    "Build System": "wrench",
+    "Security & Governance": "shield",
+    "Testing": "beaker",
+    "Style & Validation": "type",
+    "Task Discovery": "list",
+    "Dev Environment": "laptop",
+}
+_TIER_TIPS = {
+    "T0": "Static evidence: read straight off the files in the repository.",
+    "T1": "Local evidence: derived from git history on this machine.",
+    "T2": "Remote evidence: fetched from the GitHub API.",
+}
 
-def render(report, fmt: str) -> str:
-    fmt = (fmt or "json").lower()
-    if fmt in ("md", "markdown"):
+# User-facing order; `ra1 formats` and `report --help` both derive from this tuple.
+REPORT_FORMATS = ("json", "markdown", "html", "github", "junit", "sarif")
+_FORMAT_ALIASES = {"md": "markdown", "checks": "github", "annotations": "github"}
+# Artifact extension per accepted token. Aliases keep their historical filenames so that
+# `--format checks` still writes report.txt and `--format annotations` report.annotations.
+_FORMAT_EXTENSIONS = {
+    "json": "json", "markdown": "md", "md": "md", "html": "html",
+    "github": "txt", "checks": "txt", "annotations": "annotations",
+    "junit": "xml", "sarif": "sarif",
+}
+
+
+def normalize_format(fmt: str | None) -> str:
+    """Canonical format name for a user token. Raises ValueError on anything unsupported.
+
+    Empty/None means the default (json). Matching is case-insensitive and aliases resolve
+    to their canonical renderer. The message quotes the token with ``repr`` so control
+    characters cannot forge a stderr line.
+    """
+    token = (fmt or "").strip()
+    if not token:
+        return "json"
+    canonical = _FORMAT_ALIASES.get(token.lower(), token.lower())
+    if canonical not in REPORT_FORMATS:
+        raise ValueError(f"unsupported report format {token!r}; "
+                         f"supported formats: {', '.join(REPORT_FORMATS)}")
+    return canonical
+
+
+def format_extension(fmt: str | None) -> str:
+    """Artifact extension for a user token, validated through :func:`normalize_format`."""
+    normalize_format(fmt)
+    return _FORMAT_EXTENSIONS[(fmt or "").strip().lower() or "json"]
+
+
+def render(report, fmt: str | None) -> str:
+    canonical = normalize_format(fmt)
+    if canonical == "json":
+        return json.dumps(report.to_dict(), indent=2)
+    if canonical == "markdown":
         return render_markdown(report)
-    if fmt in ("github", "checks", "annotations"):
+    if canonical == "html":
+        return render_html(report)
+    if canonical == "github":
         return render_github(report)
-    if fmt == "junit":
+    if canonical == "junit":
         return render_junit(report)
-    if fmt == "sarif":
-        return render_sarif(report)
-    return json.dumps(report.to_dict(), indent=2)
+    return render_sarif(report)
+
 
 def _location(d) -> str:
-    """Redacted scan location for the human subtitle — never the raw absolute path."""
+    """Redacted scan location for the human subtitle — never the raw absolute path.
+
+    A relative scan root (`ra1 report` with no --project) has no useful basename: "." would
+    print as a bare separator in the meta line. Resolve it to the directory's own name,
+    which is still just a name and never a path.
+    """
     repo = d.repository or {}
     if repo.get("identity_kind") == "origin" and repo.get("owner"):
         return f"{repo['owner']}/{repo.get('name', '')}"
-    return repo.get("name") or d.project_path.rsplit("/", 1)[-1]
+    return repo.get("name") or os.path.basename(os.path.abspath(d.project_path))
 
 
 # ---------------------------------------------------------------------------- markdown
@@ -165,6 +252,784 @@ def _group_by_effort(items):
 
 def _advisory_items(results):
     return _group_by_effort([r for r in results if not r.gating and r.status == Status.FAIL])
+
+
+# ------------------------------------------------------------------------------ html
+# Single-file, offline, script-free artifact: an engineer opens it from a CI download or
+# straight off disk. Everything data-derived goes through _html(); tag names, class names
+# and the stylesheet are fixed literals so repository content can never reach markup.
+_CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
+
+# Selector per type role. This is the ONLY place these selectors receive font-size,
+# font-weight or line-height; theme.type_block generates the declarations from the role
+# table, and tests/test_report.py fails if any other rule sets those for these selectors.
+_ROLE_SELECTORS = {
+    "display": "h1",
+    "headline": "h2, .status-level, .gate-num",
+    "title": "h3, .gate-name, .row-title",
+    "body": "body, tbody th, tbody td",
+    "meta": (".meta, .row-meta, .gate-count, .row-id, code, .tier, .detail, .empty,\n"
+             ".note, .report-footer, summary, .evidence > li"),
+    "label": "thead th, .gate-state",
+}
+
+_STATIC_CSS = """
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+code, .tier, .row-id, .gate-count {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.report {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-5) var(--space-8);
+  background: var(--surface);
+}
+h1 {
+  margin: 0 0 var(--space-2);
+  letter-spacing: var(--track-tight);
+}
+h2 { margin: 0 0 var(--space-3); }
+h3 {
+  margin: var(--space-5) 0 var(--space-1);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+}
+p { margin: 0 0 var(--space-2); }
+p:last-child { margin-bottom: 0; }
+.meta, .row-meta, .gate-count, .report-footer, .note, .tier, .detail, .empty, summary {
+  color: var(--text-muted);
+}
+.rationale, .note, .disclosure, .judgment-assess, .judgment-ignored, .callout {
+  max-width: var(--prose-max);
+  text-wrap: pretty;
+}
+.rationale { margin: var(--space-1) 0 0; }
+.empty { font-style: italic; }
+.report-header {
+  border-bottom: var(--hairline) solid var(--border);
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+.report > section {
+  margin: 0 0 var(--space-6);
+  padding-bottom: var(--space-5);
+  border-bottom: var(--hairline) solid var(--border);
+}
+.pillar { margin: 0; padding: 0; border: 0; }
+.status-level { margin: 0; }
+.gates, .criteria, .actions, .advisory-items, .advisory-notes, .evidence {
+  list-style: none; margin: 0; padding: 0;
+}
+.gates {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.gate {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+.gate > * { min-width: 0; }
+.gate-state {
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.gate-cleared .gate-num, .gate-cleared .gate-state { color: var(--status-pass); }
+.gate-blocked { border: var(--rule) solid var(--border-strong); }
+.gate-blocked .gate-num, .gate-blocked .gate-state { color: var(--status-fail); }
+.gate-locked .gate-num, .gate-empty .gate-num { color: var(--status-idle); }
+.gate-empty { border-style: dashed; background: none; }
+.row, .advisory-notes > li {
+  padding: var(--space-3) 0; border-top: var(--hairline) solid var(--border);
+}
+.row-head {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  align-items: baseline;
+}
+.badge { display: inline-flex; }
+.icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  stroke-width: var(--icon-stroke);
+  flex: none;
+}
+.coverage {
+  display: grid;
+  grid-template-columns: var(--radar-size) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: center;
+}
+.radar { width: 100%; max-width: var(--radar-size); height: auto; }
+.radar-ring, .radar-spoke { fill: none; stroke: var(--chart-grid); stroke-width: 1; }
+.radar-area {
+  fill: var(--chart-fill);
+  stroke: var(--accent);
+  stroke-width: var(--rule);
+  stroke-linejoin: round;
+}
+.radar-dot { fill: var(--accent); }
+.radar-index { fill: var(--text-muted); font-size: 11px; }
+.pillar-key { list-style: none; margin: 0; padding: 0; }
+.pillar-key-item {
+  display: grid;
+  grid-template-columns: 1.25rem var(--icon-size) minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-1) 0;
+  border-top: var(--hairline) solid var(--border);
+}
+.pillar-key-item:first-child { border-top: 0; }
+.pillar-index, .pillar-count { color: var(--text-muted); }
+.pillar-glyph { color: var(--text-muted); display: inline-flex; }
+.dist { width: 100%; height: 8px; display: block; margin-bottom: var(--space-4); }
+.dist-seg.status-pass { fill: var(--status-pass); }
+.dist-seg.status-fail { fill: var(--status-fail); }
+.dist-seg.status-unknown { fill: var(--status-warn); }
+.dist-seg.status-skipped, .dist-seg.status-waived { fill: var(--border-strong); }
+.facets {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  margin-bottom: var(--space-5);
+}
+.facet-legend { margin: var(--space-1) 0 0; color: var(--text-muted); }
+.facet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.facet {
+  --mark: currentColor;
+  --check-fill: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+/* A box that fills, not a tick: a checkmark beside the word "Fail" reads as a pass. The
+   mark carries its own status colour, which is what binds these words to the segments in
+   the bar above them. Colour is the third signal here, never the first. */
+.facet::before {
+  content: "";
+  width: 0.7em;
+  height: 0.7em;
+  flex: none;
+  border: var(--hairline) solid var(--mark);
+  border-radius: var(--radius-sm);
+  background: var(--check-fill);
+}
+.facet-pass { --mark: var(--status-pass); }
+.facet-fail { --mark: var(--status-fail); }
+.facet-unknown { --mark: var(--status-warn); }
+.facet-skipped, .facet-waived { --mark: var(--border-strong); }
+/* Visible by default; the generated pair rules hide it whenever any row survives. */
+.criteria-empty { display: block; }
+.tip { position: relative; text-decoration: underline dotted; cursor: help; }
+.tip-body {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: calc(100% + var(--space-1));
+  z-index: 1;
+  width: max-content;
+  max-width: 22rem;
+  padding: var(--space-2);
+  border: var(--hairline) solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+.tip:hover .tip-body, .tip:focus .tip-body { display: block; }
+.tip:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+}
+h3 .icon { color: var(--text-muted); vertical-align: -0.2em; margin-right: var(--space-2); }
+.badge { font-variant-emoji: text; }
+.status-pass .badge, .status-pass .row-meta { color: var(--status-pass); }
+.status-fail .badge, .status-fail .row-meta { color: var(--status-fail); }
+.status-unknown .badge, .status-unknown .row-meta { color: var(--status-warn); }
+.status-skipped .badge, .status-waived .badge { color: var(--status-idle); }
+.callout { margin-top: var(--space-3); }
+.tone-warn { color: var(--status-warn); }
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td {
+  text-align: left;
+  padding: var(--space-2) var(--space-5) var(--space-2) 0;
+  border-bottom: var(--hairline) solid var(--border);
+  white-space: nowrap;
+}
+thead th {
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+details { margin: var(--space-2) 0 0; }
+summary {
+  cursor: pointer;
+  width: fit-content;
+  transition: color var(--duration) var(--ease);
+}
+summary:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+}
+.evidence {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+  border-left: var(--hairline) solid var(--border);
+}
+.evidence > li { padding: var(--space-1) 0; min-width: 0; }
+.report-footer { border-top: var(--hairline) solid var(--border); padding-top: var(--space-4); }
+@media (max-width: 720px) {
+  .report { padding: var(--space-6) var(--space-4) var(--space-7); }
+  .gates { grid-template-columns: minmax(0, 1fr); }
+  .coverage { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .pillar-key { width: 100%; }
+  .facets { grid-template-columns: minmax(0, 1fr); }
+}
+@media print {
+  body { background: none; }
+  .report { max-width: none; padding: 0; background: none; }
+  details:not([open]) > *:not(summary) { display: block; }
+  details::details-content { content-visibility: visible; display: block; }
+  .facets, .facet-input { display: none; }
+  .criteria-body .criterion, .criteria-body .pillar { display: block !important; }
+  .criteria-empty { display: none !important; }
+  .tip-body { display: inline; position: static; border: 0; padding: 0; }
+}
+"""
+
+_HTML_STYLE = ("\n" + theme.root_block() + theme.dark_block()
+               + theme.type_block(_ROLE_SELECTORS) + _STATIC_CSS)
+
+
+def _html(value) -> str:
+    """The only path from report data into the document. Escapes quotes too."""
+    return html.escape(str(value), quote=True)
+
+
+# ---- components. Every section is assembled from these; no markup shape is spelled out
+# twice. `slug`, `title`, `cls`, `tone` and `message` are authored constants — only the
+# values routed through _html() and _meta() may come from the scanned repository.
+def _section(out, slug, title) -> None:
+    out += [f'<section aria-labelledby="{slug}-heading">',
+            f'<h2 id="{slug}-heading">{title}</h2>']
+
+
+def _meta(parts) -> str:
+    """The one meta join. Escapes unconditionally, so it can never carry markup."""
+    return " · ".join(_html(p) for p in parts if p)
+
+
+def _empty(out, message) -> None:
+    out.append(f'<p class="empty">{message}</p>')
+
+
+def _callout(out, tone, body) -> None:
+    """`body` is authored markup (it carries <strong>/<code>) and never report data."""
+    out.append(f'<p class="callout tone-{tone}">{body}</p>')
+
+
+def _icon(name) -> str:
+    """An inline glyph from the vendored set. Never a fetch, never a font."""
+    return ('<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" '
+            'focusable="false">' + _ICON_PATHS.get(name, _ICON_PATHS["dot"]) + "</svg>")
+
+
+def _badge(status) -> str:
+    """The status glyph. aria-hidden: the status word beside it is the accessible signal."""
+    return ('<span class="badge" aria-hidden="true">'
+            + _icon(_STATUS_ICONS.get(status, "question")) + "</span>")
+
+
+def _tip(text, tip_id, description) -> str:
+    """A term plus its expansion. The expansion is in the DOM, not only in a hover state."""
+    return (f'<span class="tip" tabindex="0" aria-describedby="{tip_id}">{_html(text)}'
+            f'<span class="tip-body" id="{tip_id}" role="tooltip">{_html(description)}</span>'
+            "</span>")
+
+
+def _row(out, *, cls, title, meta, badge="", ident="", rationale="", extra=()) -> None:
+    out += [
+        f'<li class="row {cls}">',
+        '<p class="row-head">',
+        badge,
+        f'<span class="row-title">{_html(title)}</span>',
+        ident,
+        f'<span class="row-meta">{meta}</span>',
+        "</p>",
+    ]
+    if rationale:
+        out.append(f'<p class="rationale">{_html(rationale)}</p>')
+    out += [chunk for chunk in extra if chunk]
+    out.append("</li>")
+
+
+def _ident(value) -> str:
+    return f'<span class="row-id">{_html(value)}</span>'
+
+
+def _evidence(items, tip_prefix) -> str:
+    """The evidence disclosure, or "" when there is none to disclose."""
+    if not items:
+        return ""
+    rows = []
+    for index, e in enumerate(items, 1):
+        tier = _TIER_TIPS.get(e.tier, "")
+        cell = (_tip(e.tier, f"{tip_prefix}-{index}", tier) if tier
+                else f"<span>{_html(e.tier)}</span>")
+        row = [f'<li><span class="tier">{cell}</span> {_html(e.summary)}']
+        if e.source:
+            row.append(f" <code>{_html(e.source)}</code>")
+        if e.detail:
+            row.append(f' <span class="detail">{_html(e.detail)}</span>')
+        rows.append("".join(row) + "</li>")
+    return "\n".join(["<details>", f"<summary>Evidence ({_html(len(items))})</summary>",
+                      '<ol class="evidence">', *rows, "</ol>", "</details>"])
+
+
+# ---- charts. Server-computed SVG geometry: the artifact carries no script, and a `style`
+# attribute is forbidden, so proportions travel as SVG presentation attributes.
+_RADAR_BOX = 240
+_RADAR_C = 120
+_RADAR_R = 84
+_RADAR_RINGS = (0.25, 0.5, 0.75, 1.0)
+_DIST_ORDER = ("pass", "fail", "unknown", "skipped", "waived")
+
+
+def _radar_point(index, count, ratio, radius=_RADAR_R):
+    angle = -math.pi / 2 + (2 * math.pi * index / count)
+    return (round(_RADAR_C + radius * ratio * math.cos(angle), 1),
+            round(_RADAR_C + radius * ratio * math.sin(angle), 1))
+
+
+def _radar_points(ratios, radius=_RADAR_R) -> str:
+    return " ".join(f"{x},{y}" for x, y in
+                    (_radar_point(i, len(ratios), r, radius) for i, r in enumerate(ratios)))
+
+
+def _radar(pillars, summary) -> str:
+    """Coverage shape across pillars. Fewer than three axes is a line, not a shape: skip it.
+
+    Attribute discipline: repository TEXT never reaches an attribute here. The dynamic
+    summary travels as <desc> text, the referenced ids are authored constants, and the only
+    report-derived attribute values are coordinates computed from a ratio clamped to
+    [0, 1] — a finite numeric grammar that TestHtmlSafety enforces.
+    """
+    count = len(pillars)
+    if count < 3:
+        return ""
+    ratios = [min(1.0, max(0.0, v["passed"] / v["total"])) if v["total"] else 0.0
+              for v in pillars.values()]
+    parts = [f'<svg class="radar" viewBox="0 0 {_RADAR_BOX} {_RADAR_BOX}" role="img" '
+             'aria-labelledby="radar-title radar-desc">',
+             '<title id="radar-title">Pillar coverage</title>',
+             f'<desc id="radar-desc">{_html(summary)}</desc>']
+    parts += [f'<polygon class="radar-ring" points="{_radar_points([1.0] * count, _RADAR_R * s)}"/>'
+              for s in _RADAR_RINGS]
+    for index in range(count):
+        x, y = _radar_point(index, count, 1.0)
+        parts.append(f'<line class="radar-spoke" x1="{_RADAR_C}" y1="{_RADAR_C}" '
+                     f'x2="{x}" y2="{y}"/>')
+    parts.append(f'<polygon class="radar-area" points="{_radar_points(ratios)}"/>')
+    for index, ratio in enumerate(ratios):
+        x, y = _radar_point(index, count, ratio)
+        parts.append(f'<circle class="radar-dot" cx="{x}" cy="{y}" r="2.5"/>')
+    for index in range(count):
+        x, y = _radar_point(index, count, 1.0, _RADAR_R + 18)
+        parts.append(f'<text class="radar-index" x="{x}" y="{y}" text-anchor="middle" '
+                     f'dominant-baseline="central">{index + 1}</text>')
+    return "".join(parts) + "</svg>"
+
+
+def _distribution(counts) -> str:
+    """One bar over every criterion. Decorative: the facet labels below carry the numbers."""
+    present = [(status, n) for status, n in counts if n]
+    total = sum(n for _, n in present)
+    if not total:
+        return ""
+    parts, x = [], 0.0
+    for position, (status, n) in enumerate(present, 1):
+        width = round(100 - x, 2) if position == len(present) else round(100 * n / total, 2)
+        parts.append(f'<rect class="dist-seg status-{status}" x="{round(x, 2)}" y="0" '
+                     f'width="{width}" height="8"/>')
+        x += width
+    return ('<svg class="dist" viewBox="0 0 100 8" preserveAspectRatio="none" '
+            'aria-hidden="true">' + "".join(parts) + "</svg>")
+
+
+def render_html(report) -> str:
+    d = report
+    out = [
+        "<!doctype html>",
+        '<html lang="en">',
+        "<head>",
+        '<meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        '<meta name="color-scheme" content="light dark">',
+        f'<meta http-equiv="Content-Security-Policy" content="{_CSP}">',
+        "<title>Agent Readiness Report</title>",
+        f"<style>{_HTML_STYLE}{_filter_css(_facet_model(d))}</style>",
+        "</head>",
+        "<body>",
+        '<main class="report">',
+    ]
+    _html_header(out, d)
+    _html_status(out, d)
+    _html_pillars(out, d)
+    _html_actions(out, d)
+    _html_criteria(out, d)
+    _html_advisory_improvements(out, d)
+    _html_applications(out, d)
+    _html_judgments(out, d)
+    _html_advisory(out, d)
+    _html_footer(out, d)
+    out += ["</main>", "</body>", "</html>"]
+    return "\n".join(out) + "\n"
+
+
+def _html_header(out, d) -> None:
+    meta = [d.engine_version, _location(d)]
+    if d.branch:
+        meta.append(f"branch {d.branch}")
+    if d.commit:
+        meta.append(f"commit {d.commit[:8]}")
+    out += [
+        '<header class="report-header">',
+        "<h1>Agent Readiness Report</h1>",
+        f'<p class="meta">{_meta(meta)}</p>',
+        "</header>",
+    ]
+
+
+def _html_status(out, d) -> None:
+    """The blocked engineer's first question, answered first: which gate, and how far."""
+    _section(out, "status", "Readiness Status")
+    if d.score:
+        s = d.score
+        out += [
+            f'<p class="status-level">Level {_html(s.level)}: {_html(s.level_name)}</p>',
+            '<p class="meta">'
+            + _meta([f"{round(s.pass_rate * 100)}% pass rate",
+                     f"{s.gating_passed}/{s.gating_total} gating criteria"])
+            + "</p>",
+        ]
+        _gate_track(out, s.levels)
+    else:
+        _empty(out, "Score unavailable")
+    out.append("</section>")
+
+
+def _gate_track(out, levels) -> None:
+    """Five gates, cleared left to right. Counts only — a percentage of nothing is a lie."""
+    if not levels:
+        _empty(out, "No level data available")
+        return
+    out.append('<ol class="gates">')
+    blocked_marked = False
+    for lv in levels:
+        if not lv.total:
+            cls, state = "gate-empty", "no criteria"
+        elif lv.achieved:
+            cls, state = "gate-cleared", "cleared"
+        elif blocked_marked:
+            cls, state = "gate-locked", "locked"
+        else:
+            cls, state, blocked_marked = "gate-blocked", "blocked", True
+        out += [
+            f'<li class="gate {cls}">',
+            f'<span class="gate-num">{_html(lv.level)}</span>',
+            f'<span class="gate-name">{_html(lv.name)}</span>',
+            f'<span class="gate-count">{_html(lv.passed)}/{_html(lv.total)}</span>',
+            f'<span class="gate-state">{state}</span>',
+            "</li>",
+        ]
+    out.append("</ol>")
+
+
+def _html_pillars(out, d) -> None:
+    """Where the repo is structurally weak. Reads score.pillars, which is the engine's own
+
+    gating-only, skipped/waived-excluded denominator: re-aggregating over d.results here
+    would let advisory and skipped criteria distort coverage while the headline stays put.
+    """
+    pillars = d.score.pillars if d.score else {}
+    if not pillars:
+        return
+    _section(out, "pillars", "Pillar Coverage")
+    summary = ", ".join(f"{name} {v['passed']} of {v['total']}" for name, v in pillars.items())
+    out += ['<div class="coverage">', _radar(pillars, summary), '<ol class="pillar-key">']
+    for index, (name, value) in enumerate(pillars.items(), 1):
+        passed, total = value["passed"], value["total"]
+        out += [
+            '<li class="pillar-key-item">',
+            f'<span class="pillar-index">{index}</span>',
+            f'<span class="pillar-glyph">{_icon(_PILLAR_ICONS.get(name, "dot"))}</span>',
+            f'<span class="pillar-name">{_html(name)}</span>',
+            f'<span class="pillar-count">{_html(passed)}/{_html(total)}</span>',
+            "</li>",
+        ]
+    out += ["</ol>", "</div>", "</section>"]
+
+
+def _html_applications(out, d) -> None:
+    if not d.detection:
+        return
+    _section(out, "applications", "Applications Discovered")
+    if d.detection.apps:
+        out += [
+            '<div class="table-scroll">',
+            "<table>",
+            '<caption class="visually-hidden">Applications discovered in this repository</caption>',
+            '<thead><tr><th scope="col">Path</th><th scope="col">Deploy surface</th>'
+            '<th scope="col">Languages</th><th scope="col">Runtime</th></tr></thead>',
+            "<tbody>",
+        ]
+        for app in d.detection.apps:
+            langs = ", ".join(app.languages) or "n/a"
+            out.append(f'<tr><th scope="row"><code>{_html(app.path)}</code></th>'
+                       f"<td>{_html(app.deploy_surface)}</td>"
+                       f"<td>{_html(langs)}</td>"
+                       f"<td>{_html(app.runtime)}</td></tr>")
+        out += ["</tbody>", "</table>", "</div>"]
+    else:
+        _empty(out, "No applications discovered")
+    if d.detection.project_type == "unknown":
+        _callout(out, "warn",
+                 "⚠️ Project type is <strong>unknown</strong> (low detection confidence); "
+                 "type-dependent criteria are reported as <code>unknown</code>, not silently "
+                 "skipped.")
+    out.append("</section>")
+
+
+def _html_actions(out, d) -> None:
+    recs = _recommendations(d.results, d.score.level) if d.score else []
+    if not recs:
+        return
+    _section(out, "actions", "Action Items")
+    out += [f'<p class="note">Top {_html(len(recs))} highest-impact gating next steps '
+            "(clear the next level first).</p>",
+            '<ol class="actions">']
+    for rec in recs:
+        effort = _EFFORT.get(rec.get("fix_kind", ""), _EFFORT[""])
+        _row(out, cls="action", title=rec["title"], ident=_ident(rec["id"]),
+             meta=_meta([f"L{rec['level']}", rec["pillar"], effort]),
+             rationale=rec["rationale"])
+    out += ["</ol>", "</section>"]
+
+
+def _facet_model(d):
+    """The closed facet set: (status facets, pillar facets, per-pillar status ids).
+
+    Every id is derived from an enum value or an ordinal, never from repository text, so
+    the generated CSS and the `for=` attributes can only ever contain authored constants.
+    """
+    pillars = _pillars_in_order(d.results)
+    statuses = [s for s in _DIST_ORDER if any(r.status.value == s for r in d.results)]
+    status_facets = [(f"f-s-{s}", s.capitalize(),
+                      sum(1 for r in d.results if r.status.value == s),
+                      s != "skipped")
+                     for s in statuses]
+    pillar_facets = [(f"f-p{i}", name, sum(1 for r in d.results if r.pillar == name), True)
+                     for i, name in enumerate(pillars, 1)]
+    # A pillar group is empty once every status it actually contains is switched off, so
+    # each group carries the ids that keep it alive. Without this the heading survives its
+    # own rows and the reader gets a section with nothing under it.
+    owners = [(f"p{i}", [f"f-s-{s}" for s in _pillar_statuses(d.results, name)])
+              for i, name in enumerate(pillars, 1)]
+    return status_facets, pillar_facets, owners
+
+
+def _pillar_statuses(results, pillar):
+    return [s for s in _DIST_ORDER if any(r.pillar == pillar and r.status.value == s
+                                          for r in results)]
+
+
+def _filter_css(model) -> str:
+    """Filtering with no script: each checkbox precedes the rows it governs, so a plain
+
+    sibling combinator does the work and no `:has()` support is required.
+
+    The empty state is inverted deliberately. Showing it only when every status is off
+    misses the cross-facet hole — check Fail alone and Build alone and both groups vanish
+    while a status is still checked. So it defaults to visible and each surviving
+    (status, pillar) pair hides it: visible content and the message are mutually exclusive
+    by construction rather than by enumerating the ways a filter can empty the list.
+    """
+    status_facets, pillar_facets, owners = model
+    if not status_facets:
+        return ""
+    rules = [f"#{fid}:not(:checked) ~ .criteria-body .criterion.status-{fid[4:]}"
+             " { display: none; }" for fid, *_ in status_facets]
+    rules += [f"#{fid}:not(:checked) ~ .criteria-body .{fid[2:]}"
+              " { display: none; }" for fid, *_ in pillar_facets]
+    rules += [" ~ ".join(f"#{sid}:not(:checked)" for sid in sids)
+              + f" ~ .criteria-body .{cls}" " { display: none; }"
+              for cls, sids in owners if sids]
+    rules += [f"#{sid}:checked ~ #f-{cls}:checked ~ .criteria-body .criteria-empty"
+              " { display: none; }" for cls, sids in owners for sid in sids]
+    checked = ",\n".join(f'#{fid}:checked ~ .facets label[for="{fid}"]'
+                         for fid, *_ in status_facets + pillar_facets)
+    focused = ",\n".join(f'#{fid}:focus-visible ~ .facets label[for="{fid}"]'
+                         for fid, *_ in status_facets + pillar_facets)
+    rules.append(checked + " {\n  --check-fill: var(--mark);\n  color: var(--text);\n"
+                 "  border-color: var(--border-strong);\n"
+                 "  background: var(--surface-sunken);\n}")
+    rules.append(focused + " {\n  outline: var(--focus-width) solid var(--focus);\n"
+                 "  outline-offset: var(--focus-offset);\n}")
+    return "\n" + "\n".join(rules) + "\n"
+
+
+def _facets(out, model) -> None:
+    status_facets, pillar_facets, _owners = model
+    for fid, _label, _count, checked in status_facets + pillar_facets:
+        out.append(f'<input class="facet-input visually-hidden" type="checkbox" id="{fid}"'
+                   + (" checked" if checked else "") + ">")
+    out.append('<div class="facets">')
+    for legend, facets in (("Status", status_facets), ("Pillar", pillar_facets)):
+        out += [f'<p class="facet-legend">{legend}</p>', '<ul class="facet-list">']
+        for fid, label, count, _checked in facets:
+            # `f-s-pass` -> `facet-pass`; pillar ids carry no status tint.
+            tint = f" facet-{fid[4:]}" if fid.startswith("f-s-") else ""
+            out.append(f'<li><label class="facet{tint}" for="{fid}">'
+                       + f'<span class="facet-name">{_html(label)}</span>'
+                       + f'<span class="facet-count">{_html(count)}</span></label></li>')
+        out.append("</ul>")
+    out.append("</div>")
+
+
+def _html_criteria(out, d) -> None:
+    _section(out, "criteria", "Criteria Results")
+    pillars = _pillars_in_order(d.results)
+    if not pillars:
+        _empty(out, "No criteria results available")
+        out.append("</section>")
+        return
+    model = _facet_model(d)
+    gating = sum(1 for r in d.results if r.gating and r.status not in
+                 (Status.SKIPPED, Status.WAIVED))
+    # Without this line the bar reads as a contradiction: 19 failures beside a 100% pass
+    # rate. The score counts only applicable gating criteria; this section counts them all.
+    out += [f'<p class="note">All {_html(len(d.results))} criteria evaluated, including '
+            f"advisory and skipped. The score above rates only the {_html(gating)} "
+            "applicable gating criteria.</p>",
+            _distribution([(s, sum(1 for r in d.results if r.status.value == s))
+                           for s in _DIST_ORDER])]
+    _facets(out, model)
+    out += ['<div class="criteria-body">',
+            '<p class="empty criteria-empty">No criteria match these filters</p>']
+    index = 0
+    for i, pillar in enumerate(pillars, 1):
+        out += [f'<section class="pillar p{i}" aria-labelledby="pillar-{i}-heading">',
+                f'<h3 id="pillar-{i}-heading">'
+                + _icon(_PILLAR_ICONS.get(pillar, "dot"))
+                + f"{_html(pillar)}</h3>",
+                '<ol class="criteria">']
+        for r in [x for x in d.results if x.pillar == pillar]:
+            index += 1
+            _html_criterion(out, r, index)
+        out += ["</ol>", "</section>"]
+    out += ["</div>", "</section>"]
+
+
+def _html_criterion(out, r, index) -> None:
+    status = r.status.value
+    _row(out, cls=f"criterion status-{status}", badge=_badge(status), title=r.title,
+         meta=_meta([status.capitalize(), "gating" if r.gating else "advisory",
+                     f"L{r.level}", _display_score(r)]),
+         rationale=r.rationale, extra=(_evidence(r.evidence, f"tip-{index}"),))
+
+
+def _html_advisory_improvements(out, d) -> None:
+    groups = _advisory_items(d.results)
+    if not groups:
+        return
+    _section(out, "advisory-improvements", "Advisory Improvements")
+    for group, items in groups:
+        out += [f"<h3>{_html(group)}</h3>", '<ul class="advisory-items">']
+        for r in items:
+            _row(out, cls="advisory-item", title=r.title,
+                 meta=_meta([f"L{r.level}", r.pillar]), rationale=r.rationale)
+        out.append("</ul>")
+    out.append("</section>")
+
+
+def _html_judgments(out, d) -> None:
+    judgments = [r for r in d.results if r.id.startswith("judgment.")]
+    if not judgments:
+        return
+    _section(out, "judgments", "Agent Judgments (advisory, never scored)")
+    assess = [r for r in judgments if r.status == Status.UNKNOWN]
+    ignored = [r for r in judgments if r.status == Status.WAIVED]
+    if assess:
+        out.append('<p class="judgment-assess">To assess: '
+                   + _html(", ".join(r.title for r in assess)) + ".</p>")
+    if ignored:
+        out.append(f'<p class="judgment-ignored">Ignored judgments ({_html(len(ignored))}): '
+                   + _html(", ".join(r.title for r in ignored))
+                   + " — silenced via <code>.agents/readiness/config.json</code> "
+                     "<code>judgments</code>.</p>")
+    out.append("</section>")
+
+
+def _html_advisory(out, d) -> None:
+    if not d.advisory:
+        out.append('<p class="disclosure">Advisory commentary, soft-criteria judgement, and '
+                   "Δ-vs-last-run are added by the ra1-report skill; the score above is "
+                   "deterministic.</p>")
+        return
+    _section(out, "advisory", "Advisory (non-gating, agent-authored)")
+    out.append('<ul class="advisory-notes">')
+    for note in d.advisory:
+        out.append(f"<li>{_html(note)}</li>")
+    out += ["</ul>", "</section>"]
+
+
+def _html_footer(out, d) -> None:
+    parts = []
+    if d.generated_at:
+        parts.append(f"generated {d.generated_at}")
+    parts += [f"registry {d.registry_version}", f"detector {d.detector_version}"]
+    out += ['<footer class="report-footer">',
+            f"<p>{_meta(parts)}</p>",
+            "</footer>"]
 
 
 # ---------------------------------------------------------------------------- github
