@@ -107,6 +107,10 @@ class CriterionResult:
     app_path: str = "."
     fixable: bool = False
     fix_kind: str = ""
+    # AC/DC verification-loop classification from the registry ("" when unmapped):
+    # acdc_stage is guide|verify|solve; acdc_loop is inner|outer|both.
+    acdc_stage: str = ""
+    acdc_loop: str = ""
     # repository scope: passed_apps is 1 if pass else 0; evaluated_apps is 1 if applicable,
     # 0 if skipped/waived
     passed_apps: int = 0
@@ -126,6 +130,8 @@ class CriterionResult:
             "app_path": self.app_path,
             "fixable": self.fixable,
             "fix_kind": self.fix_kind,
+            "acdc_stage": self.acdc_stage,
+            "acdc_loop": self.acdc_loop,
             "passed_apps": self.passed_apps,
             "evaluated_apps": self.evaluated_apps,
         }

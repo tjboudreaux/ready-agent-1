@@ -76,12 +76,15 @@ def _ctx(root, detection, static, git, github, app, options):
 
 
 def _base(crit):
+    acdc = crit.get("acdc") or {}
     return dict(
         id=crit["id"], title=crit["title"], pillar=crit["pillar"], level=crit["level"],
         scope=crit.get("scope", "repository"),
         gating=crit.get("gating", True) and crit.get("decide") != "agent",
         fixable=bool((crit.get("fix") or {}).get("autofixable")),
         fix_kind=(crit.get("fix") or {}).get("kind", ""),
+        acdc_stage=acdc.get("stage", ""),
+        acdc_loop=acdc.get("loop", ""),
     )
 
 

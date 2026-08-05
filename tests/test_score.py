@@ -310,6 +310,54 @@ class TestRegistryIntegrity(unittest.TestCase):
                 self.assertIn(req, ids, f"{crit['id']} requires unknown {req}")
 
 
+class TestAcdcMetadata(unittest.TestCase):
+    def test_registry_acdc_blocks_well_formed(self):
+        for crit in score.load_registry():
+            acdc = crit.get("acdc")
+            if acdc is None:
+                continue
+            self.assertLessEqual(set(acdc), {"stage", "loop"},
+                                 f"{crit['id']} has unsupported acdc keys")
+            self.assertIn(acdc.get("stage"), ("guide", "verify", "solve"),
+                          f"{crit['id']} has invalid acdc stage")
+            # loop is required: 'both' is the explicit both-loops classification, so an
+            # omitted loop always means 'not classified' and fails here.
+            self.assertIn(acdc.get("loop"), ("inner", "outer", "both"),
+                          f"{crit['id']} has invalid or missing acdc loop")
+
+    def test_evaluate_threads_acdc_fields(self):
+        root, results, _ = _evaluate(RICH_FILES, RICH_GH, RICH_GIT)
+        self.addCleanup(rmtree, root)
+        by = {r.id: r for r in results}
+        expectations = {
+            "docs.agents_md": ("guide", "both"),
+            "docs.agents_md_ci_validation": ("guide", "outer"),
+            "docs.architecture_doc": ("guide", "both"),
+            "docs.agent_verify_contract": ("guide", "both"),
+            "build.check_command": ("verify", "inner"),
+            "devenv.agent_hooks": ("verify", "inner"),
+            "build.ci_runs_tests": ("verify", "outer"),
+            "testing.coverage_threshold": ("verify", "outer"),
+            "testing.new_code_quality_gate": ("verify", "outer"),
+            "security.branch_protection": ("verify", "outer"),
+            "style.precommit_hooks": ("solve", "inner"),
+        }
+        for cid, pair in expectations.items():
+            self.assertEqual((by[cid].acdc_stage, by[cid].acdc_loop), pair,
+                             f"{cid} acdc classification mismatch")
+        self.assertEqual((by["docs.readme"].acdc_stage, by["docs.readme"].acdc_loop), ("", ""),
+                         "unmapped criterion must carry empty acdc fields")
+
+    def test_mapped_criteria_documented_in_pillars(self):
+        from pathlib import Path
+        doc = (Path(__file__).resolve().parent.parent / "references" / "pillars.md").read_text(
+            encoding="utf-8")
+        for crit in score.load_registry():
+            if crit.get("acdc"):
+                self.assertIn(f"`{crit['id']}`", doc,
+                              f"acdc-mapped {crit['id']} missing from references/pillars.md")
+
+
 class TestAppCounts(unittest.TestCase):
     def test_repository_scope_counts_by_status(self):
         root, results, _ = _evaluate(RICH_FILES, RICH_GH, RICH_GIT)
