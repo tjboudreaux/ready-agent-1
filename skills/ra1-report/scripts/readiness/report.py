@@ -47,6 +47,9 @@ _ICON_PATHS = {
              '<path d="m3 12 1.5 1.5L7 11"/><path d="m3 18 1.5 1.5L7 17"/>'),
     "laptop": ('<path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9"/>'
                '<path d="M2.5 16h19l-1 3H3.5l-1-3Z"/>'),
+    "activity": '<path d="M3 12h4l2.5-7 4 14L16 12h5"/>',
+    "target": ('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/>'
+               '<circle cx="12" cy="12" r="1.4"/>'),
     "dot": '<circle cx="12" cy="12" r="9"/>',
 }
 _STATUS_ICONS = {"pass": "check", "fail": "x", "skipped": "minus",
@@ -59,7 +62,38 @@ _PILLAR_ICONS = {
     "Style & Validation": "type",
     "Task Discovery": "list",
     "Dev Environment": "laptop",
+    "Debugging & Observability": "activity",
+    "Product & Experimentation": "target",
 }
+# One plain-English line per pillar, answering "why would an agent care?". Nine sentences
+# is authorable and maintainable; 109 per-criterion essays would not be.
+_PILLAR_ELI5 = {
+    "Documentation": "What an agent reads before it touches your code.",
+    "Build System": "Whether an agent can install, build and run this repo unattended.",
+    "Security & Governance": "The guardrails that stop an agent doing damage.",
+    "Testing": "How an agent proves a change works before it opens a pull request.",
+    "Style & Validation": "The rules an agent can run itself instead of guessing.",
+    "Task Discovery": "How an agent finds work worth doing, and what finished means.",
+    "Dev Environment": "How fast a fresh machine, human or agent, becomes productive.",
+    "Debugging & Observability": "What an agent can see when something breaks.",
+    "Product & Experimentation": "Whether an agent can tell if a shipped change worked.",
+}
+
+# What to actually do about a failure, per remediation kind. Wording is checked against
+# fix/recipes.py: only `plan["auto"]` is ever written, `propose` and `github_setting` are
+# printed for a human, so nothing here may promise that a file appears by itself.
+_ACTIONS = {
+    "scaffold": "<code>ra1 fix</code> plans it; <code>--apply</code> writes safe config "
+                "scaffolds.",
+    "propose": "<code>ra1 fix</code> lists this one; you write it.",
+    "github_setting": "<code>ra1 fix</code> prints the setting; you apply it.",
+    # No entry for "": a criterion with no registered remediation gets no action line at
+    # all. "Manual work, no scaffold covers this" repeated down the page is noise.
+}
+# UNKNOWN is not "unscored": score.py::_status_counts scores it 0/1, exactly like a
+# failure, so a gating UNKNOWN blocks a level. Agent judgments say so in their own
+# rationale and get no action line, which is why only one sentence is needed here.
+_ASSESS_UNKNOWN = "No verdict, so it counts as not passed. Read the evidence, then fix or waive."
 _TIER_TIPS = {
     "T0": "Static evidence: read straight off the files in the repository.",
     "T1": "Local evidence: derived from git history on this machine.",
@@ -269,8 +303,8 @@ _ROLE_SELECTORS = {
     "title": "h3, .gate-name, .row-title",
     "body": "body, tbody th, tbody td",
     "meta": (".meta, .row-meta, .gate-count, .row-id, code, .tier, .detail, .empty,\n"
-             ".note, .report-footer, summary, .evidence > li"),
-    "label": "thead th, .gate-state",
+             ".note, .report-footer, summary, .evidence > li, .facet, .pillar-why"),
+    "label": "thead th, .gate-state, .facet-legend, .pillar-state",
 }
 
 _STATIC_CSS = """
@@ -363,7 +397,19 @@ p:last-child { margin-bottom: 0; }
   gap: var(--space-1) var(--space-2);
   align-items: baseline;
 }
-.badge { display: inline-flex; }
+/* Three tiers: a filled square blocks a gate, an outlined one is flagged, a muted one is
+   settled. The fill is reserved for blocking work so that it keeps meaning something. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  flex: none;
+  border-radius: var(--radius-sm);
+}
+.status-fail.needs-action .badge { background: var(--status-fail); }
+.status-unknown.needs-action .badge { background: var(--status-warn); }
 .icon {
   width: var(--icon-size);
   height: var(--icon-size);
@@ -372,7 +418,7 @@ p:last-child { margin-bottom: 0; }
 }
 .coverage {
   display: grid;
-  grid-template-columns: var(--radar-size) minmax(0, 1fr);
+  grid-template-columns: var(--radar-size) minmax(0, 34rem);
   gap: var(--space-5);
   align-items: center;
 }
@@ -403,21 +449,30 @@ p:last-child { margin-bottom: 0; }
 .dist-seg.status-fail { fill: var(--status-fail); }
 .dist-seg.status-unknown { fill: var(--status-warn); }
 .dist-seg.status-skipped, .dist-seg.status-waived { fill: var(--border-strong); }
-.facets {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  margin-bottom: var(--space-5);
+/* Legend above its row, not beside it: the pillar group has nine chips and a narrow
+   column forced them into a ragged two-line wrap. */
+.facets { margin-bottom: var(--space-5); }
+.facet-group + .facet-group { margin-top: var(--space-3); }
+/* Status is the filter a reader reaches for, so its legend sits at full text colour and
+   the pillar legend stays muted. Same chip geometry, different rank. */
+.facet-legend {
+  margin: 0 0 var(--space-1);
+  color: var(--text);
+  text-transform: uppercase;
 }
-.facet-legend { margin: var(--space-1) 0 0; color: var(--text-muted); }
+.facet-plain .facet-legend { color: var(--text-muted); }
 .facet-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
+  gap: var(--space-1) var(--space-2);
 }
+/* Status is the primary filter and keeps its chip box. Pillar is secondary: nine boxes
+   was the noise in the screenshot, so those are text plus a mark. */
+.facet-plain .facet { border-color: transparent; padding-left: 0; padding-right: 0; }
+.facet-plain .facet-list { gap: var(--space-1) var(--space-4); }
 .facet {
   --mark: currentColor;
   --check-fill: transparent;
@@ -474,6 +529,56 @@ h3 .icon { color: var(--text-muted); vertical-align: -0.2em; margin-right: var(-
 .status-fail .badge, .status-fail .row-meta { color: var(--status-fail); }
 .status-unknown .badge, .status-unknown .row-meta { color: var(--status-warn); }
 .status-skipped .badge, .status-waived .badge { color: var(--status-idle); }
+/* Knocked out of the fill. Higher specificity than the status colour rules above, which
+   would otherwise paint the glyph the same colour as the square it sits in. */
+.status-fail.needs-action .badge,
+.status-unknown.needs-action .badge { color: var(--surface); }
+/* Quiet rows, loud problems. Rhythm comes from which rows are filled, not from giving
+   every row a card: 109 identical cards would be the same flat wall in a heavier costume. */
+.needs-action {
+  padding: var(--space-4);
+  margin-top: var(--space-2);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+.status-fail.needs-action { border-color: var(--border-strong); }
+/* Deliberately no box on `.suggested`. Two weights only: boxed and filled means a gate is
+   blocked, plain means everything else. A third box shape read as two components. */
+.next-step {
+  margin: var(--space-2) 0 0;
+  max-width: var(--prose-max);
+  text-wrap: pretty;
+}
+.next-step code { color: var(--text); }
+/* Every pillar gets the rule, including the first: it has to separate from the filter bar
+   above it, and a section boundary must outweigh the hairlines between rows inside it. */
+.pillar {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: var(--rule) solid var(--border-strong);
+}
+/* The count sits immediately after the name, not flung to the far edge: at 1120px a
+   right-aligned count is a third of a metre from the thing it counts. */
+.pillar-head {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  align-items: baseline;
+  gap: 0 var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.pillar-head h3 { margin: 0; color: var(--text); }
+.pillar-why { grid-column: 1 / -1; margin: var(--space-1) 0 0; color: var(--text-muted); }
+.pillar-state {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  text-transform: uppercase;
+}
+.pillar-state.tone-open { color: var(--status-fail); }
+.pillar-state.tone-suggest { color: var(--text-muted); }
+.pillar-state.tone-clear { color: var(--status-pass); }
 .callout { margin-top: var(--space-3); }
 .tone-warn { color: var(--status-warn); }
 .table-scroll { overflow-x: auto; }
@@ -631,7 +736,9 @@ _RADAR_BOX = 240
 _RADAR_C = 120
 _RADAR_R = 84
 _RADAR_RINGS = (0.25, 0.5, 0.75, 1.0)
-_DIST_ORDER = ("pass", "fail", "unknown", "skipped", "waived")
+# Urgency order, not alphabetical and not "good news first". The bar, the facet chips and
+# every generated selector chain share it, so the reader meets failures before passes.
+_DIST_ORDER = ("fail", "unknown", "pass", "skipped", "waived")
 
 
 def _radar_point(index, count, ratio, radius=_RADAR_R):
@@ -905,14 +1012,20 @@ def _filter_css(model) -> str:
               for cls, sids in owners if sids]
     rules += [f"#{sid}:checked ~ #f-{cls}:checked ~ .criteria-body .criteria-empty"
               " { display: none; }" for cls, sids in owners for sid in sids]
-    checked = ",\n".join(f'#{fid}:checked ~ .facets label[for="{fid}"]'
-                         for fid, *_ in status_facets + pillar_facets)
-    focused = ",\n".join(f'#{fid}:focus-visible ~ .facets label[for="{fid}"]'
-                         for fid, *_ in status_facets + pillar_facets)
-    rules.append(checked + " {\n  --check-fill: var(--mark);\n  color: var(--text);\n"
+    # Pillar chips default to checked, so the checked rule is what a reader actually sees.
+    # Split it by rank: status keeps the box, pillar stays text plus a mark. Sharing one
+    # rule silently re-boxed all nine pillar chips in the default state.
+    selector = lambda facets, state: ",\n".join(  # noqa: E731 - local formatting helper
+        f'#{fid}:{state} ~ .facets label[for="{fid}"]' for fid, *_ in facets)
+    rules.append(selector(status_facets, "checked")
+                 + " {\n  --check-fill: var(--mark);\n  color: var(--text);\n"
                  "  border-color: var(--border-strong);\n"
                  "  background: var(--surface-sunken);\n}")
-    rules.append(focused + " {\n  outline: var(--focus-width) solid var(--focus);\n"
+    rules.append(selector(pillar_facets, "checked")
+                 + " {\n  --check-fill: var(--mark);\n  color: var(--text);\n"
+                 "  border-color: transparent;\n  background: none;\n}")
+    rules.append(selector(status_facets + pillar_facets, "focus-visible")
+                 + " {\n  outline: var(--focus-width) solid var(--focus);\n"
                  "  outline-offset: var(--focus-offset);\n}")
     return "\n" + "\n".join(rules) + "\n"
 
@@ -923,15 +1036,17 @@ def _facets(out, model) -> None:
         out.append(f'<input class="facet-input visually-hidden" type="checkbox" id="{fid}"'
                    + (" checked" if checked else "") + ">")
     out.append('<div class="facets">')
-    for legend, facets in (("Status", status_facets), ("Pillar", pillar_facets)):
-        out += [f'<p class="facet-legend">{legend}</p>', '<ul class="facet-list">']
+    groups = (("Status", "", status_facets), ("Pillar", " facet-plain", pillar_facets))
+    for legend, variant, facets in groups:
+        out += [f'<div class="facet-group{variant}">',
+                f'<p class="facet-legend">{legend}</p>', '<ul class="facet-list">']
         for fid, label, count, _checked in facets:
             # `f-s-pass` -> `facet-pass`; pillar ids carry no status tint.
             tint = f" facet-{fid[4:]}" if fid.startswith("f-s-") else ""
             out.append(f'<li><label class="facet{tint}" for="{fid}">'
                        + f'<span class="facet-name">{_html(label)}</span>'
                        + f'<span class="facet-count">{_html(count)}</span></label></li>')
-        out.append("</ul>")
+        out += ["</ul>", "</div>"]
     out.append("</div>")
 
 
@@ -957,24 +1072,109 @@ def _html_criteria(out, d) -> None:
             '<p class="empty criteria-empty">No criteria match these filters</p>']
     index = 0
     for i, pillar in enumerate(pillars, 1):
-        out += [f'<section class="pillar p{i}" aria-labelledby="pillar-{i}-heading">',
-                f'<h3 id="pillar-{i}-heading">'
-                + _icon(_PILLAR_ICONS.get(pillar, "dot"))
-                + f"{_html(pillar)}</h3>",
-                '<ol class="criteria">']
-        for r in [x for x in d.results if x.pillar == pillar]:
+        # Urgency first, gates before advisories, lowest level first: the top of each
+        # pillar is the row to fix next, not whatever the registry happened to list first.
+        rows = sorted((x for x in d.results if x.pillar == pillar), key=_sort_key)
+        _pillar_header(out, i, pillar, rows)
+        out.append('<ol class="criteria">')
+        for r in rows:
             index += 1
             _html_criterion(out, r, index)
         out += ["</ol>", "</section>"]
     out += ["</div>", "</section>"]
 
 
+def _pillar_header(out, index, pillar, rows) -> None:
+    """Pillar divider: what the pillar is for, and how much of it is actually in your way.
+
+    Blocking and suggested are reported separately because collapsing them into one "to
+    fix" number tells a reader four advisory nits are a blocked gate.
+    """
+    blocking = sum(1 for r in rows if _blocking(r))
+    suggested = sum(1 for r in rows if _suggested(r))
+    if blocking:
+        tone, state = "open", f"{blocking} blocking"
+    elif suggested:
+        tone, state = "suggest", f"{suggested} suggested"
+    else:
+        tone, state = "clear", "all clear"
+    out += [
+        f'<section class="pillar p{index}" aria-labelledby="pillar-{index}-heading">',
+        '<div class="pillar-head">',
+        f'<h3 id="pillar-{index}-heading">'
+        + _icon(_PILLAR_ICONS.get(pillar, "dot"))
+        + f"{_html(pillar)}</h3>",
+        f'<p class="pillar-state tone-{tone}">{_html(state)}</p>',
+        f'<p class="pillar-why">{_html(_PILLAR_ELI5.get(pillar, ""))}</p>',
+        "</div>",
+    ]
+
+
+def _is_judgment(r) -> bool:
+    """Agent-graded criteria: genuinely outside the score, so genuinely not your problem."""
+    return r.id.startswith("judgment.")
+
+
+def _blocking(r) -> bool:
+    """Does ignoring this row cost a level?
+
+    Only gating criteria move the score, and score.py counts UNKNOWN as 0/1 exactly like a
+    failure. An advisory failure is worth doing but blocks nothing, so shouting about it in
+    the same voice as a blocked gate teaches the reader to distrust the loud voice.
+    """
+    return r.gating and (r.status == Status.FAIL
+                         or (r.status == Status.UNKNOWN and not _is_judgment(r)))
+
+
+def _suggested(r) -> bool:
+    """Worth fixing, blocks nothing: an advisory failure."""
+    return not r.gating and r.status == Status.FAIL
+
+
+def _action(r) -> str:
+    """The concrete next step, or "" when there is nothing concrete to add.
+
+    Silent for judgments and for unregistered fix kinds. Both already say everything they
+    have to say in the rationale, and repeating it below is two lines for one fact.
+    """
+    if r.status == Status.UNKNOWN:
+        return "" if _is_judgment(r) else _ASSESS_UNKNOWN
+    if r.status == Status.FAIL:
+        return _ACTIONS.get(r.fix_kind or "", "")
+    return ""
+
+
+def _stakes(r) -> str:
+    return f"Level {r.level} gate" if r.gating else "advisory"
+
+
+def _sort_key(r):
+    """Tier first, then urgency, then the lowest level.
+
+    Tier leads because tier is what the eye sees: blocking rows are boxed and filled, the
+    rest are plain. Sorting by status first interleaved them (fail-gate, fail-advisory,
+    unknown-gate, unknown-advisory), so the page alternated between two treatments and
+    read as a styling bug rather than a hierarchy. Now the boxes are one contiguous block
+    and the pillar's "n blocking" count names exactly the rows beneath it.
+    """
+    tier = 0 if _blocking(r) else (1 if _suggested(r) else 2)
+    return (tier, _DIST_ORDER.index(r.status.value), r.level)
+
+
 def _html_criterion(out, r, index) -> None:
     status = r.status.value
-    _row(out, cls=f"criterion status-{status}", badge=_badge(status), title=r.title,
-         meta=_meta([status.capitalize(), "gating" if r.gating else "advisory",
-                     f"L{r.level}", _display_score(r)]),
-         rationale=r.rationale, extra=(_evidence(r.evidence, f"tip-{index}"),))
+    action = _action(r)
+    tier = " needs-action" if _blocking(r) else (" suggested" if _suggested(r) else "")
+    extra = [_evidence(r.evidence, f"tip-{index}")]
+    if action:
+        extra.insert(0, f'<p class="next-step">{action}</p>')
+    # N/M earns its place when it is not tautological: a repository-scope pass is always
+    # 1/1, and printing it on every green row is three tokens saying nothing.
+    partial = r.passed_apps != r.evaluated_apps
+    score = _display_score(r) if (partial or r.evaluated_apps > 1) else ""
+    _row(out, cls=f"criterion status-{status}{tier}", badge=_badge(status), title=r.title,
+         meta=_meta([status.capitalize(), _stakes(r), score]),
+         rationale=r.rationale, extra=tuple(extra))
 
 
 def _html_advisory_improvements(out, d) -> None:

@@ -542,13 +542,21 @@ class TestHtmlReport(unittest.TestCase):
                    if a.get("class", "").startswith("row criterion status-")}
         text = doc.body_text
         icons = [a.get("class") for t, a in doc.elements if t == "svg"]
+        joined = " | ".join(sorted(classes))
         for s in Status:
-            self.assertIn(f"row criterion status-{s.value}", classes)
+            self.assertIn(f"row criterion status-{s.value}", joined)
             self.assertIn(f"{s.value.capitalize()} ·", text)
         self.assertLessEqual(set(icons), {"icon", "radar", "dist"})
         self.assertGreaterEqual(icons.count("icon"), len(list(Status)))  # one badge per row
-        self.assertIn("Pass · gating · L1 · 1/1", text)
-        self.assertIn("Fail · advisory · L1 · 1/1", text)
+        # Every fail/unknown here is advisory, so none blocks: the advisory failure is
+        # `suggested` and the advisory unknown is a judgment-free flag with no tier at all.
+        self.assertEqual({c for c in classes if "needs-action" in c}, set())
+        self.assertEqual({c.split(" status-")[1].split()[0]
+                          for c in classes if "suggested" in c}, {"fail"})
+        self.assertIn("Pass · Level 1 gate", text)
+        # An unregistered fix kind emits no action line at all.
+        self.assertIn("Fail · advisory why fail", text)
+        self.assertNotIn("Manual work", text)
 
     def test_criteria_grouped_by_pillar_in_first_seen_order(self):
         results = [
@@ -932,8 +940,9 @@ class TestFacets(unittest.TestCase):
     def test_a_pillar_group_hides_once_all_its_statuses_are_off(self):
         """A heading that outlives its own rows is a visibly broken filter."""
         css = report_mod._filter_css(report_mod._facet_model(self._rep(self._results())))
-        # p1 holds pass + fail, p2 holds only skipped: each collapses on its own statuses.
-        self.assertIn("#f-s-pass:not(:checked) ~ #f-s-fail:not(:checked) ~ .criteria-body .p1"
+        # p1 holds fail + pass, p2 holds only skipped: each collapses on its own statuses.
+        # The chain follows DOM order, which is _DIST_ORDER: fail before pass.
+        self.assertIn("#f-s-fail:not(:checked) ~ #f-s-pass:not(:checked) ~ .criteria-body .p1"
                       " { display: none; }", css)
         self.assertIn("#f-s-skipped:not(:checked) ~ .criteria-body .p2 { display: none; }", css)
 
@@ -941,6 +950,150 @@ class TestFacets(unittest.TestCase):
         doc = _parse(report_mod.render_html(self._rep([])))
         self.assertNotIn("input", doc.tags)
         self.assertEqual(report_mod._filter_css(([], [], [])), "")
+
+
+class TestActionLayer(unittest.TestCase):
+    """What needs doing, in plain language, only on the rows that need doing something."""
+
+    def _rep(self, results):
+        return Report(project_path="/p", schema_version="2", engine_version="0.6.0",
+                      registry_version="0.6.0", detector_version="0.5.0", results=results)
+
+    def _crit(self, **kw):
+        base = dict(id="x.y", title="X", pillar="Documentation", level=2, scope="repository",
+                    gating=True, status=Status.FAIL, rationale="why")
+        return CriterionResult(**{**base, **kw})
+
+    def test_action_copy_matches_what_ra1_fix_actually_does(self):
+        # recipes.apply_plan writes only plan["auto"], so nothing but the scaffold branch
+        # may mention --apply, and no branch may claim a draft is written for the user.
+        scaffold = report_mod._action(self._crit(fix_kind="scaffold"))
+        propose = report_mod._action(self._crit(fix_kind="propose"))
+        setting = report_mod._action(self._crit(fix_kind="github_setting"))
+        manual = report_mod._action(self._crit(fix_kind=""))
+        self.assertIn("--apply", scaffold)
+        for text in (propose, setting, manual):
+            self.assertNotIn("--apply", text)
+        # `propose` must never imply ra1 writes the content, and `github_setting` must
+        # never imply it applies the setting: recipes.py only ever prints those.
+        self.assertIn("you write it", propose)
+        self.assertIn("you apply it", setting)
+        # No registered remediation means no action line: a row of "Manual work, no
+        # scaffold covers this" tells the reader nothing the rationale has not said.
+        self.assertEqual(manual, "")
+
+    def test_unknown_action_copy_branches_on_whether_it_is_scored(self):
+        # score.py::_status_counts scores UNKNOWN 0/1, so a deterministic unknown counts
+        # against the level. A judgment.* row says so in its own rationale, so the action
+        # line stays silent rather than repeating the same fact underneath it.
+        deterministic = report_mod._action(self._crit(status=Status.UNKNOWN))
+        judgment = report_mod._action(self._crit(id="judgment.readme", gating=False,
+                                                status=Status.UNKNOWN))
+        self.assertIn("counts as not passed", deterministic)
+        self.assertEqual(judgment, "")
+
+    def test_three_tiers_blocking_suggested_settled(self):
+        """Only a gate can block. An advisory failure is worth doing and blocks nothing."""
+        blocking = (self._crit(status=Status.FAIL),
+                    self._crit(id="docs.thing", status=Status.UNKNOWN))
+        for r in blocking:
+            self.assertTrue(report_mod._blocking(r))
+            self.assertFalse(report_mod._suggested(r))
+        advisory_fail = self._crit(gating=False, status=Status.FAIL)
+        self.assertFalse(report_mod._blocking(advisory_fail))
+        self.assertTrue(report_mod._suggested(advisory_fail))
+        # A judgment never enters the score, so it is neither blocking nor suggested.
+        judgment = self._crit(id="judgment.x", gating=False, status=Status.UNKNOWN)
+        self.assertFalse(report_mod._blocking(judgment))
+        self.assertFalse(report_mod._suggested(judgment))
+        for settled in (Status.PASS, Status.SKIPPED, Status.WAIVED):
+            r = self._crit(status=settled)
+            self.assertFalse(report_mod._blocking(r) or report_mod._suggested(r))
+
+    def test_pillar_state_separates_blocking_from_suggested(self):
+        # A count that lumps advisory nits in with a blocked gate teaches the reader to
+        # ignore the count.
+        blocked = [self._crit(id="a.1", status=Status.FAIL),
+                   self._crit(id="judgment.x", gating=False, status=Status.UNKNOWN)]
+        self.assertIn("1 blocking",
+                      _parse(report_mod.render_html(self._rep(blocked))).body_text)
+        advisory_only = [self._crit(id="a.2", gating=False, status=Status.FAIL),
+                         self._crit(id="a.3", gating=False, status=Status.FAIL)]
+        text = _parse(report_mod.render_html(self._rep(advisory_only))).body_text
+        self.assertIn("2 suggested", text)
+        self.assertNotIn("blocking", text)
+
+    def test_rows_sort_by_urgency_then_gate_then_level(self):
+        rows = [
+            self._crit(id="d.pass", title="Passing", status=Status.PASS),
+            self._crit(id="d.adv", title="Advisory fail", gating=False),
+            self._crit(id="d.l3", title="Gate three", level=3),
+            self._crit(id="d.l1", title="Gate one", level=1),
+        ]
+        text = _parse(report_mod.render_html(self._rep(rows))).body_text
+        for earlier, later in (("Gate one", "Gate three"), ("Gate three", "Advisory fail"),
+                               ("Advisory fail", "Passing")):
+            self.assertLess(text.index(earlier), text.index(later),
+                            f"{earlier} should precede {later}")
+
+    def test_tiers_render_as_contiguous_blocks(self):
+        """Blocking rows are boxed and the rest are plain, so they must not interleave.
+
+        Sorting by status first put a boxed gate, then a plain advisory, then another boxed
+        gate: two treatments alternating down the page, which reads as a styling bug.
+        """
+        rows = [
+            self._crit(id="a.1", title="Gate fail", status=Status.FAIL, level=2),
+            self._crit(id="a.2", title="Advisory fail", gating=False, status=Status.FAIL),
+            self._crit(id="a.3", title="Gate unknown", status=Status.UNKNOWN, level=3),
+            self._crit(id="a.4", title="Passing", status=Status.PASS),
+        ]
+        doc = _parse(report_mod.render_html(self._rep(rows)))
+        tiers = [("needs-action" if "needs-action" in a["class"] else
+                  "suggested" if "suggested" in a["class"] else "settled")
+                 for _, a in doc.elements
+                 if a.get("class", "").startswith("row criterion")]
+        self.assertEqual(tiers, ["needs-action", "needs-action", "suggested", "settled"])
+        text = doc.body_text
+        # Both gates lead, lowest level first, and the advisory failure follows them.
+        self.assertLess(text.index("Gate fail"), text.index("Gate unknown"))
+        self.assertLess(text.index("Gate unknown"), text.index("Advisory fail"))
+
+    def test_settled_rows_carry_no_action(self):
+        for status in (Status.PASS, Status.SKIPPED, Status.WAIVED):
+            self.assertEqual(report_mod._action(self._crit(status=status)), "")
+
+    def test_stakes_name_the_level_a_gate_blocks(self):
+        self.assertEqual(report_mod._stakes(self._crit(level=3)), "Level 3 gate")
+        self.assertEqual(report_mod._stakes(self._crit(gating=False)), "advisory")
+
+    def test_only_actionable_rows_render_the_action_and_the_fill(self):
+        rows = [self._crit(id="a.1", title="Broken", fix_kind="scaffold"),
+                self._crit(id="a.2", title="Fine", status=Status.PASS)]
+        doc = _parse(report_mod.render_html(self._rep(rows)))
+        classes = [a.get("class", "") for _, a in doc.elements]
+        self.assertEqual(sum("needs-action" in c for c in classes), 1)
+        self.assertEqual(sum(c == "next-step" for c in classes), 1)
+
+    def test_pillar_header_states_purpose_and_open_count(self):
+        rows = [self._crit(id="a.1", status=Status.FAIL),
+                self._crit(id="a.2", status=Status.UNKNOWN),
+                self._crit(id="a.3", status=Status.PASS)]
+        text = _parse(report_mod.render_html(self._rep(rows))).body_text
+        self.assertIn("What an agent reads before it touches your code.", text)
+        self.assertIn("2 blocking", text)  # the gating fail + gating unknown, not the pass
+
+    def test_a_clean_pillar_says_so(self):
+        doc = _parse(report_mod.render_html(self._rep([self._crit(status=Status.PASS)])))
+        self.assertIn("all clear", doc.body_text)
+        self.assertIn("tone-clear", [a.get("class", "").split()[-1]
+                                     for _, a in doc.elements if a.get("class")])
+
+    def test_an_unknown_pillar_still_gets_a_header(self):
+        doc = _parse(report_mod.render_html(self._rep([self._crit(pillar="Brand New")])))
+        text = doc.body_text
+        self.assertIn("Brand New", text)
+        self.assertIn("1 blocking", text)
 
 
 class TestDistribution(unittest.TestCase):

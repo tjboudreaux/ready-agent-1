@@ -247,10 +247,24 @@ legible, the tone is wrong — fix the tone.
 
 ## 5. Components
 
-Seventeen components. Every one is assembled in `engine/readiness/report.py` from the shared
+Twenty components. Every one is assembled in `engine/readiness/report.py` from the shared
 component helpers (`_section`, `_row`, `_meta`, `_badge`, `_icon`, `_tip`, `_evidence`, `_callout`,
-`_empty`, `_gate_track`, `_radar`, `_distribution`, `_facets`); no markup shape is spelled out
-twice.
+`_empty`, `_gate_track`, `_radar`, `_distribution`, `_facets`, `_pillar_header`); no markup shape
+is spelled out twice.
+
+**The three tiers.** Every criterion row is blocking, suggested or settled, and the tier is the
+first thing the design communicates:
+
+| Tier | Predicate | Treatment |
+|---|---|---|
+| **Blocking** | a gating criterion that failed, or a gating `unknown` that is not an agent judgment | filled status square, `--surface-sunken` box, `--border-strong` edge, next-step line |
+| **Suggested** | an advisory failure: worth doing, blocks nothing | plain row, outlined status square |
+| **Settled** | pass, skipped, waived, or an agent judgment | plain row, muted square |
+
+`unknown` counts as blocking because `score.py::_status_counts` scores it `0/1` exactly like a
+failure. An agent judgment never enters the score, so it never wears the alarm. Rows sort by tier
+first so the two treatments form contiguous blocks rather than alternating down the page, and the
+pillar header's `n blocking` names exactly the rows beneath it.
 
 ### Report Shell
 
@@ -292,12 +306,30 @@ twice.
 
 ### Row (criterion / action / advisory variants)
 
-- **Shape:** full-bleed list item, `12px` vertical padding, hairline top rule. No card, no fill.
+- **Shape:** full-bleed list item, `12px` vertical padding, hairline top rule. Plain by default;
+  a blocking row takes a `--surface-sunken` box with `16px` padding and a `--border-strong` edge.
+  Two weights only, never three: a distinct third box shape read as two different components.
 - **Head:** a baseline-aligned flex line — badge, title (Title, 600), optional mono identifier,
   meta. Wraps at `4px 8px` gaps.
-- **Body:** optional rationale in Body at the `72ch` measure, then the optional evidence disclosure.
+- **Meta:** status word, stakes (`Level 3 gate` or `advisory`), and `passed/evaluated` only when
+  that fraction says something. A repository-scope pass is always `1/1`, and printing it on every
+  green row is three tokens conveying nothing.
+- **Body:** optional rationale in Body at the `72ch` measure, then the next-step line on blocking
+  rows, then the optional evidence disclosure.
 - **Variants:** `criterion` adds a status badge and a `status-*` class that colors badge and meta;
   `action` adds the mono criterion id; `advisory-item` carries level and pillar only.
+
+### Next Step
+
+- One sentence under a blocking row's rationale saying what to do, keyed off the criterion's
+  remediation kind. Body size, `72ch`, `text-wrap: pretty`.
+- **Accuracy is a hard constraint.** `fix/recipes.py` writes only `plan["auto"]`; `propose` and
+  `github_setting` are printed for a human. So only the scaffold branch may mention `--apply`, and
+  no branch may imply a file or a draft appears by itself. Enforced by
+  `TestActionLayer::test_action_copy_matches_what_ra1_fix_actually_does`.
+- **Silent when there is nothing concrete to say.** A criterion with no registered remediation
+  gets no line at all: "Manual work, no scaffold covers this" repeated down the page is noise
+  wearing the costume of guidance, and the rationale already names what is missing.
 
 ### Pillar Radar
 
@@ -319,6 +351,21 @@ twice.
   between rows, no rule above the first. Sits beside the radar at wide widths, beneath it below
   `720px`.
 
+### Pillar Section Header
+
+- A pillar is a real division, so it gets a `2px` `--border-strong` rule and `32px` above it, not
+  a micro-caps label floating over the next row. Every pillar takes the rule, including the first,
+  which has to separate from the filter bar above it.
+- **Content:** glyph and name in Title at full text colour, the state count immediately beside it
+  (`12px` away, not flung to the far edge), and a one-line plain-English purpose beneath.
+- **State:** `n blocking` in `--status-fail` when a gate is blocked, else `n suggested` muted, else
+  `all clear` in `--status-pass`. Blocking and suggested are counted separately on purpose: one
+  combined "to fix" number tells a reader four advisory nits are a blocked gate, and a count that
+  overstates is a count they learn to ignore.
+- **Purpose line:** nine authored sentences, one per pillar, answering "why would an agent care?".
+  Nine is maintainable; 109 per-criterion essays would not be. An unrecognised pillar renders the
+  header without a purpose line rather than inventing one.
+
 ### Status Distribution
 
 - One 8px SVG bar spanning every criterion, segments proportional to pass / fail / unknown /
@@ -331,11 +378,14 @@ twice.
 
 ### Facet Filter
 
-- **Shape:** two labelled groups (Status, Pillar) of square chips, each led by a small square mark
-  in its own status colour. Checked chips fill the mark and take `--surface-sunken`, a
-  `--border-strong` edge and full-opacity text; unchecked chips leave the mark hollow and the text
-  muted. The mark is a box that fills, never a tick: a checkmark beside the word *Fail* reads as a
-  pass. Its colour is what binds these words to the segments in the bar above them.
+- **Shape:** two groups, each with its legend above the chip row so nine pillar chips get the full
+  width instead of a ragged two-line wrap inside a narrow column.
+- **Rank:** Status is the filter a reader reaches for, so it keeps the chip box and a full-colour
+  legend. Pillar is secondary: plain text plus a mark, no box, muted legend. Nine boxed chips were
+  the noisiest thing on the page.
+- **Mark:** a small square in the facet's own status colour, filled when checked and hollow when
+  not. A box that fills, never a tick: a checkmark beside the word *Fail* reads as a pass. Its
+  colour is what binds these words to the segments in the bar above them.
 - **Mechanism:** a real `<input type="checkbox">` per facet, visually hidden but focusable, hoisted
   to precede the rows it governs so a plain sibling combinator does the filtering. No `:has()`, no
   script. Keyboard operation and screen-reader announcement come free from the native control.
@@ -359,10 +409,14 @@ twice.
 
 ### Status Badge
 
-- An inline SVG glyph, 16px on a 24-unit box with 1.5 stroke and `currentColor`: check, cross,
-  minus, question, ban. Drawn in Lucide's grammar and vendored into `report.py`, because the
-  artifact may not fetch an icon library. `aria-hidden`, because the status word beside it is the
-  accessible signal.
+- An inline SVG glyph on a 1.35rem square, 16px on a 24-unit box with 1.5 stroke and
+  `currentColor`: check, cross, minus, question, ban. Drawn in Lucide's grammar and vendored into
+  `report.py`, because the artifact may not fetch an icon library. `aria-hidden`, because the
+  status word beside it is the accessible signal.
+- **Three weights, matching the tiers.** A blocking row fills the square with its status colour
+  and knocks the glyph out in `--surface`; a suggested row leaves it outlined in `--status-fail`;
+  a settled row is muted. The fill is reserved for blocking work so that it keeps meaning
+  something.
 
 ### Evidence Disclosure
 
