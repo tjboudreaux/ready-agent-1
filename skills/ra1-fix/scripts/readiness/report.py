@@ -1132,15 +1132,22 @@ def _suggested(r) -> bool:
 
 
 def _action(r) -> str:
-    """The concrete next step, or "" when there is nothing concrete to add.
+    """The concrete next step, or "" when there is nothing true and concrete to add.
 
-    Silent for judgments and for unregistered fix kinds. Both already say everything they
-    have to say in the rationale, and repeating it below is two lines for one fact.
+    Each sentence is scoped to where it is actually true, which is narrower than "any row
+    that is not settled":
+
+    * Remediation belongs on any failure. An advisory failure blocks nothing but is still
+      worth doing, and how to do it is useful on a suggested row as much as a blocking one.
+    * "Counts as not passed" belongs only on a BLOCKING unknown. `score.summarize` filters
+      to `r.gating`, so an advisory unknown never reaches the level or the pass rate, and
+      telling its reader it cost them something is simply false.
+    * Judgments and unregistered fix kinds stay silent: the rationale already says it.
     """
-    if r.status == Status.UNKNOWN:
-        return "" if _is_judgment(r) else _ASSESS_UNKNOWN
     if r.status == Status.FAIL:
         return _ACTIONS.get(r.fix_kind or "", "")
+    if _blocking(r):  # a gating, non-judgment unknown: the only unknown that costs a level
+        return _ASSESS_UNKNOWN
     return ""
 
 

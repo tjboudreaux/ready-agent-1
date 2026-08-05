@@ -257,14 +257,23 @@ first thing the design communicates:
 
 | Tier | Predicate | Treatment |
 |---|---|---|
-| **Blocking** | a gating criterion that failed, or a gating `unknown` that is not an agent judgment | filled status square, `--surface-sunken` box, `--border-strong` edge, next-step line |
+| **Blocking** | a gating criterion that failed, or a gating `unknown` that is not an agent judgment | filled status square, `--surface-sunken` box, `--border-strong` edge |
 | **Suggested** | an advisory failure: worth doing, blocks nothing | plain row, outlined status square |
-| **Settled** | pass, skipped, waived, or an agent judgment | plain row, muted square |
+| **Settled** | pass, skipped, waived, an agent judgment, or an advisory `unknown` | plain row, muted square |
 
-`unknown` counts as blocking because `score.py::_status_counts` scores it `0/1` exactly like a
-failure. An agent judgment never enters the score, so it never wears the alarm. Rows sort by tier
-first so the two treatments form contiguous blocks rather than alternating down the page, and the
-pillar header's `n blocking` names exactly the rows beneath it.
+A gating `unknown` blocks because `score.py::_status_counts` scores it `0/1` exactly like a
+failure. An advisory `unknown` does not: `score.summarize` filters to `r.gating`, so it never
+reaches the level or the pass rate, and it is settled rather than flagged. An agent judgment never
+enters the score at all, so it never wears the alarm.
+
+Rows sort by tier first so the two treatments form contiguous blocks rather than alternating down
+the page, and the pillar header's `n blocking` names exactly the rows beneath it.
+
+**The next-step line is scoped per sentence, not per tier.** Remediation appears on any failure,
+blocking or suggested, because an advisory failure blocks nothing yet is still worth doing and how
+to do it is useful either way. The "counts as not passed" sentence appears only on a blocking
+`unknown`, because on any other row it would claim a cost the score never charged. Enforced by
+`TestActionLayer::test_each_sentence_appears_only_where_it_is_true`.
 
 ### Report Shell
 
@@ -314,22 +323,24 @@ pillar header's `n blocking` names exactly the rows beneath it.
 - **Meta:** status word, stakes (`Level 3 gate` or `advisory`), and `passed/evaluated` only when
   that fraction says something. A repository-scope pass is always `1/1`, and printing it on every
   green row is three tokens conveying nothing.
-- **Body:** optional rationale in Body at the `72ch` measure, then the next-step line on blocking
-  rows, then the optional evidence disclosure.
+- **Body:** optional rationale in Body at the `72ch` measure, then the optional next-step line,
+  then the optional evidence disclosure.
 - **Variants:** `criterion` adds a status badge and a `status-*` class that colors badge and meta;
   `action` adds the mono criterion id; `advisory-item` carries level and pillar only.
 
 ### Next Step
 
-- One sentence under a blocking row's rationale saying what to do, keyed off the criterion's
+- One sentence under a failing row's rationale saying what to do, keyed off the criterion's
   remediation kind. Body size, `72ch`, `text-wrap: pretty`.
 - **Accuracy is a hard constraint.** `fix/recipes.py` writes only `plan["auto"]`; `propose` and
   `github_setting` are printed for a human. So only the scaffold branch may mention `--apply`, and
   no branch may imply a file or a draft appears by itself. Enforced by
   `TestActionLayer::test_action_copy_matches_what_ra1_fix_actually_does`.
-- **Silent when there is nothing concrete to say.** A criterion with no registered remediation
-  gets no line at all: "Manual work, no scaffold covers this" repeated down the page is noise
-  wearing the costume of guidance, and the rationale already names what is missing.
+- **Silent when there is nothing true and concrete to say.** A criterion with no registered
+  remediation gets no line at all: "Manual work, no scaffold covers this" repeated down the page
+  is noise wearing the costume of guidance, and the rationale already names what is missing.
+  Judgments and advisory `unknown`s are silent for the same reason, plus a sharper one: the
+  sentence they would carry is not true of them.
 
 ### Pillar Radar
 

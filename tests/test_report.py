@@ -992,6 +992,38 @@ class TestActionLayer(unittest.TestCase):
         self.assertIn("counts as not passed", deterministic)
         self.assertEqual(judgment, "")
 
+    def test_each_sentence_appears_only_where_it_is_true(self):
+        """The two next-step sentences have different, narrower scopes than "not settled".
+
+        Remediation is true of any failure, so a suggested row keeps it: an advisory failure
+        blocks nothing but is still worth doing. "Counts as not passed" is true only of a
+        gating unknown, because score.summarize filters to r.gating, so an advisory unknown
+        never reaches the level or the pass rate.
+        """
+        advisory_fail = self._crit(gating=False, status=Status.FAIL, fix_kind="scaffold")
+        self.assertTrue(report_mod._suggested(advisory_fail))
+        self.assertIn("--apply", report_mod._action(advisory_fail))
+        self.assertNotIn("counts as not passed", report_mod._action(advisory_fail))
+
+        advisory_unknown = self._crit(id="docs.thing", gating=False, status=Status.UNKNOWN)
+        self.assertFalse(report_mod._blocking(advisory_unknown))
+        self.assertEqual(report_mod._action(advisory_unknown), "",
+                         "an advisory unknown never reaches the score, so it must not claim to")
+        # Even with a remediation kind registered, an unknown is not a failure to remediate.
+        self.assertEqual(report_mod._action(
+            self._crit(gating=False, status=Status.UNKNOWN, fix_kind="scaffold")), "")
+
+    def test_no_settled_row_ever_renders_a_next_step(self):
+        rows = [self._crit(id=f"a.{i}", title=f"T{i}", gating=False, status=s, fix_kind="scaffold")
+                for i, s in enumerate((Status.UNKNOWN, Status.PASS, Status.SKIPPED,
+                                       Status.WAIVED))]
+        doc = _parse(report_mod.render_html(self._rep(rows)))
+        settled = [a for _, a in doc.elements
+                   if a.get("class", "").startswith("row criterion")
+                   and "needs-action" not in a["class"] and "suggested" not in a["class"]]
+        self.assertEqual(len(settled), 4)
+        self.assertEqual(sum(1 for _, a in doc.elements if a.get("class") == "next-step"), 0)
+
     def test_three_tiers_blocking_suggested_settled(self):
         """Only a gate can block. An advisory failure is worth doing and blocks nothing."""
         blocking = (self._crit(status=Status.FAIL),
