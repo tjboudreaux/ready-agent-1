@@ -1,0 +1,404 @@
+{
+  "schemaVersion": 2,
+  "title": "Design System: Ready Agent 1 — Readiness Report",
+  "extensions": {
+    "themeVersion": "1.0.0",
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Midnight Page",
+        "source": "Midnight #0B0A1E",
+        "canonical": "oklch(97% 0.01 283)",
+        "dark": "oklch(16% 0.025 283)",
+        "tonalRamp": [
+          "oklch(15% 0.01 283)",
+          "oklch(26% 0.01 283)",
+          "oklch(37% 0.01 283)",
+          "oklch(48% 0.01 283)",
+          "oklch(60% 0.01 283)",
+          "oklch(71% 0.01 283)",
+          "oklch(82% 0.01 283)",
+          "oklch(93% 0.01 283)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Midnight Sheet",
+        "source": "Midnight #0B0A1E",
+        "canonical": "oklch(99% 0.006 283)",
+        "dark": "oklch(21% 0.032 283)",
+        "tonalRamp": [
+          "oklch(15% 0.006 283)",
+          "oklch(26% 0.006 283)",
+          "oklch(37% 0.006 283)",
+          "oklch(48% 0.006 283)",
+          "oklch(60% 0.006 283)",
+          "oklch(71% 0.006 283)",
+          "oklch(82% 0.006 283)",
+          "oklch(93% 0.006 283)"
+        ]
+      },
+      "surface-sunken": {
+        "role": "neutral",
+        "displayName": "Midnight Sunken",
+        "source": "Midnight #0B0A1E",
+        "canonical": "oklch(94% 0.015 283)",
+        "dark": "oklch(25% 0.035 283)",
+        "tonalRamp": [
+          "oklch(15% 0.015 283)",
+          "oklch(26% 0.015 283)",
+          "oklch(37% 0.015 283)",
+          "oklch(48% 0.015 283)",
+          "oklch(60% 0.015 283)",
+          "oklch(71% 0.015 283)",
+          "oklch(82% 0.015 283)",
+          "oklch(93% 0.015 283)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Hologram Ink",
+        "source": "Hologram #EAF6FF, normalized to hue 283",
+        "canonical": "oklch(24% 0.03 283)",
+        "dark": "oklch(93% 0.012 283)",
+        "tonalRamp": [
+          "oklch(15% 0.03 283)",
+          "oklch(26% 0.03 283)",
+          "oklch(37% 0.03 283)",
+          "oklch(48% 0.03 283)",
+          "oklch(60% 0.03 283)",
+          "oklch(71% 0.03 283)",
+          "oklch(82% 0.03 283)",
+          "oklch(93% 0.03 283)"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Hologram Ink Muted",
+        "source": "Midnight #0B0A1E",
+        "canonical": "oklch(48% 0.025 283)",
+        "dark": "oklch(72% 0.025 283)",
+        "tonalRamp": [
+          "oklch(15% 0.025 283)",
+          "oklch(26% 0.025 283)",
+          "oklch(37% 0.025 283)",
+          "oklch(48% 0.025 283)",
+          "oklch(60% 0.025 283)",
+          "oklch(71% 0.025 283)",
+          "oklch(82% 0.025 283)",
+          "oklch(93% 0.025 283)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Midnight Rule",
+        "source": "Midnight #0B0A1E",
+        "canonical": "oklch(86% 0.02 283)",
+        "dark": "oklch(34% 0.03 283)",
+        "tonalRamp": [
+          "oklch(15% 0.02 283)",
+          "oklch(26% 0.02 283)",
+          "oklch(37% 0.02 283)",
+          "oklch(48% 0.02 283)",
+          "oklch(60% 0.02 283)",
+          "oklch(71% 0.02 283)",
+          "oklch(82% 0.02 283)",
+          "oklch(93% 0.02 283)"
+        ]
+      },
+      "border-strong": {
+        "role": "neutral",
+        "displayName": "Midnight Rule Strong",
+        "source": "Midnight #0B0A1E",
+        "canonical": "oklch(74% 0.025 283)",
+        "dark": "oklch(46% 0.035 283)",
+        "tonalRamp": [
+          "oklch(15% 0.025 283)",
+          "oklch(26% 0.025 283)",
+          "oklch(37% 0.025 283)",
+          "oklch(48% 0.025 283)",
+          "oklch(60% 0.025 283)",
+          "oklch(71% 0.025 283)",
+          "oklch(82% 0.025 283)",
+          "oklch(93% 0.025 283)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Neon Magenta",
+        "source": "Neon Magenta #FF3CAC",
+        "canonical": "oklch(47% 0.20 351)",
+        "dark": "oklch(80% 0.17 351)",
+        "tonalRamp": [
+          "oklch(15% 0.20 351)",
+          "oklch(26% 0.20 351)",
+          "oklch(37% 0.20 351)",
+          "oklch(48% 0.20 351)",
+          "oklch(60% 0.20 351)",
+          "oklch(71% 0.20 351)",
+          "oklch(82% 0.20 351)",
+          "oklch(93% 0.20 351)"
+        ]
+      },
+      "status-pass": {
+        "role": "secondary",
+        "displayName": "Neon Cyan",
+        "source": "Neon Cyan #2DE2E6",
+        "canonical": "oklch(40% 0.11 197)",
+        "dark": "oklch(80% 0.12 197)",
+        "tonalRamp": [
+          "oklch(15% 0.11 197)",
+          "oklch(26% 0.11 197)",
+          "oklch(37% 0.11 197)",
+          "oklch(48% 0.11 197)",
+          "oklch(60% 0.11 197)",
+          "oklch(71% 0.11 197)",
+          "oklch(82% 0.11 197)",
+          "oklch(93% 0.11 197)"
+        ]
+      },
+      "status-warn": {
+        "role": "tertiary",
+        "displayName": "Sun Amber",
+        "source": "Sun Amber #FFD36E",
+        "canonical": "oklch(43% 0.11 86)",
+        "dark": "oklch(84% 0.11 86)",
+        "tonalRamp": [
+          "oklch(15% 0.11 86)",
+          "oklch(26% 0.11 86)",
+          "oklch(37% 0.11 86)",
+          "oklch(48% 0.11 86)",
+          "oklch(60% 0.11 86)",
+          "oklch(71% 0.11 86)",
+          "oklch(82% 0.11 86)",
+          "oklch(93% 0.11 86)"
+        ]
+      },
+      "status-fail": {
+        "role": "primary",
+        "displayName": "Neon Magenta (fail)",
+        "source": "alias of --accent",
+        "canonical": "oklch(47% 0.20 351)",
+        "dark": "oklch(80% 0.17 351)",
+        "tonalRamp": [
+          "oklch(15% 0.20 351)",
+          "oklch(26% 0.20 351)",
+          "oklch(37% 0.20 351)",
+          "oklch(48% 0.20 351)",
+          "oklch(60% 0.20 351)",
+          "oklch(71% 0.20 351)",
+          "oklch(82% 0.20 351)",
+          "oklch(93% 0.20 351)"
+        ]
+      },
+      "status-idle": {
+        "role": "neutral",
+        "displayName": "Hologram Ink Muted (idle)",
+        "source": "alias of --text-muted",
+        "canonical": "oklch(48% 0.025 283)",
+        "dark": "oklch(72% 0.025 283)",
+        "tonalRamp": [
+          "oklch(15% 0.025 283)",
+          "oklch(26% 0.025 283)",
+          "oklch(37% 0.025 283)",
+          "oklch(48% 0.025 283)",
+          "oklch(60% 0.025 283)",
+          "oklch(71% 0.025 283)",
+          "oklch(82% 0.025 283)",
+          "oklch(93% 0.025 283)"
+        ]
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "Neon Magenta (focus)",
+        "source": "alias of --accent",
+        "canonical": "oklch(47% 0.20 351)",
+        "dark": "oklch(80% 0.17 351)",
+        "tonalRamp": [
+          "oklch(15% 0.20 351)",
+          "oklch(26% 0.20 351)",
+          "oklch(37% 0.20 351)",
+          "oklch(48% 0.20 351)",
+          "oklch(60% 0.20 351)",
+          "oklch(71% 0.20 351)",
+          "oklch(82% 0.20 351)",
+          "oklch(93% 0.20 351)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The report title. Once per document."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section headings, the status level line, gate numerals."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Row titles and gate names; pillar subheadings in uppercase."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "The muted line under every title, evidence rows, and the footer."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Rationale and prose, capped at the 72ch measure."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Table column headers and gate state words."
+      }
+    },
+    "motion": [
+      {
+        "name": "duration",
+        "value": "160ms",
+        "purpose": "The summary color transition — the artifact's only motion."
+      },
+      {
+        "name": "ease",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Ease-out-quint, paired with duration."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow",
+        "value": "720px",
+        "purpose": "Gate track and report padding collapse below this width."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Gate Track",
+      "kind": "custom",
+      "refersTo": "gate-cleared",
+      "description": "Five readiness gates, cleared left to right. Counts, never percentages.",
+      "html": "<ol class=\"ds-gates\"><li class=\"ds-gate ds-gate-cleared\"><span class=\"ds-gate-num\">1</span><span class=\"ds-gate-name\">Functional</span><span class=\"ds-gate-count\">5/5</span><span class=\"ds-gate-state\">cleared</span></li><li class=\"ds-gate ds-gate-blocked\"><span class=\"ds-gate-num\">2</span><span class=\"ds-gate-name\">Structured</span><span class=\"ds-gate-count\">3/6</span><span class=\"ds-gate-state\">blocked</span></li><li class=\"ds-gate ds-gate-locked\"><span class=\"ds-gate-num\">3</span><span class=\"ds-gate-name\">Governed</span><span class=\"ds-gate-count\">0/4</span><span class=\"ds-gate-state\">locked</span></li><li class=\"ds-gate ds-gate-locked\"><span class=\"ds-gate-num\">4</span><span class=\"ds-gate-name\">Optimized</span><span class=\"ds-gate-count\">0/3</span><span class=\"ds-gate-state\">locked</span></li><li class=\"ds-gate ds-gate-empty\"><span class=\"ds-gate-num\">5</span><span class=\"ds-gate-name\">Autonomous</span><span class=\"ds-gate-count\">0/0</span><span class=\"ds-gate-state\">no criteria</span></li></ol>",
+      "css": ".ds-gates { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); list-style: none; margin: 0; padding: 0; } .ds-gate { display: grid; gap: var(--space-1); min-width: 0; padding: var(--space-3); border: var(--hairline) solid var(--border); border-radius: var(--radius-sm); background: var(--surface-sunken); font-family: var(--font-sans); color: var(--text); } .ds-gate-num { font-size: var(--size-headline); font-weight: var(--weight-strong); line-height: var(--leading-tight); } .ds-gate-name { font-size: var(--size-title); } .ds-gate-count { font-family: var(--font-mono); font-size: var(--size-meta); color: var(--text-muted); } .ds-gate-state { font-size: var(--size-label); font-weight: var(--weight-medium); color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--track-label); } .ds-gate-cleared .ds-gate-num, .ds-gate-cleared .ds-gate-state { color: var(--status-pass); } .ds-gate-blocked { border: var(--rule) solid var(--border-strong); } .ds-gate-blocked .ds-gate-num, .ds-gate-blocked .ds-gate-state { color: var(--status-fail); } .ds-gate-locked .ds-gate-num, .ds-gate-empty .ds-gate-num { color: var(--status-idle); } .ds-gate-empty { border-style: dashed; background: none; }"
+    },
+    {
+      "name": "Criterion Row",
+      "kind": "custom",
+      "refersTo": "row-criterion",
+      "description": "One criterion: badge, title, meta line, rationale. No card, no fill.",
+      "html": "<li class=\"ds-row ds-status-fail\"><p class=\"ds-row-head\"><span class=\"ds-badge\" aria-hidden=\"true\">✗</span><span class=\"ds-row-title\">README present</span><span class=\"ds-row-meta\">Fail · gating · L1 · 0/1</span></p><p class=\"ds-rationale\">No README.md found at the repository root.</p></li>",
+      "css": ".ds-row { list-style: none; padding: var(--space-3) 0; border-top: var(--hairline) solid var(--border); font-family: var(--font-sans); color: var(--text); } .ds-row-head { margin: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); align-items: baseline; } .ds-row-title { font-size: var(--size-title); font-weight: var(--weight-strong); } .ds-row-meta { font-size: var(--size-meta); color: var(--text-muted); } .ds-rationale { margin: var(--space-1) 0 0; max-width: var(--prose-max); font-size: var(--size-body); line-height: var(--leading-normal); } .ds-status-fail .ds-badge, .ds-status-fail .ds-row-meta { color: var(--status-fail); }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "row-criterion",
+      "description": "The status glyph. Always paired with the status word beside it.",
+      "html": "<span class=\"ds-badge ds-badge-pass\" aria-hidden=\"true\">✓</span><span class=\"ds-badge ds-badge-fail\" aria-hidden=\"true\">✗</span><span class=\"ds-badge ds-badge-warn\" aria-hidden=\"true\">?</span><span class=\"ds-badge ds-badge-idle\" aria-hidden=\"true\">⊘</span>",
+      "css": ".ds-badge { font-variant-emoji: text; font-family: var(--font-sans); margin-right: var(--space-2); } .ds-badge-pass { color: var(--status-pass); } .ds-badge-fail { color: var(--status-fail); } .ds-badge-warn { color: var(--status-warn); } .ds-badge-idle { color: var(--status-idle); }"
+    },
+    {
+      "name": "Evidence Disclosure",
+      "kind": "custom",
+      "refersTo": "row-criterion",
+      "description": "Closed by default; the only animated element in the artifact.",
+      "html": "<details class=\"ds-details\"><summary class=\"ds-summary\">Evidence (2)</summary><ol class=\"ds-evidence\"><li><span class=\"ds-tier\">T0</span> README.md exists <code>README.md</code></li><li><span class=\"ds-tier\">T1</span> 42 commits in the last 90 days</li></ol></details>",
+      "css": ".ds-details { margin: var(--space-2) 0 0; font-family: var(--font-sans); } .ds-summary { cursor: pointer; width: fit-content; font-size: var(--size-meta); color: var(--text-muted); transition: color var(--duration) var(--ease); } .ds-summary:hover { color: var(--text); } .ds-summary:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); } .ds-evidence { list-style: none; margin: var(--space-2) 0 0; padding: var(--space-1) 0 var(--space-1) var(--space-3); border-left: var(--hairline) solid var(--border); } .ds-evidence > li { padding: var(--space-1) 0; font-size: var(--size-meta); } .ds-tier, .ds-evidence code { font-family: var(--font-mono); font-size: var(--size-meta); color: var(--text-muted); }"
+    },
+    {
+      "name": "Section Header",
+      "kind": "custom",
+      "refersTo": "row-criterion",
+      "description": "Labelled section: heading, hairline separation, no chrome.",
+      "html": "<section class=\"ds-section\" aria-labelledby=\"ds-demo-heading\"><h2 class=\"ds-section-title\" id=\"ds-demo-heading\">Readiness Status</h2><p class=\"ds-status-level\">Level 4 — Optimized</p><p class=\"ds-section-meta\">100% pass rate · 24/24 gating criteria</p></section>",
+      "css": ".ds-section { margin: 0 0 var(--space-6); padding-bottom: var(--space-5); border-bottom: var(--hairline) solid var(--border); font-family: var(--font-sans); color: var(--text); } .ds-section-title { font-size: var(--size-headline); font-weight: var(--weight-strong); line-height: var(--leading-snug); margin: 0 0 var(--space-3); } .ds-status-level { font-size: var(--size-headline); font-weight: var(--weight-strong); margin: 0; } .ds-section-meta { font-size: var(--size-meta); color: var(--text-muted); margin: var(--space-1) 0 0; }"
+    },
+    {
+      "name": "Callout",
+      "kind": "custom",
+      "refersTo": "callout-warn",
+      "description": "A tonal note. No fill, no icon chrome, no colored side stripe.",
+      "html": "<p class=\"ds-callout ds-tone-warn\">⚠️ Project type is <strong>unknown</strong> (low detection confidence); type-dependent criteria are reported as <code>unknown</code>, not silently skipped.</p>",
+      "css": ".ds-callout { max-width: var(--prose-max); margin-top: var(--space-3); font-family: var(--font-sans); font-size: var(--size-body); line-height: var(--leading-normal); } .ds-tone-warn { color: var(--status-warn); } .ds-callout code { font-family: var(--font-mono); font-size: var(--size-meta); }"
+    },
+    {
+      "name": "Empty State",
+      "kind": "custom",
+      "refersTo": "empty-state",
+      "description": "Absence is stated, never rendered as a blank section.",
+      "html": "<p class=\"ds-empty\">No criteria results available</p>",
+      "css": ".ds-empty { font-family: var(--font-sans); font-size: var(--size-meta); color: var(--text-muted); font-style: italic; margin: 0; }"
+    },
+    {
+      "name": "Data Table",
+      "kind": "custom",
+      "refersTo": "row-criterion",
+      "description": "The applications table. The only element allowed to scroll sideways.",
+      "html": "<div class=\"ds-table-scroll\"><table class=\"ds-table\"><thead><tr><th scope=\"col\">Path</th><th scope=\"col\">Deploy surface</th><th scope=\"col\">Runtime</th></tr></thead><tbody><tr><th scope=\"row\"><code>.</code></th><td>service</td><td>python3.11</td></tr></tbody></table></div>",
+      "css": ".ds-table-scroll { overflow-x: auto; } .ds-table { border-collapse: collapse; width: 100%; font-family: var(--font-sans); color: var(--text); } .ds-table th, .ds-table td { text-align: left; padding: var(--space-2) var(--space-5) var(--space-2) 0; border-bottom: var(--hairline) solid var(--border); white-space: nowrap; font-weight: var(--weight-normal); font-size: var(--size-body); } .ds-table thead th { font-size: var(--size-label); font-weight: var(--weight-medium); text-transform: uppercase; letter-spacing: var(--track-label); color: var(--text-muted); } .ds-table code { font-family: var(--font-mono); font-size: var(--size-meta); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Play Screen",
+    "overview": "An arcade cabinet has two screens. *Attract mode* is the neon demo that runs when nobody has inserted a coin: perspective grid, glow, scanlines, spectacle. The *play screen* is what you get when you press start, and it is legible, high-contrast and readable at speed, because you have to actually play it. `BRAND.md` already draws this line — \"neon and hype live in the banner, headers, and marketing. **Errors, reports, and instructions stay plain and useful.**\" The HTML readiness report is the play screen. It carries the cabinet's color DNA — violet-tinted neutrals, magenta / cyan / amber status — pulled to playable contrast, with zero spectacle.\n\nThe physical scene the system is designed for: an engineer downloads a CI artifact after a readiness gate blocked their merge, opens it from `~/Downloads` in a browser tab beside the failing PR, and wants the blocking gate and the first fix without scrolling. The hour is unknown — it may be a 2pm review or a 2am incident. That unknown hour is why the artifact **adapts** via `prefers-color-scheme` instead of committing to one theme; both schemes are fully specified and neither is a degraded fallback.\n\nThis system explicitly rejects the two category reflexes. It is not the first-order \"developer tool → dark terminal, navy and blue\": the surface is a violet-tinted adaptive neutral, not a terminal. It is not the second-order \"dev tool that isn't terminal-dark → GitHub-grey with blue links\": neutrals are hue-tinted rather than gray, status uses the cabinet's magenta / cyan / amber rather than the default blue-green-red, and the artifact contains no links at all. Every future question resolves against one test: **attract mode, or play screen?** If it is decoration, it is attract mode and it does not ship here.",
+    "keyCharacteristics": [
+      "Single self-contained file — renders from `file://` with no server, no network, no sibling assets.",
+      "Adaptive light/dark, both schemes first-class, every pairing at or above 4.5:1.",
+      "Violet-tinted neutrals on one hue; no untinted gray anywhere.",
+      "Status carried by symbol and word before color.",
+      "Flat and square: no shadows, no gradients, no glow, no elevation scale.",
+      "Document density, not dashboard density — hairline rules, generous prose measure, one column."
+    ],
+    "rules": [
+      {
+        "name": "The Play-Screen Rule",
+        "section": "overview",
+        "body": "Reports carry the cabinet's hue, never its spectacle. No gradients, no glow, no scanlines, no perspective grid, no display face, no decorative animation. Verbatim from `BRAND.md`: errors, reports, and instructions stay plain and useful."
+      },
+      {
+        "name": "The Same-Hue Rule",
+        "section": "colors",
+        "body": "Every neutral is tinted to hue **283** — Midnight `#0B0A1E`, which converts to `oklch(15.9% 0.041 282.9)`. No untinted gray is permitted. Never `#000`, never `#fff`, never a hue-free `oklch(L 0 H)`."
+      },
+      {
+        "name": "The Two-Signal Rule",
+        "section": "colors",
+        "body": "Status is never carried by color alone. Every status renders a symbol **and** a word — `✓ Pass`, `✗ Fail`, `1 cleared`, `2 blocked`. Color is the third signal, never the first. The artifact must survive a grayscale print and a red-green colorblind reader unchanged."
+      },
+      {
+        "name": "The No-Shadow Rule",
+        "section": "elevation",
+        "body": "Depth comes from tone and hairlines. If a surface needs a shadow to be legible, the tone is wrong — fix the tone."
+      },
+      {
+        "name": "The Single-File Rule",
+        "section": "components",
+        "body": "The artifact fetches nothing, ever. No `<script>`, `<link>`, `<img>`, `@import`, `url()`, remote font, or protocol-relative reference. If it needs a network to look right, it is broken. Enforced by `tests/test_report.py::TestHtmlSafety`."
+      }
+    ],
+    "dos": [
+      "**Do** derive every value from `engine/readiness/theme.py`. `_HTML_STYLE` is `theme.root_block() + theme.dark_block() + _STATIC_CSS`; a new design value means a new token, not a literal in `_STATIC_CSS`.",
+      "**Do** keep every neutral on hue **283** (The Same-Hue Rule) and every color in OKLCH.",
+      "**Do** pair every status color with a symbol and a word (The Two-Signal Rule).",
+      "**Do** express depth with `--bg` < `--surface-sunken` < `--surface` plus `--hairline` rules, and reserve `--rule` (`2px`) with `--border-strong` for the single blocked gate (The No-Shadow Rule).",
+      "**Do** route every value that came from the scanned repository through `_html()` or `_meta()`, and keep `_callout` bodies authored-markup-only.",
+      "**Do** read coverage from `score.pillars`, never from a fresh aggregation over `results`: the engine already excludes non-gating and skipped/waived criteria, and that is the denominator the headline score uses.",
+      "**Do** build interactivity from native controls plus sibling combinators. A real `<input type=\"checkbox\">` is keyboard-operable and announced for free; a scripted one is not, and a script cannot enter this file at all.",
+      "**Do** inline every glyph in Lucide's grammar (24-unit box, 1.5 stroke, `currentColor`) rather than adding an icon dependency.",
+      "**Do** cap prose at `--prose-max` (`72ch`) and keep the artifact one column.",
+      "**Do** state absence explicitly with the empty state rather than rendering a blank section."
+    ],
+    "donts": [
+      "**Don't** let the arcade bit bury a clear error message — `BRAND.md`'s own \"Don't\". Reports and errors stay plain and useful.",
+      "**Don't** reference *Ready Player One* by name, its characters, the OASIS, or its key art, logo or typography; and never use a trademarked tagline (`BRAND.md`'s \"Don't\" column, verbatim).",
+      "**Don't** overclaim — the score is deterministic, not vibes (`BRAND.md`'s \"Don't\"). The advisory layer never changes a number.",
+      "**Don't** ship attract-mode decoration into the report: no gradients, no glow, no scanlines, no perspective grid, no display face, no decorative animation (The Play-Screen Rule).",
+      "**Don't** add a `<script>`, `<link>`, `<img>`, webfont, `@import` or `url()` (The Single-File Rule).",
+      "**Don't** use `border-left` greater than 1px as a colored side stripe.",
+      "**Don't** use gradient text, glassmorphism, a hero-metric template, or a grid of identical cards.",
+      "**Don't** add a shadow token or an elevation scale.",
+      "**Don't** show a percentage of zero criteria: the gate track counts (`0/0`), it never rates.",
+      "**Don't** put repository text in an attribute, or any URL in an attribute value. The single exception is chart geometry: server-computed coordinates derived from a ratio clamped to `[0, 1]`, which `TestHtmlSafety::test_chart_geometry_is_finite_numbers_only` holds to a finite numeric grammar. Dynamic prose travels as text (`<desc>`), never as `aria-label`."
+    ]
+  }
+}
