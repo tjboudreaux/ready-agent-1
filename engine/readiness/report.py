@@ -1072,14 +1072,20 @@ def _facets(out, model) -> None:
     status_facets, loop_facets, pillar_facets, _owners = model
     # Input DOM order is a correctness constraint, not a nicety: the generated sibling
     # chains address status ~ loop ~ pillar, so the checkboxes must precede one another
-    # in exactly that order. The visible grouping below is free to differ.
+    # in exactly that order. The visible groups below render in the same sequence so
+    # keyboard focus order matches what the reader sees.
     for fid, _label, _count, checked in status_facets + loop_facets + pillar_facets:
         out.append(f'<input class="facet-input visually-hidden" type="checkbox" id="{fid}"'
                    + (" checked" if checked else "") + ">")
     out.append('<div class="facets">')
-    groups = [("Status", "", status_facets), ("Pillar", " facet-plain", pillar_facets)]
+    # Visible order matches input DOM order (status, loop, pillar) deliberately: the
+    # focusable controls are the visually-hidden checkboxes, so tabbing walks inputs in
+    # DOM order and the focus ring would jump forward then backward if the groups
+    # rendered in any other sequence.
+    groups = [("Status", "", status_facets)]
     if loop_facets:
         groups.append(("AC/DC loop", " facet-plain", loop_facets))
+    groups.append(("Pillar", " facet-plain", pillar_facets))
     for legend, variant, facets in groups:
         out += [f'<div class="facet-group{variant}">',
                 f'<p class="facet-legend">{legend}</p>', '<ul class="facet-list">']
