@@ -4,6 +4,15 @@ All notable changes to Ready Agent 1. The deterministic **gating score** and the
 are tracked separately: advisory additions never change a repo's Level, GitHub annotations, JUnit, or
 SARIF.
 
+## 0.8.1 — Facet keyboard-order fix
+
+Engine → `0.8.1`; registry stays `0.7.0`. Reporting only; the gating set is unchanged at 32.
+
+- **HTML facet bar**: visible groups now render Status → AC/DC loop → Pillar, matching the input
+  DOM order the filter's sibling chains require. The focusable controls are the visually-hidden
+  checkboxes, so the previous Status → Pillar → AC/DC loop layout made tab focus jump forward
+  then backward across the bar.
+
 ## 0.8.0 — AC/DC loop facet in the HTML report
 
 Engine → `0.8.0`; registry stays `0.7.0`; detector stays `0.5.0`; report schema unchanged at **2**.

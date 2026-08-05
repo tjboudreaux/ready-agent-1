@@ -1101,6 +1101,14 @@ class TestLoopFacets(unittest.TestCase):
                      for fid in ("f-s-fail", "f-l-inner", "f-p1")]
         self.assertEqual(positions, sorted(positions))
 
+    def test_visible_groups_follow_input_dom_order(self):
+        """Tabbing walks the visually-hidden inputs in DOM order, so the rendered
+        legends must appear in the same sequence or the focus ring jumps backwards."""
+        html = report_mod.render_html(self._rep(self._results()))
+        legends = [html.index(f'<p class="facet-legend">{name}</p>')
+                   for name in ("Status", "AC/DC loop", "Pillar")]
+        self.assertEqual(legends, sorted(legends))
+
 
 class TestActionLayer(unittest.TestCase):
     """What needs doing, in plain language, only on the rows that need doing something."""
