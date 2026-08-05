@@ -108,7 +108,8 @@ class TestCli(unittest.TestCase):
     def test_formats(self):
         code, out = run(["formats"])
         self.assertEqual(code, 0)
-        self.assertIn("json", out)
+        self.assertEqual(out.splitlines(),
+                         ["json", "markdown", "html", "github", "junit", "sarif"])
 
     def test_min_level_gate_fails_when_unreachable(self):
         code, _ = run(["report", "--project", str(self.repo), "--no-github", "--min-level", "6"])

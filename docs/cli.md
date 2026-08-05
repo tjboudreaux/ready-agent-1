@@ -9,7 +9,7 @@ Analyze a repository and emit a readiness report.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--project PATH` | `.` | Repository to analyze |
-| `--format LIST` | `json` | Comma list: `json,markdown,github,junit,sarif` |
+| `--format LIST` | `json` | Comma list: `json,markdown,html,github,junit,sarif` |
 | `--out DIR` | — | Write `report.<ext>` + `latest.json` to this directory |
 | `--require-origin` | off | Fail if the repo has no `origin` remote (matches Droid's `/readiness-report` prerequisite) |
 | `--store-history` | off | Write a timestamped local history snapshot keyed by repository identity |
@@ -22,6 +22,9 @@ Analyze a repository and emit a readiness report.
 
 Exit code is `0` unless a gate (`--min-level` / `--fail-on`) fails. By default, advisory criteria
 do not affect the deterministic level; `--fail-on loop.some_id` is an explicit user override.
+An unsupported `--format` token exits `2` with a message on stderr **before** the repository is
+scanned and before any output directory or artifact is created — a typo never silently produces a
+mislabeled file.
 
 ### Repository identity and history
 
@@ -86,3 +89,4 @@ external surfaces; RA1 stores only local `.agents/readiness` history).
 - **github** — `::warning::` annotations for gating failures only, plus `::notice::` level summary.
 - **junit** — `<testsuites>` with one testcase per gating criterion.
 - **sarif** — SARIF 2.1.0 for gating failures with a real source location; advisory failures and repo-level claims are excluded.
+- **html** — the same human report as `markdown`, rendered as a single self-contained file (`report.html`) for CI artifacts. No scripts, no network requests, no external assets; every repository-derived value is HTML-escaped, and it adapts to light/dark. Opt in explicitly — it is not part of the composite action's default bundle.

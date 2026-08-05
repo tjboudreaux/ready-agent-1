@@ -14,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from readiness import report as report_mod  # noqa: E402
 from readiness import version  # noqa: E402
 from readiness.run import analyze  # noqa: E402
 
@@ -40,14 +41,29 @@ def cmd_banner(args) -> int:
     return 0
 
 
-def _render(report, fmt: str) -> str:
-    if fmt == "json":
-        return json.dumps(report.to_dict(), indent=2, sort_keys=False)
-    from readiness import report as report_mod
-    return report_mod.render(report, fmt)
+def _parse_report_formats(value: str) -> list[str]:
+    """Validate the comma list up front so a typo never reaches the scan or the filesystem.
+
+    Keeps the user's order and repeats, and keeps the pre-alias token so artifact names stay
+    backward compatible. Raises ValueError naming the first unsupported token.
+    """
+    tokens = []
+    for raw in value.split(","):
+        token = raw.strip().lower()
+        if not token:
+            continue
+        report_mod.normalize_format(token)
+        tokens.append(token)
+    return tokens or ["json"]
 
 
 def cmd_report(args) -> int:
+    try:
+        formats = _parse_report_formats(args.format)
+    except ValueError as exc:
+        sys.stderr.write(f"ra1 report: {exc}\n")
+        return 2
+
     from readiness import history
     identity = history.repo_identity(args.project, require_origin=args.require_origin)
     if args.require_origin and identity is None:
@@ -56,26 +72,22 @@ def cmd_report(args) -> int:
     report = analyze(args.project, {"no_github": args.no_github,
                                     "exec": args.exec_t3, "exec_timeout": args.exec_timeout,
                                     "repository": identity})
-    formats = [f.strip() for f in args.format.split(",") if f.strip()] or ["json"]
+    rendered = [report_mod.render(report, fmt) for fmt in formats]
+
     out_dir = Path(args.out) if args.out else None
     if out_dir:
         out_dir.mkdir(parents=True, exist_ok=True)
-
-    _ext = {"json": "json", "markdown": "md", "md": "md", "sarif": "sarif", "junit": "xml",
-            "github": "txt", "checks": "txt"}
-    primary = None
-    for fmt in formats:
-        text = _render(report, fmt)
-        if primary is None:
-            primary = text
-        if out_dir:
-            (out_dir / ("report." + _ext.get(fmt, fmt))).write_text(text, encoding="utf-8")
+        for fmt, text in zip(formats, rendered, strict=True):
+            name = f"report.{report_mod.format_extension(fmt)}"
+            (out_dir / name).write_text(text, encoding="utf-8")
     if args.store_history:
         history.store_history(report.to_dict(), args.project,
                               out=args.out, history_dir=args.history_dir)
     elif out_dir:
-        (out_dir / "latest.json").write_text(_render(report, "json"), encoding="utf-8")
-    print(primary if primary is not None else "")
+        (out_dir / "latest.json").write_text(report_mod.render(report, "json"), encoding="utf-8")
+    # Byte-identical to the primary artifact: every renderer already terminates its output,
+    # so `ra1 report --format html > report.html` and `--out DIR` agree exactly.
+    sys.stdout.write(rendered[0])
 
     # Exit gating (M3 wires --min-level / --fail-on against the deterministic level).
     return _gate(report, args)
@@ -108,13 +120,12 @@ def cmd_version(args) -> int:
 
 
 def cmd_formats(args) -> int:
-    print("\n".join(["json", "markdown", "github", "junit", "sarif"]))
+    print("\n".join(report_mod.REPORT_FORMATS))
     return 0
 
 
 def cmd_history_list(args) -> int:
     from readiness import history
-    from readiness import report as report_mod
     payload, reason = history.list_history(args.project, history_dir=args.history_dir)
     # Unreachable: `history list` has no --require-origin and a local id always resolves.
     # The pragma MUST stay on the `if` line -- coverage only honours it there, and moving it
@@ -131,7 +142,6 @@ def cmd_history_list(args) -> int:
 
 def cmd_history_diff(args) -> int:
     from readiness import history
-    from readiness import report as report_mod
     old = history.load_snapshot(args.project, args.from_id, history_dir=args.history_dir)
     new = history.load_snapshot(args.project, args.to_id, history_dir=args.history_dir)
     if old is None or new is None:
@@ -157,7 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_report = sub.add_parser("report", help="Readiness scan — score the repo (clear the gates)")
     p_report.add_argument("--project", default=".", help="Path to the repo (default: cwd)")
     p_report.add_argument("--format", default="json",
-                          help="Comma list: json,markdown,github,junit,sarif")
+                          help="Comma list: " + ",".join(report_mod.REPORT_FORMATS))
     p_report.add_argument("--out", default=None, help="Directory to write report artifacts")
     p_report.add_argument("--no-github", action="store_true", help="Disable T2 GitHub API checks")
     p_report.add_argument("--exec", dest="exec_t3", action="store_true",
