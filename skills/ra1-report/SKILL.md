@@ -4,7 +4,7 @@ description: Ready Agent 1 scans your repo for agent-readiness — a determinist
 license: MIT
 compatibility: Python 3.11+; optional authenticated gh CLI for GitHub (T2) checks
 metadata:
-  version: 0.6.0
+  version: 0.7.0
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
@@ -55,11 +55,10 @@ score**; you (the agent) add **advisory** commentary only. You must never change
    - **User Feedback Loop** (`user_feedback_loop`) — judged question: "Is there evidence user/customer
      feedback reaches prioritization — feedback issue templates or categories, triage labels in use,
      product metrics beside technical metrics, or documented feedback→backlog flow?"
-   - **Verification-loop (AC/DC) maturity** — map engine findings onto *Guide*
-     (`docs.agents_md*`, `docs.agent_verify_contract`, `docs.architecture_doc`), *inner-loop Verify*
-     (`build.check_command`, `devenv.agent_hooks`), *outer-loop Verify* (`build.ci_runs_tests`,
-     `testing.coverage_threshold`, `testing.new_code_quality_gate`, `security.branch_protection`),
-     and *Solve* (`style.precommit_hooks`, ra1-fix). Name the single highest-leverage missing stage.
+   - **Verification-loop (AC/DC) maturity** — group engine findings by the registry-provided
+     `acdc_stage` (`guide` / `verify` / `solve`) and `acdc_loop` (`inner` / `outer` / `both`)
+     fields on each criterion result; do not maintain your own id-to-stage list, the engine
+     output is the source of truth. Name the single highest-leverage missing stage.
      When a stage fails, point to the `acdc` config block and `templates/acdc/` pack as the
      remediation path; keep this mapping advisory and never alter the engine score.
    For each, cite the specific file/finding, explain *why* it matters, and give the highest-leverage

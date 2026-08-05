@@ -33,6 +33,13 @@ Criteria are **data + typed Python** — there is no expression DSL and nothing 
 3. **Bump `REGISTRY_VERSION`** in `engine/readiness/version.py` (so stale cached state re-evaluates),
    then re-vendor: `python3 scripts/vendor.py`.
 
+Optional metadata: a criterion that belongs to the AC/DC verification loop carries an `acdc` block
+— `"acdc": {"stage": "guide|verify|solve", "loop": "inner|outer|both"}`. Both keys are required
+when the block is present (`"loop": "both"` is the explicit both-loops classification; never omit
+`loop` to mean it). The engine copies the pair onto each result as `acdc_stage`/`acdc_loop` and
+the reports render it as a label; it never affects the score. See `references/pillars.md` for the
+current mapping.
+
 ## advisory → gating
 
 New criteria start `"gating": false` (advisory — they appear in the report but don't move the Level).

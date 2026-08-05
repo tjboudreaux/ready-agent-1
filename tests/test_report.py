@@ -78,6 +78,58 @@ class TestMarkdown(unittest.TestCase):
         self.assertNotIn("Loop Run Log README", action_section)
         self.assertIn("README", action_section)
 
+class TestAcdcLabels(unittest.TestCase):
+    def _mapped(self, **kw):
+        base = dict(id="build.check_command", title="Single Verify Command",
+                    pillar="Build System", level=2, scope="repository", gating=False,
+                    status=Status.FAIL, rationale="no single verify entrypoint",
+                    acdc_stage="verify", acdc_loop="inner",
+                    passed_apps=0, evaluated_apps=1)
+        base.update(kw)
+        return CriterionResult(**base)
+
+    def test_to_dict_carries_acdc_fields(self):
+        d = self._mapped().to_dict()
+        self.assertEqual(d["acdc_stage"], "verify")
+        self.assertEqual(d["acdc_loop"], "inner")
+
+    def test_unmapped_result_serializes_empty_acdc(self):
+        r = CriterionResult(id="docs.readme", title="README", pillar="Documentation", level=1,
+                            scope="repository", gating=True, status=Status.PASS)
+        self.assertEqual((r.to_dict()["acdc_stage"], r.to_dict()["acdc_loop"]), ("", ""))
+
+    def test_markdown_labels_mapped_rows(self):
+        rep = Report(project_path=".", schema_version="2", engine_version="0.7.0",
+                     registry_version="0.7.0", detector_version="0.5.0")
+        rep.results = [self._mapped()]
+        md = report_mod.render_markdown(rep)
+        self.assertIn("(**advisory**, L2, inner loop · verify, 0/1)", md)
+        self.assertIn("- Single Verify Command (L2, Build System, inner loop · verify) — "
+                      "no single verify entrypoint", md)
+
+    def test_markdown_omits_label_for_unmapped_rows(self):
+        rep = Report(project_path=".", schema_version="2", engine_version="0.7.0",
+                     registry_version="0.7.0", detector_version="0.5.0")
+        rep.results = [self._mapped(acdc_stage="", acdc_loop="")]
+        md = report_mod.render_markdown(rep)
+        self.assertIn("(**advisory**, L2, 0/1)", md)
+        self.assertNotIn("loop · verify", md)
+
+    def test_html_labels_mapped_rows(self):
+        rep = Report(project_path=".", schema_version="2", engine_version="0.7.0",
+                     registry_version="0.7.0", detector_version="0.5.0")
+        rep.results = [self._mapped()]
+        text = _parse(report_mod.render_html(rep)).body_text
+        self.assertIn("inner loop · verify", text)
+
+    def test_html_omits_label_for_unmapped_rows(self):
+        rep = Report(project_path=".", schema_version="2", engine_version="0.7.0",
+                     registry_version="0.7.0", detector_version="0.5.0")
+        rep.results = [self._mapped(acdc_stage="", acdc_loop="")]
+        text = _parse(report_mod.render_html(rep)).body_text
+        self.assertNotIn("loop · verify", text)
+
+
 class TestGithub(unittest.TestCase):
     def test_annotations(self):
         root, rep = _report(BARE)

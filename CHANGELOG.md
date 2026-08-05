@@ -4,6 +4,24 @@ All notable changes to Ready Agent 1. The deterministic **gating score** and the
 are tracked separately: advisory additions never change a repo's Level, GitHub annotations, JUnit, or
 SARIF.
 
+## 0.7.0 — AC/DC stage/loop metadata
+
+Engine/registry → `0.7.0`; detector stays `0.5.0`; report schema unchanged at **2**. The deterministic
+**gating set is unchanged at 32** — this release is metadata and reporting only.
+
+### Reporting (never changes the score)
+- **`acdc` registry metadata**: criteria covered by the AC/DC verification-loop model now declare
+  `{"stage": "guide|verify|solve", "loop": "inner|outer|both"}` (both keys required; `both` is the
+  explicit both-loops classification). Eleven criteria mapped: Guide (`docs.agents_md`,
+  `docs.agent_verify_contract`, `docs.architecture_doc`, `docs.agents_md_ci_validation`),
+  inner-loop Verify (`build.check_command`, `devenv.agent_hooks`), outer-loop Verify
+  (`build.ci_runs_tests`, `testing.coverage_threshold`, `testing.new_code_quality_gate`,
+  `security.branch_protection`), Solve (`style.precommit_hooks`).
+- **Surfaced everywhere**: `acdc_stage`/`acdc_loop` on each criterion result in JSON; an
+  "inner loop · verify" label on criterion rows and advisory items in the markdown and HTML reports.
+- **`ra1-report`** now groups its AC/DC maturity narrative by the engine-provided fields instead
+  of a hardcoded id-to-stage list, so the mapping can no longer drift from the registry.
+
 ## 0.6.0 — Verification loop (AC/DC) advisory cluster
 
 Engine/registry → `0.6.0`; detector stays `0.5.0`; report schema unchanged at **2**. The deterministic

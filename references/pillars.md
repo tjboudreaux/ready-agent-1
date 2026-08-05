@@ -104,6 +104,33 @@ coverage floor, while `testing.new_code_quality_gate` measures only new or chang
 `docs.agent_verify_contract` credits persistent guidance, while `devenv.agent_hooks` requires an
 executed hook.
 
+### AC/DC stage/loop metadata
+
+Every criterion the AC/DC model covers carries an `acdc` block in the registry:
+
+```json
+"acdc": { "stage": "verify", "loop": "inner" }
+```
+
+- `stage` (required): `guide` | `verify` | `solve`.
+- `loop` (required): `inner` | `outer` | `both`. `both` is an explicit classification — never
+  omit `loop` to mean "applies everywhere", so "unclassified" stays distinguishable.
+
+The engine copies the block onto each criterion result (`acdc_stage` / `acdc_loop` in JSON;
+an "inner loop · verify" label in the markdown and HTML reports). It is metadata only: it never
+affects applicability, gating, or the score. The current mapping:
+
+| Stage | Loop | Criteria |
+| --- | --- | --- |
+| Guide | both | `docs.agents_md`, `docs.agent_verify_contract`, `docs.architecture_doc` |
+| Guide | outer | `docs.agents_md_ci_validation` |
+| Verify | inner | `build.check_command`, `devenv.agent_hooks` |
+| Verify | outer | `build.ci_runs_tests`, `testing.coverage_threshold`, `testing.new_code_quality_gate`, `security.branch_protection` |
+| Solve | inner | `style.precommit_hooks` |
+
+If a future criterion genuinely maps to more than one stage/loop pair, evolve `acdc` into a list
+of pairs rather than overloading a single label.
+
 The optional `acdc` block in `.agents/readiness/config.json` supports `verify_command`,
 `instruction_files`, and `hook_files`. Declarations are still resolved against repository files or
 recognized commands, and every config-driven pass cites `.agents/readiness/config.json`. A declared

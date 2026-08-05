@@ -204,8 +204,9 @@ def render_markdown(report) -> str:
         for r in [x for x in d.results if x.pillar == pillar]:
             sym = _SYMBOL.get(r.status.value, "?")
             gate_label = "gating" if r.gating else "**advisory**"
+            acdc = f", {_acdc_label(r)}" if _acdc_label(r) else ""
             lines.append(
-                f"- {sym} **{r.title}** ({gate_label}, L{r.level}, {_display_score(r)}): "
+                f"- {sym} **{r.title}** ({gate_label}, L{r.level}{acdc}, {_display_score(r)}): "
                 f"{r.rationale}")
 
     recs = _recommendations(d.results, score.level if score else 0)
@@ -229,7 +230,8 @@ def render_markdown(report) -> str:
             lines.append("")
             lines.append(f"**{group}**")
             for r in items:
-                lines.append(f"- {r.title} (L{r.level}, {r.pillar}) — {r.rationale}")
+                acdc = f", {_acdc_label(r)}" if _acdc_label(r) else ""
+                lines.append(f"- {r.title} (L{r.level}, {r.pillar}{acdc}) — {r.rationale}")
 
     judgments = [r for r in d.results if r.id.startswith("judgment.")]
     if judgments:
@@ -271,6 +273,19 @@ def _pillars_in_order(results):
 def _display_score(r):
     """N/M shown next to each criterion: passed vs evaluated apps (repository scope is 1 unit)."""
     return f"{r.passed_apps}/{r.evaluated_apps}"
+
+
+_ACDC_LOOPS = {"inner": "inner loop", "outer": "outer loop", "both": "both loops"}
+
+
+def _acdc_label(r):
+    """'inner loop · verify' when the registry maps the criterion into the AC/DC model.
+
+    Returns "" for unmapped criteria so callers can drop it into any meta join unchanged.
+    """
+    if not r.acdc_stage:
+        return ""
+    return f"{_ACDC_LOOPS.get(r.acdc_loop, r.acdc_loop)} · {r.acdc_stage}"
 
 
 def _group_by_effort(items):
@@ -1180,7 +1195,7 @@ def _html_criterion(out, r, index) -> None:
     partial = r.passed_apps != r.evaluated_apps
     score = _display_score(r) if (partial or r.evaluated_apps > 1) else ""
     _row(out, cls=f"criterion status-{status}{tier}", badge=_badge(status), title=r.title,
-         meta=_meta([status.capitalize(), _stakes(r), score]),
+         meta=_meta([status.capitalize(), _stakes(r), _acdc_label(r), score]),
          rationale=r.rationale, extra=tuple(extra))
 
 
@@ -1193,7 +1208,7 @@ def _html_advisory_improvements(out, d) -> None:
         out += [f"<h3>{_html(group)}</h3>", '<ul class="advisory-items">']
         for r in items:
             _row(out, cls="advisory-item", title=r.title,
-                 meta=_meta([f"L{r.level}", r.pillar]), rationale=r.rationale)
+                 meta=_meta([f"L{r.level}", r.pillar, _acdc_label(r)]), rationale=r.rationale)
         out.append("</ul>")
     out.append("</section>")
 

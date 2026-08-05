@@ -131,6 +131,10 @@
       "template": "AGENTS.md",
       "autofixable": false
     },
+    "acdc": {
+      "stage": "guide",
+      "loop": "both"
+    },
     "engine_min_version": "0.1.0"
   },
   {
@@ -376,6 +380,10 @@
       "template": ".pre-commit-config.yaml",
       "autofixable": true
     },
+    "acdc": {
+      "stage": "solve",
+      "loop": "inner"
+    },
     "engine_min_version": "0.1.0"
   },
   {
@@ -424,6 +432,10 @@
     "fix": {
       "kind": "github_setting",
       "autofixable": false
+    },
+    "acdc": {
+      "stage": "verify",
+      "loop": "outer"
     },
     "engine_min_version": "0.1.0"
   },
@@ -579,6 +591,10 @@
         "*"
       ],
       "requires": []
+    },
+    "acdc": {
+      "stage": "verify",
+      "loop": "outer"
     },
     "engine_min_version": "0.1.0"
   },
@@ -807,6 +823,10 @@
         "*"
       ],
       "requires": []
+    },
+    "acdc": {
+      "stage": "verify",
+      "loop": "outer"
     },
     "engine_min_version": "0.4.0"
   },
@@ -1590,6 +1610,10 @@
       ],
       "requires": []
     },
+    "acdc": {
+      "stage": "guide",
+      "loop": "outer"
+    },
     "engine_min_version": "0.5.0"
   },
   {
@@ -1611,6 +1635,10 @@
         "*"
       ],
       "requires": []
+    },
+    "acdc": {
+      "stage": "guide",
+      "loop": "both"
     },
     "engine_min_version": "0.5.0"
   },
@@ -1655,6 +1683,10 @@
       ],
       "requires": []
     },
+    "acdc": {
+      "stage": "verify",
+      "loop": "inner"
+    },
     "engine_min_version": "0.6.0"
   },
   {
@@ -1680,6 +1712,10 @@
       "template": "acdc/workflow.md",
       "autofixable": false
     },
+    "acdc": {
+      "stage": "guide",
+      "loop": "both"
+    },
     "engine_min_version": "0.6.0"
   },
   {
@@ -1700,6 +1736,10 @@
       ],
       "requires": []
     },
+    "acdc": {
+      "stage": "verify",
+      "loop": "inner"
+    },
     "engine_min_version": "0.6.0"
   },
   {
@@ -1719,6 +1759,10 @@
         "*"
       ],
       "requires": []
+    },
+    "acdc": {
+      "stage": "verify",
+      "loop": "outer"
     },
     "engine_min_version": "0.6.0"
   },
