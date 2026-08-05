@@ -977,8 +977,12 @@ def _html_actions(out, d) -> None:
     out += ["</ol>", "</section>"]
 
 
+_LOOP_ORDER = ("inner", "outer", "both")
+_LOOP_LABELS = {"inner": "Inner", "outer": "Outer", "both": "Both"}
+
+
 def _facet_model(d):
-    """The closed facet set: (status facets, pillar facets, per-pillar status ids).
+    """The closed facet set: (status, loop, pillar facets, per-pillar live pairs).
 
     Every id is derived from an enum value or an ordinal, never from repository text, so
     the generated CSS and the `for=` attributes can only ever contain authored constants.
@@ -989,74 +993,98 @@ def _facet_model(d):
                       sum(1 for r in d.results if r.status.value == s),
                       s != "skipped")
                      for s in statuses]
+    loops = [loop for loop in _LOOP_ORDER
+             if any(r.acdc_loop == loop for r in d.results)]
+    loop_facets = [(f"f-l-{loop}", _LOOP_LABELS[loop],
+                    sum(1 for r in d.results if r.acdc_loop == loop), True)
+                   for loop in loops]
     pillar_facets = [(f"f-p{i}", name, sum(1 for r in d.results if r.pillar == name), True)
                      for i, name in enumerate(pillars, 1)]
-    # A pillar group is empty once every status it actually contains is switched off, so
-    # each group carries the ids that keep it alive. Without this the heading survives its
-    # own rows and the reader gets a section with nothing under it.
-    owners = [(f"p{i}", [f"f-s-{s}" for s in _pillar_statuses(d.results, name)])
+    # A pillar group lives exactly as long as one of the (status, loop) combinations it
+    # actually contains has every chip on. Tracking pairs — not just statuses — is what
+    # stops a heading from surviving its rows once the loop axis can hide them too.
+    owners = [(f"p{i}", _pillar_pairs(d.results, name))
               for i, name in enumerate(pillars, 1)]
-    return status_facets, pillar_facets, owners
+    return status_facets, loop_facets, pillar_facets, owners
 
 
-def _pillar_statuses(results, pillar):
-    return [s for s in _DIST_ORDER if any(r.pillar == pillar and r.status.value == s
-                                          for r in results)]
+def _pillar_pairs(results, pillar):
+    """The (status-facet, loop-facet|None) combinations a pillar actually contains."""
+    pairs = []
+    for s in _DIST_ORDER:
+        for loop in ("",) + _LOOP_ORDER:
+            if any(r.pillar == pillar and r.status.value == s and r.acdc_loop == loop
+                   for r in results):
+                pairs.append((f"f-s-{s}", f"f-l-{loop}" if loop else None))
+    return pairs
 
 
 def _filter_css(model) -> str:
     """Filtering with no script: each checkbox precedes the rows it governs, so a plain
-
     sibling combinator does the work and no `:has()` support is required.
 
-    The empty state is inverted deliberately. Showing it only when every status is off
-    misses the cross-facet hole — check Fail alone and Build alone and both groups vanish
-    while a status is still checked. So it defaults to visible and each surviving
-    (status, pillar) pair hides it: visible content and the message are mutually exclusive
-    by construction rather than by enumerating the ways a filter can empty the list.
+    Rows are hidden: a row dies when its status or its loop bucket is switched off.
+    Pillar sections are *shown*, not hidden: with three facet axes, "this pillar is
+    empty" is a disjunction of (status ∧ loop ∧ pillar) conjunctions, which a sibling
+    chain cannot negate. Inverting the default makes emptiness the absence of a live
+    pair rather than a rule of its own, so an empty heading can never survive its rows.
+
+    The empty state follows the same inversion. It defaults to visible and each live
+    pair hides it under exactly the condition that shows a pillar, so visible content
+    and the message are mutually exclusive by construction.
     """
-    status_facets, pillar_facets, owners = model
+    status_facets, loop_facets, pillar_facets, owners = model
     if not status_facets:
         return ""
     rules = [f"#{fid}:not(:checked) ~ .criteria-body .criterion.status-{fid[4:]}"
              " { display: none; }" for fid, *_ in status_facets]
-    rules += [f"#{fid}:not(:checked) ~ .criteria-body .{fid[2:]}"
-              " { display: none; }" for fid, *_ in pillar_facets]
-    rules += [" ~ ".join(f"#{sid}:not(:checked)" for sid in sids)
-              + f" ~ .criteria-body .{cls}" " { display: none; }"
-              for cls, sids in owners if sids]
-    rules += [f"#{sid}:checked ~ #f-{cls}:checked ~ .criteria-body .criteria-empty"
-              " { display: none; }" for cls, sids in owners for sid in sids]
-    # Pillar chips default to checked, so the checked rule is what a reader actually sees.
-    # Split it by rank: status keeps the box, pillar stays text plus a mark. Sharing one
-    # rule silently re-boxed all nine pillar chips in the default state.
+    rules += [f"#{fid}:not(:checked) ~ .criteria-body .criterion.loop-{fid[4:]}"
+              " { display: none; }" for fid, *_ in loop_facets]
+    rules.append(".criteria-body .pillar { display: none; }")
+    for cls, pairs in owners:
+        for sid, lid in pairs:
+            chain = f"#{sid}:checked ~ "
+            if lid:
+                chain += f"#{lid}:checked ~ "
+            chain += f"#f-{cls}:checked"
+            rules.append(f"{chain} ~ .criteria-body .{cls} {{ display: block; }}")
+            rules.append(f"{chain} ~ .criteria-body .criteria-empty {{ display: none; }}")
+    # Pillar and loop chips default to checked, so the checked rule is what a reader
+    # actually sees. Split it by rank: status keeps the box, the others stay text plus
+    # a mark. Sharing one rule silently re-boxed all nine pillar chips in the default
+    # state.
     selector = lambda facets, state: ",\n".join(  # noqa: E731 - local formatting helper
         f'#{fid}:{state} ~ .facets label[for="{fid}"]' for fid, *_ in facets)
     rules.append(selector(status_facets, "checked")
                  + " {\n  --check-fill: var(--mark);\n  color: var(--text);\n"
                  "  border-color: var(--border-strong);\n"
                  "  background: var(--surface-sunken);\n}")
-    rules.append(selector(pillar_facets, "checked")
+    rules.append(selector(pillar_facets + loop_facets, "checked")
                  + " {\n  --check-fill: var(--mark);\n  color: var(--text);\n"
                  "  border-color: transparent;\n  background: none;\n}")
-    rules.append(selector(status_facets + pillar_facets, "focus-visible")
+    rules.append(selector(status_facets + pillar_facets + loop_facets, "focus-visible")
                  + " {\n  outline: var(--focus-width) solid var(--focus);\n"
                  "  outline-offset: var(--focus-offset);\n}")
     return "\n" + "\n".join(rules) + "\n"
 
 
 def _facets(out, model) -> None:
-    status_facets, pillar_facets, _owners = model
-    for fid, _label, _count, checked in status_facets + pillar_facets:
+    status_facets, loop_facets, pillar_facets, _owners = model
+    # Input DOM order is a correctness constraint, not a nicety: the generated sibling
+    # chains address status ~ loop ~ pillar, so the checkboxes must precede one another
+    # in exactly that order. The visible grouping below is free to differ.
+    for fid, _label, _count, checked in status_facets + loop_facets + pillar_facets:
         out.append(f'<input class="facet-input visually-hidden" type="checkbox" id="{fid}"'
                    + (" checked" if checked else "") + ">")
     out.append('<div class="facets">')
-    groups = (("Status", "", status_facets), ("Pillar", " facet-plain", pillar_facets))
+    groups = [("Status", "", status_facets), ("Pillar", " facet-plain", pillar_facets)]
+    if loop_facets:
+        groups.append(("AC/DC loop", " facet-plain", loop_facets))
     for legend, variant, facets in groups:
         out += [f'<div class="facet-group{variant}">',
                 f'<p class="facet-legend">{legend}</p>', '<ul class="facet-list">']
         for fid, label, count, _checked in facets:
-            # `f-s-pass` -> `facet-pass`; pillar ids carry no status tint.
+            # `f-s-pass` -> `facet-pass`; pillar and loop ids carry no status tint.
             tint = f" facet-{fid[4:]}" if fid.startswith("f-s-") else ""
             out.append(f'<li><label class="facet{tint}" for="{fid}">'
                        + f'<span class="facet-name">{_html(label)}</span>'
@@ -1194,7 +1222,10 @@ def _html_criterion(out, r, index) -> None:
     # 1/1, and printing it on every green row is three tokens saying nothing.
     partial = r.passed_apps != r.evaluated_apps
     score = _display_score(r) if (partial or r.evaluated_apps > 1) else ""
-    _row(out, cls=f"criterion status-{status}{tier}", badge=_badge(status), title=r.title,
+    # Membership test, not truthiness: only registry-validated loop values may reach a
+    # class name, keeping the generated CSS closed to authored constants.
+    loop = f" loop-{r.acdc_loop}" if r.acdc_loop in _LOOP_ORDER else ""
+    _row(out, cls=f"criterion status-{status}{loop}{tier}", badge=_badge(status), title=r.title,
          meta=_meta([status.capitalize(), _stakes(r), _acdc_label(r), score]),
          rationale=r.rationale, extra=tuple(extra))
 
