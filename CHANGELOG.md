@@ -4,6 +4,21 @@ All notable changes to Ready Agent 1. The deterministic **gating score** and the
 are tracked separately: advisory additions never change a repo's Level, GitHub annotations, JUnit, or
 SARIF.
 
+## 0.8.0 — AC/DC loop facet in the HTML report
+
+Engine → `0.8.0`; registry stays `0.7.0`; detector stays `0.5.0`; report schema unchanged at **2**.
+The deterministic **gating set is unchanged at 32** — this release is reporting only.
+
+### Reporting (never changes the score)
+- **AC/DC loop facet group** (Inner / Outer / Both) in the HTML report's criteria filter, built
+  from the registry `acdc` metadata. Criteria without an `acdc` mapping carry no loop class and
+  stay visible under every loop selection.
+- **Pillar visibility inverted**: sections now default to hidden and appear exactly when one of
+  their live (status, loop) pairs has every chip on. With three facet axes, "this pillar is empty"
+  is a disjunction of conjunctions that sibling-combinator hide rules cannot express; the
+  inversion keeps empty headings and the "No criteria match these filters" message exact for any
+  status × pillar × loop selection — still script-free, still no `:has()`.
+
 ## 0.7.0 — AC/DC stage/loop metadata
 
 Engine/registry → `0.7.0`; detector stays `0.5.0`; report schema unchanged at **2**. The deterministic

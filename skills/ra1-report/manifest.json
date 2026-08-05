@@ -1,6 +1,6 @@
 {
   "schema_version": "2",
-  "engine_version": "0.7.0",
+  "engine_version": "0.8.0",
   "registry_version": "0.7.0",
   "detector_version": "0.5.0",
   "vendored": "engine/readiness + templates"

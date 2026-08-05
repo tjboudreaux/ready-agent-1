@@ -959,7 +959,12 @@ class TestFacets(unittest.TestCase):
         css = report_mod._filter_css(report_mod._facet_model(self._rep(self._results())))
         self.assertIn("#f-s-fail:not(:checked) ~ .criteria-body .criterion.status-fail"
                       " { display: none; }", css)
-        self.assertIn("#f-p2:not(:checked) ~ .criteria-body .p2 { display: none; }", css)
+        # Pillars are shown by a live pair, never hidden by a chip rule: the section
+        # appears exactly when one of its (status, loop) pairs is fully checked.
+        self.assertIn(".criteria-body .pillar { display: none; }", css)
+        self.assertIn("#f-s-skipped:checked ~ #f-p2:checked ~ .criteria-body .p2"
+                      " { display: block; }", css)
+        self.assertNotIn("#f-p2:not(:checked)", css)
         # Plain sibling combinators only: no :has() dependency anywhere in the filter layer.
         self.assertNotIn(":has(", css)
 
@@ -989,19 +994,112 @@ class TestFacets(unittest.TestCase):
         self.assertNotIn("script", css)
         self.assertRegex(css, r"^[\sA-Za-z0-9_.,:;()~#\[\]=\"{}%/*-]*$")
 
-    def test_a_pillar_group_hides_once_all_its_statuses_are_off(self):
-        """A heading that outlives its own rows is a visibly broken filter."""
+    def test_a_pillar_group_shows_only_while_a_live_pair_is_checked(self):
+        """A heading that outlives its own rows is a visibly broken filter.
+
+        Pillar visibility is inverted: sections default to hidden and each live
+        (status, loop) pair contributes one show chain. Emptiness is therefore the
+        absence of a firing chain — with every status of a pillar off, nothing can
+        resurrect its heading.
+        """
         css = report_mod._filter_css(report_mod._facet_model(self._rep(self._results())))
-        # p1 holds fail + pass, p2 holds only skipped: each collapses on its own statuses.
-        # The chain follows DOM order, which is _DIST_ORDER: fail before pass.
-        self.assertIn("#f-s-fail:not(:checked) ~ #f-s-pass:not(:checked) ~ .criteria-body .p1"
-                      " { display: none; }", css)
-        self.assertIn("#f-s-skipped:not(:checked) ~ .criteria-body .p2 { display: none; }", css)
+        # p1 holds fail + pass, p2 holds only skipped: exactly three show chains exist.
+        self.assertIn("#f-s-fail:checked ~ #f-p1:checked ~ .criteria-body .p1"
+                      " { display: block; }", css)
+        self.assertIn("#f-s-pass:checked ~ #f-p1:checked ~ .criteria-body .p1"
+                      " { display: block; }", css)
+        self.assertIn("#f-s-skipped:checked ~ #f-p2:checked ~ .criteria-body .p2"
+                      " { display: block; }", css)
+        # No other combination can show a section: fail x Build is not a live pair.
+        self.assertNotIn("#f-s-fail:checked ~ #f-p2:checked ~ .criteria-body .p2", css)
+        self.assertNotIn("#f-s-pass:checked ~ #f-p2:checked ~ .criteria-body .p2", css)
 
     def test_no_criteria_means_no_facets(self):
         doc = _parse(report_mod.render_html(self._rep([])))
         self.assertNotIn("input", doc.tags)
-        self.assertEqual(report_mod._filter_css(([], [], [])), "")
+        self.assertEqual(report_mod._filter_css(([], [], [], [])), "")
+
+
+class TestLoopFacets(unittest.TestCase):
+    """The AC/DC loop axis: chips, row classes, and the status x pillar x loop hole."""
+
+    def _rep(self, results):
+        return Report(project_path="/p", schema_version="2", engine_version="0.8.0",
+                      registry_version="0.7.0", detector_version="0.5.0", results=results)
+
+    def _results(self):
+        # One pillar on purpose: the loop hole only shows when status and loop disagree
+        # inside a single section.
+        return [
+            CriterionResult(id="b.check", title="Check", pillar="Build", level=2,
+                            scope="repository", gating=False, status=Status.FAIL,
+                            acdc_stage="verify", acdc_loop="inner"),
+            CriterionResult(id="t.gate", title="Gate", pillar="Build", level=4,
+                            scope="repository", gating=False, status=Status.PASS,
+                            acdc_stage="verify", acdc_loop="outer"),
+            CriterionResult(id="d.readme", title="README", pillar="Build", level=1,
+                            scope="repository", gating=True, status=Status.PASS),
+        ]
+
+    def test_loop_chips_render_with_counts_and_default_checked(self):
+        doc = _parse(report_mod.render_html(self._rep(self._results())))
+        boxes = {a["id"]: a for t, a in doc.elements if t == "input"}
+        self.assertIn("f-l-inner", boxes)
+        self.assertIn("f-l-outer", boxes)
+        self.assertNotIn("f-l-both", boxes)  # no both-loop rows, no chip
+        self.assertIn("checked", boxes["f-l-inner"])
+        self.assertIn("AC/DC loop", doc.body_text)
+        self.assertIn("Inner 1", doc.body_text)
+        self.assertIn("Outer 1", doc.body_text)
+
+    def test_no_loop_chips_without_mapped_criteria(self):
+        results = [CriterionResult(id="d.readme", title="README", pillar="Docs", level=1,
+                                   scope="repository", gating=True, status=Status.PASS)]
+        doc = _parse(report_mod.render_html(self._rep(results)))
+        self.assertNotIn("AC/DC loop", doc.body_text)
+        self.assertNotIn("f-l-inner", {a["id"] for t, a in doc.elements if t == "input"})
+
+    def test_mapped_rows_carry_loop_classes(self):
+        html = report_mod.render_html(self._rep(self._results()))
+        self.assertIn("criterion status-fail loop-inner", html)
+        self.assertIn("criterion status-pass loop-outer", html)
+        # The unmapped row must carry no loop class, or a loop filter would hide it.
+        self.assertIn('class="row criterion status-pass"', html)
+
+    def test_generated_css_filters_rows_by_loop(self):
+        css = report_mod._filter_css(report_mod._facet_model(self._rep(self._results())))
+        self.assertIn("#f-l-inner:not(:checked) ~ .criteria-body .criterion.loop-inner"
+                      " { display: none; }", css)
+        self.assertIn("#f-l-outer:not(:checked) ~ .criteria-body .criterion.loop-outer"
+                      " { display: none; }", css)
+
+    def test_empty_state_covers_the_status_loop_cross_hole(self):
+        """Fail x Outer matches no row in a pillar holding fail-inner and pass-outer.
+
+        A status chip and a loop chip are both checked, so a naive rule would call the
+        region populated. Only the live pairs get show/empty-hide chains, so that
+        selection leaves the empty message visible.
+        """
+        css = report_mod._filter_css(report_mod._facet_model(self._rep(self._results())))
+        # The three live pairs, each with the loop clause it needs.
+        self.assertIn("#f-s-fail:checked ~ #f-l-inner:checked ~ #f-p1:checked"
+                      " ~ .criteria-body .p1 { display: block; }", css)
+        self.assertIn("#f-s-pass:checked ~ #f-l-outer:checked ~ #f-p1:checked"
+                      " ~ .criteria-body .p1 { display: block; }", css)
+        self.assertIn("#f-s-pass:checked ~ #f-p1:checked ~ .criteria-body .p1"
+                      " { display: block; }", css)
+        self.assertIn("#f-s-fail:checked ~ #f-l-inner:checked ~ #f-p1:checked"
+                      " ~ .criteria-body .criteria-empty { display: none; }", css)
+        # Fail x Outer is NOT live: no chain may hide the empty message for it.
+        self.assertNotIn("#f-s-fail:checked ~ #f-l-outer:checked", css)
+        self.assertNotIn("#f-s-pass:checked ~ #f-l-inner:checked", css)
+
+    def test_facet_inputs_follow_status_loop_pillar_dom_order(self):
+        """The sibling chains address status ~ loop ~ pillar; the inputs must agree."""
+        html = report_mod.render_html(self._rep(self._results()))
+        positions = [html.index(f'id="{fid}"')
+                     for fid in ("f-s-fail", "f-l-inner", "f-p1")]
+        self.assertEqual(positions, sorted(positions))
 
 
 class TestActionLayer(unittest.TestCase):
