@@ -15,13 +15,19 @@ scaffolds; you handle git and author any prose. Three buckets, three different s
 
 ## Steps
 
+`<skill-dir>` in the commands below is this skill's own directory: the absolute path your
+runtime reports when it loads the skill. Substitute it. Do not write `$(dirname "$0")` — in a
+shell tool call `$0` is the shell, not this file, so that form resolves against the caller's
+working directory.
+
 1. **Resolve the latest report.** Mirroring Droid's `/readiness-fix`, resolve the latest stored
    report by repository identity from the local history; run the ra1-report skill first if none
    exists.
 
 2. **Dry-run the plan** to see what would change:
+
    ```bash
-   python3 "$(dirname "$0")/scripts/readiness/cli.py" fix --project <repo-path> --latest
+   python3 "<skill-dir>/scripts/readiness/cli.py" fix --project <repo-path> --latest
    ```
    It prints **Auto-apply** (safe config scaffolds — includes registry-declared `autofixable`
    scaffolds even when advisory), **Propose** (drafts for review), **GitHub settings** (manual),
@@ -38,7 +44,7 @@ scaffolds; you handle git and author any prose. Three buckets, three different s
 
 4. **Apply the safe scaffolds** (idempotent; refuses on a dirty worktree; never overwrites non-empty files):
    ```bash
-   python3 "$(dirname "$0")/scripts/readiness/cli.py" fix --project <repo-path> --latest --apply
+   python3 "<skill-dir>/scripts/readiness/cli.py" fix --project <repo-path> --latest --apply
    ```
 
 5. **Author the "Propose" items yourself** — README sections, a tailored `AGENTS.md`, runbooks, a first

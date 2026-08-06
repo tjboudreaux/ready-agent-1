@@ -20,10 +20,15 @@ evaluable or exclude it with a disclosed waiver; an answer can never mark one pa
 
 ## Steps
 
+`<skill-dir>` in the commands below is this skill's own directory: the absolute path your
+runtime reports when it loads the skill. Substitute it. Do not write `$(dirname "$0")` — in a
+shell tool call `$0` is the shell, not this file, so that form resolves against the caller's
+working directory.
+
 ### 1. List the gaps
 
 ```bash
-python3 "$(dirname "$0")/scripts/readiness/cli.py" gaps \
+python3 "<skill-dir>/scripts/readiness/cli.py" gaps \
   --project <repo-path> --format json
 ```
 
@@ -84,7 +89,7 @@ reason, and no file lost pre-existing keys.
 Re-run the report so the engine re-evaluates with the new inputs:
 
 ```bash
-python3 "$(dirname "$0")/scripts/readiness/cli.py" report \
+python3 "<skill-dir>/scripts/readiness/cli.py" report \
   --project <repo-path> --format json,markdown --store-history \
   --out <repo-path>/.agents/readiness
 ```

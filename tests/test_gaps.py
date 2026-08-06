@@ -1,6 +1,7 @@
 """Gap derivation, and the integrity rules that keep an answer from becoming a verdict."""
 import io
 import json
+import re
 import subprocess
 import sys
 import unittest
@@ -551,43 +552,74 @@ class TestGapsCli(unittest.TestCase):
         self.assertIn("Unanswered Questions", out)
 
 
-class TestInstalledSkillCommands(unittest.TestCase):
-    """The commands in SKILL.md must run from a vendored skill exactly as written.
+class TestDocumentedCommands(unittest.TestCase):
+    """Every shell command in a SKILL.md must run as written, from any working directory.
 
-    Nothing else covers the seam between the documented invocation and the shipped CLI: a
-    renamed command or an unvendored module would ship a skill whose first step fails.
+    This is the seam nothing else covered. The commands used to interpolate
+    `$(dirname "$0")`, which in a shell tool call is the shell rather than the SKILL.md, so
+    they resolved to `./scripts/readiness/cli.py` — working only when the caller happened to
+    sit in the skill directory. Constructing the path in the test would have missed it, so
+    these tests extract the literal documented command, substitute only the documented
+    placeholders, and execute it through a shell from an unrelated cwd.
     """
 
-    def _skill_cli(self, skill):
-        return REPO / "skills" / skill / "scripts" / "readiness" / "cli.py"
+    def _skill_dir(self, skill):
+        return REPO / "skills" / skill
 
-    def _run(self, skill, args, cwd):
-        return subprocess.run([sys.executable, str(self._skill_cli(skill)), *args],
-                              cwd=cwd, capture_output=True, text=True, timeout=180)
+    def _commands(self, skill):
+        """Every `cli.py` invocation in the skill's fenced bash blocks, as written."""
+        text = (self._skill_dir(skill) / "SKILL.md").read_text(encoding="utf-8")
+        blocks = re.findall(r"```bash\n(.*?)```", text, re.DOTALL)
+        return [re.sub(r"\s*\\\n\s*", " ", b).strip() for b in blocks if "cli.py" in b]
 
-    def test_interview_skill_documents_commands_that_exist(self):
-        text = (REPO / "skills" / "ra1-interview" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("cli.py\" gaps", text)
-        self.assertIn("cli.py\" report", text)
+    def test_no_skill_resolves_its_engine_through_dollar_zero(self):
+        """`$0` is the shell. Any skill reintroducing it ships a broken first step."""
+        for skill in sorted(p.parent.name for p in (REPO / "skills").glob("*/SKILL.md")):
+            text = (self._skill_dir(skill) / "SKILL.md").read_text(encoding="utf-8")
+            for line in text.splitlines():
+                if "cli.py" in line and line.lstrip().startswith("python3"):
+                    self.assertNotIn("dirname", line, f"{skill} resolves cli.py from $0")
+                    self.assertIn("<skill-dir>", line, f"{skill} lacks the skill-dir placeholder")
 
-    def test_gaps_command_runs_from_the_vendored_skill(self):
-        root = make_repo({"README.md": "# x"})
-        self.addCleanup(rmtree, root)
-        done = self._run("ra1-interview", ["gaps", "--project", str(root), "--format", "json",
-                                           "--no-github"], cwd=root)
-        self.assertEqual(done.returncode, 0, done.stderr)
+    def test_every_documented_command_names_a_real_engine_entrypoint(self):
+        for skill in sorted(p.parent.name for p in (REPO / "skills").glob("*/SKILL.md")):
+            commands = self._commands(skill)
+            self.assertTrue(commands, f"{skill} documents no cli.py command")
+            for command in commands:
+                resolved = command.replace("<skill-dir>", str(self._skill_dir(skill)))
+                path = re.search(r'python3 "([^"]+)"', resolved).group(1)
+                self.assertTrue(Path(path).exists(), f"{skill}: {path} does not exist")
+
+    def _run_documented(self, command, repo, cwd):
+        """Run a documented command verbatim, substituting only its placeholders."""
+        filled = (command
+                  .replace("<skill-dir>", str(self._skill_dir("ra1-interview")))
+                  .replace("<repo-path>", str(repo))
+                  + " --no-github")
+        return subprocess.run(["bash", "-c", filled], cwd=cwd, capture_output=True,
+                              text=True, timeout=180), filled
+
+    def test_the_documented_gaps_command_runs_from_an_unrelated_cwd(self):
+        repo = make_repo({"README.md": "# x"})
+        self.addCleanup(rmtree, repo)
+        elsewhere = make_repo({"unrelated.txt": "not the skill, not the repo"})
+        self.addCleanup(rmtree, elsewhere)
+        command = next(c for c in self._commands("ra1-interview") if " gaps " in f" {c} ")
+        done, filled = self._run_documented(command, repo, cwd=elsewhere)
+        self.assertEqual(done.returncode, 0, f"{filled}\n{done.stderr}")
         payload = json.loads(done.stdout)
         self.assertTrue(any(g["id"] == "detect.project_type" for g in payload), payload)
 
-    def test_report_command_runs_from_the_vendored_skill(self):
-        root = make_repo({"README.md": "# x"})
-        self.addCleanup(rmtree, root)
-        out = Path(root) / ".agents" / "readiness"
-        done = self._run("ra1-interview",
-                         ["report", "--project", str(root), "--format", "json",
-                          "--out", str(out), "--no-github"], cwd=root)
-        self.assertEqual(done.returncode in (0, 1), True, done.stderr)  # 1 = below min level
-        payload = json.loads((out / "report.json").read_text(encoding="utf-8"))
+    def test_the_documented_report_command_runs_from_an_unrelated_cwd(self):
+        repo = make_repo({"README.md": "# x"})
+        self.addCleanup(rmtree, repo)
+        elsewhere = make_repo({"unrelated.txt": "not the skill, not the repo"})
+        self.addCleanup(rmtree, elsewhere)
+        command = next(c for c in self._commands("ra1-interview") if " report " in f" {c} ")
+        done, filled = self._run_documented(command, repo, cwd=elsewhere)
+        self.assertIn(done.returncode, (0, 1), f"{filled}\n{done.stderr}")  # 1 = below min level
+        payload = json.loads((Path(repo) / ".agents" / "readiness" / "report.json")
+                             .read_text(encoding="utf-8"))
         self.assertIn("gaps", payload)
 
 
