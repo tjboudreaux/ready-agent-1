@@ -636,8 +636,10 @@ class TestHtmlReport(unittest.TestCase):
         r = CriterionResult(id="x.y", title="X", pillar="P", level=1, scope="repository",
                             gating=True, status=Status.FAIL, rationale="r", evidence=evidence)
         doc = _parse(report_mod.render_html(self._rep(results=[r])))
-        self.assertEqual(doc.tags.count("details"), 1)
-        self.assertEqual(doc.tags.count("summary"), 1)
+        # The evidence disclosure is the only class-less <details>: facet menus and
+        # education disclosures carry their own classes.
+        disclosures = [a for t, a in doc.elements if t == "details" and "class" not in a]
+        self.assertEqual(len(disclosures), 1)
         text = doc.body_text
         self.assertIn("Evidence (3)", text)
         for token in ("T0", "bare fact", "T1", "cited file", "src/a.py", "T2", "api call",
@@ -648,7 +650,9 @@ class TestHtmlReport(unittest.TestCase):
         r = CriterionResult(id="x.y", title="X", pillar="P", level=1, scope="repository",
                             gating=True, status=Status.PASS)
         doc = _parse(report_mod.render_html(self._rep(results=[r])))
-        self.assertNotIn("details", doc.tags)
+        # No class-less <details>: every rendered disclosure is a facet menu or an
+        # education block, and the evidence disclosure never appears without evidence.
+        self.assertFalse([a for t, a in doc.elements if t == "details" and "class" not in a])
         self.assertNotIn("rationale", {a.get("class") for _, a in doc.elements})
 
     def test_advisory_improvements_keep_effort_group_order(self):
@@ -744,9 +748,12 @@ class TestHtmlSafety(unittest.TestCase):
                     Evidence(summary="upstream advisory", tier="T2",
                              source="https://example.com/advisories/1")]
         results = [
+            # AC/DC-mapped on purpose: the disclosure (and its one authored anchor) must
+            # render even under maximal repository hostility.
             CriterionResult(id="x.y", title=_HOSTILE, pillar=_HOSTILE, level=1,
                             scope="repository", gating=True, status=Status.FAIL,
                             rationale=_HOSTILE, evidence=evidence, fix_kind="scaffold",
+                            acdc_stage="verify", acdc_loop="inner",
                             passed_apps=0, evaluated_apps=1),
             CriterionResult(id="judgment.z", title=_HOSTILE, pillar="P", level=2,
                             scope="repository", gating=False, status=Status.WAIVED),
@@ -787,17 +794,25 @@ class TestHtmlSafety(unittest.TestCase):
 
     def test_no_attacker_supplied_element_or_attribute(self):
         doc = _parse(report_mod.render_html(self._hostile()))
-        for tag in ("script", "img", "link", "iframe", "object", "embed", "form", "a"):
+        for tag in ("script", "img", "link", "iframe", "object", "embed", "form"):
             self.assertNotIn(tag, doc.tags, f"<{tag}> reached the document")
-        forbidden = {"src", "href", "srcset", "action", "formaction", "style"}
-        for tag, name, _value in doc.attrs:
+        # Exactly one anchor may exist: the authored Sonar citation, attributes verbatim.
+        self.assertEqual(doc.find("a"),
+                         [{"href": report_mod._SONAR_ACDC_URL, "target": "_blank",
+                           "rel": "noopener noreferrer"}])
+        forbidden = {"src", "srcset", "action", "formaction", "style"}
+        for tag, name, value in doc.attrs:
             self.assertNotIn(name, forbidden, f"<{tag} {name}> reached the document")
             self.assertFalse(name.startswith("on"), f"<{tag} {name}> reached the document")
+            if name == "href":
+                self.assertEqual(value, report_mod._SONAR_ACDC_URL,
+                                 "a data-derived href reached the document")
 
     def test_url_shaped_evidence_stays_plain_text(self):
         doc = _parse(report_mod.render_html(self._hostile()))
         self.assertIn("https://example.com/advisories/1", doc.body_text)
-        self.assertNotIn("a", doc.tags)
+        # The URL survives as text only — it must never become an anchor.
+        self.assertEqual([a["href"] for a in doc.find("a")], [report_mod._SONAR_ACDC_URL])
 
     def test_absolute_project_path_is_never_emitted(self):
         out = report_mod.render_html(self._hostile())
@@ -816,27 +831,37 @@ class TestHtmlSafety(unittest.TestCase):
                          ["light dark"])
         self.assertEqual(doc.tags.count("style"), 1)
 
-    def test_artifact_references_nothing_external(self):
-        """The Single-File Rule: the artifact fetches nothing, ever — not even a font."""
+    def test_artifact_fetches_nothing_at_render_time(self):
+        """The Single-File Rule: rendering makes no network request, ever — not even a font.
+
+        Deliberate navigation is not a fetch: the one authored Sonar anchor loads only if
+        a reader clicks it, and the report renders identically if they never do.
+        """
         doc = _parse(report_mod.render_html(self._hostile()))
         fetching = {"script", "link", "img", "iframe", "object", "embed", "source", "track",
-                    "audio", "video", "form", "a", "base"}
+                    "audio", "video", "form", "base"}
         for tag in fetching:
             self.assertNotIn(tag, doc.tags, f"<{tag}> reached the document")
-        forbidden = {"src", "href", "srcset", "action", "formaction", "poster", "data", "ping",
+        forbidden = {"src", "srcset", "action", "formaction", "poster", "data", "ping",
                      "integrity", "crossorigin", "background"}
-        for tag, name, _value in doc.attrs:
+        for tag, name, value in doc.attrs:
             self.assertNotIn(name, forbidden, f"<{tag} {name}> reached the document")
             self.assertFalse(name.startswith("on"), f"<{tag} {name}> reached the document")
+            if name == "href":
+                self.assertEqual(value, report_mod._SONAR_ACDC_URL,
+                                 "a data-derived href reached the document")
 
     def test_stylesheet_is_self_contained(self):
         for banned in ("url(", "@import", "@font-face", "://"):
             self.assertNotIn(banned, report_mod._HTML_STYLE, f"{banned} reached the stylesheet")
 
     def test_no_attribute_value_carries_a_scheme(self):
-        # Body text may hold a URL — evidence sources are legitimate. Attributes may not.
+        # Body text may hold a URL — evidence sources are legitimate. Attributes may not,
+        # with one authored exception: the Sonar citation href, an exact constant.
         doc = _parse(report_mod.render_html(self._hostile()))
         for tag, name, value in doc.attrs:
+            if name == "href" and value == report_mod._SONAR_ACDC_URL:
+                continue
             self.assertNotIn("://", value, f"<{tag} {name}> carries a scheme")
 
     def test_no_repository_text_reaches_an_attribute(self):
@@ -955,18 +980,50 @@ class TestFacets(unittest.TestCase):
         self.assertIn("Pass 1", doc.body_text)
         self.assertIn("Docs 2", doc.body_text)
 
+    def test_menus_are_collapsed_icon_led_details_in_status_pillar_order(self):
+        doc = _parse(report_mod.render_html(self._rep(self._results())))
+        menus = [a for t, a in doc.elements
+                 if t == "details" and a.get("class") == "facet-menu"]
+        # No loop facets here, so exactly Status and Pillar menus, in that order.
+        self.assertEqual([m["id"] for m in menus], ["status-facets", "pillar-facets"])
+        for menu in menus:
+            self.assertEqual(menu["name"], "criteria-filters")
+            self.assertNotIn("open", menu)
+        triggers = [a for t, a in doc.elements if a.get("class") == "facet-trigger"]
+        self.assertEqual(len(triggers), 2)
+        text = doc.body_text
+        self.assertIn("Status 3 options", text)
+        self.assertIn("Pillar 2 options", text)
+        self.assertLess(text.index("Status 3 options"), text.index("Pillar 2 options"))
+
+    def test_every_checkbox_sits_immediately_before_its_label_inside_a_menu(self):
+        """Nested controls: the adjacent-sibling state rules require input+label adjacency,
+        and closed menus must own their controls so they leave the tab sequence."""
+        elements = _parse(report_mod.render_html(self._rep(self._results()))).elements
+        inputs = [i for i, (t, a) in enumerate(elements) if t == "input"]
+        self.assertEqual(len(inputs), 5)
+        first_fieldset = next(i for i, (t, _) in enumerate(elements) if t == "fieldset")
+        for i in inputs:
+            tag, attrs = elements[i + 1]
+            self.assertEqual(tag, "label")
+            self.assertEqual(attrs["for"], elements[i][1]["id"])
+            # Every control is nested inside a panel's fieldset — none is hoisted.
+            self.assertGreater(i, first_fieldset)
+
     def test_generated_css_hides_rows_by_status_and_groups_by_pillar(self):
         css = report_mod._filter_css(report_mod._facet_model(self._rep(self._results())))
-        self.assertIn("#f-s-fail:not(:checked) ~ .criteria-body .criterion.status-fail"
-                      " { display: none; }", css)
-        # Pillars are shown by a live pair, never hidden by a chip rule: the section
+        self.assertIn(".report:has(#f-s-fail:not(:checked)) .criteria-body"
+                      " .criterion.status-fail { display: none; }", css)
+        # Pillars are shown by a live pair, never hidden by an option rule: the section
         # appears exactly when one of its (status, loop) pairs is fully checked.
         self.assertIn(".criteria-body .pillar { display: none; }", css)
-        self.assertIn("#f-s-skipped:checked ~ #f-p2:checked ~ .criteria-body .p2"
-                      " { display: block; }", css)
+        self.assertIn(".report:has(#f-s-skipped:checked):has(#f-p2:checked)"
+                      " .criteria-body .p2 { display: block; }", css)
         self.assertNotIn("#f-p2:not(:checked)", css)
-        # Plain sibling combinators only: no :has() dependency anywhere in the filter layer.
-        self.assertNotIn(":has(", css)
+        # Nested checkboxes cannot govern rows with sibling combinators: :has() is the
+        # mechanism now, and the generated grammar is exactly this shape.
+        self.assertIn(":has(", css)
+        self.assertNotIn(" ~ ", css)
 
     def test_empty_state_covers_a_cross_facet_zero_match(self):
         """Fail-only crossed with Build-only matches nothing, yet a status is still checked.
@@ -979,11 +1036,11 @@ class TestFacets(unittest.TestCase):
         css = report_mod._filter_css(report_mod._facet_model(self._rep(self._results())))
         # p1 holds pass + fail, p2 holds skipped only. Those are the three live pairs.
         for sid, cls in (("f-s-pass", "p1"), ("f-s-fail", "p1"), ("f-s-skipped", "p2")):
-            self.assertIn(f"#{sid}:checked ~ #f-{cls}:checked ~ .criteria-body .criteria-empty"
-                          " { display: none; }", css)
+            self.assertIn(f".report:has(#{sid}:checked):has(#f-{cls}:checked)"
+                          " .criteria-body .criteria-empty { display: none; }", css)
         # Fail x Build is NOT a live pair, so nothing hides the message for that selection.
-        self.assertNotIn("#f-s-fail:checked ~ #f-p2:checked", css)
-        self.assertNotIn("#f-s-pass:checked ~ #f-p2:checked", css)
+        self.assertNotIn("#f-s-fail:checked):has(#f-p2:checked", css)
+        self.assertNotIn("#f-s-pass:checked):has(#f-p2:checked", css)
         # And the old blanket rule is gone: the message no longer waits for every status off.
         self.assertNotIn(".criteria-empty { display: block; }", css)
 
@@ -1004,15 +1061,28 @@ class TestFacets(unittest.TestCase):
         """
         css = report_mod._filter_css(report_mod._facet_model(self._rep(self._results())))
         # p1 holds fail + pass, p2 holds only skipped: exactly three show chains exist.
-        self.assertIn("#f-s-fail:checked ~ #f-p1:checked ~ .criteria-body .p1"
-                      " { display: block; }", css)
-        self.assertIn("#f-s-pass:checked ~ #f-p1:checked ~ .criteria-body .p1"
-                      " { display: block; }", css)
-        self.assertIn("#f-s-skipped:checked ~ #f-p2:checked ~ .criteria-body .p2"
-                      " { display: block; }", css)
+        self.assertIn(".report:has(#f-s-fail:checked):has(#f-p1:checked)"
+                      " .criteria-body .p1 { display: block; }", css)
+        self.assertIn(".report:has(#f-s-pass:checked):has(#f-p1:checked)"
+                      " .criteria-body .p1 { display: block; }", css)
+        self.assertIn(".report:has(#f-s-skipped:checked):has(#f-p2:checked)"
+                      " .criteria-body .p2 { display: block; }", css)
         # No other combination can show a section: fail x Build is not a live pair.
-        self.assertNotIn("#f-s-fail:checked ~ #f-p2:checked ~ .criteria-body .p2", css)
-        self.assertNotIn("#f-s-pass:checked ~ #f-p2:checked ~ .criteria-body .p2", css)
+        self.assertNotIn("#f-s-fail:checked):has(#f-p2:checked) .criteria-body .p2", css)
+        self.assertNotIn("#f-s-pass:checked):has(#f-p2:checked) .criteria-body .p2", css)
+
+    def test_narrow_and_print_rules_keep_menus_usable_and_paper_complete(self):
+        css = report_mod._STATIC_CSS
+        narrow = css.split("@media (max-width: 720px)", 1)[1]
+        self.assertIn(".facets { grid-template-columns: minmax(0, 1fr); }", narrow)
+        self.assertIn(".facet-panel { position: static; max-height: none;"
+                      " margin-top: var(--space-1); }", narrow)
+        printed = css.split("@media print", 1)[1]
+        self.assertIn(".facets, .facet-input { display: none; }", printed)
+        self.assertIn(".criteria-body .criterion, .criteria-body .pillar"
+                      " { display: block !important; }", printed)
+        # Closed disclosures — education included — print expanded.
+        self.assertIn("details:not([open]) > *:not(summary) { display: block; }", printed)
 
     def test_no_criteria_means_no_facets(self):
         doc = _parse(report_mod.render_html(self._rep([])))
@@ -1021,7 +1091,7 @@ class TestFacets(unittest.TestCase):
 
 
 class TestLoopFacets(unittest.TestCase):
-    """The AC/DC loop axis: chips, row classes, and the status x pillar x loop hole."""
+    """The AC/DC loop axis: menu options, row classes, and the status x pillar x loop hole."""
 
     def _rep(self, results):
         return Report(project_path="/p", schema_version="2", engine_version="0.8.0",
@@ -1041,23 +1111,26 @@ class TestLoopFacets(unittest.TestCase):
                             scope="repository", gating=True, status=Status.PASS),
         ]
 
-    def test_loop_chips_render_with_counts_and_default_checked(self):
+    def test_loop_options_render_with_counts_and_default_checked(self):
         doc = _parse(report_mod.render_html(self._rep(self._results())))
         boxes = {a["id"]: a for t, a in doc.elements if t == "input"}
         self.assertIn("f-l-inner", boxes)
         self.assertIn("f-l-outer", boxes)
-        self.assertNotIn("f-l-both", boxes)  # no both-loop rows, no chip
+        self.assertNotIn("f-l-both", boxes)  # no both-loop rows, no option
         self.assertIn("checked", boxes["f-l-inner"])
         self.assertIn("AC/DC loop", doc.body_text)
         self.assertIn("Inner 1", doc.body_text)
         self.assertIn("Outer 1", doc.body_text)
 
-    def test_no_loop_chips_without_mapped_criteria(self):
+    def test_no_loop_menu_without_mapped_criteria(self):
         results = [CriterionResult(id="d.readme", title="README", pillar="Docs", level=1,
                                    scope="repository", gating=True, status=Status.PASS)]
         doc = _parse(report_mod.render_html(self._rep(results)))
         self.assertNotIn("AC/DC loop", doc.body_text)
         self.assertNotIn("f-l-inner", {a["id"] for t, a in doc.elements if t == "input"})
+        menus = [a for t, a in doc.elements if t == "details"
+                 and a.get("class") == "facet-menu"]
+        self.assertEqual([m["id"] for m in menus], ["status-facets", "pillar-facets"])
 
     def test_mapped_rows_carry_loop_classes(self):
         html = report_mod.render_html(self._rep(self._results()))
@@ -1068,46 +1141,175 @@ class TestLoopFacets(unittest.TestCase):
 
     def test_generated_css_filters_rows_by_loop(self):
         css = report_mod._filter_css(report_mod._facet_model(self._rep(self._results())))
-        self.assertIn("#f-l-inner:not(:checked) ~ .criteria-body .criterion.loop-inner"
-                      " { display: none; }", css)
-        self.assertIn("#f-l-outer:not(:checked) ~ .criteria-body .criterion.loop-outer"
-                      " { display: none; }", css)
+        self.assertIn(".report:has(#f-l-inner:not(:checked)) .criteria-body"
+                      " .criterion.loop-inner { display: none; }", css)
+        self.assertIn(".report:has(#f-l-outer:not(:checked)) .criteria-body"
+                      " .criterion.loop-outer { display: none; }", css)
 
     def test_empty_state_covers_the_status_loop_cross_hole(self):
         """Fail x Outer matches no row in a pillar holding fail-inner and pass-outer.
 
-        A status chip and a loop chip are both checked, so a naive rule would call the
+        A status option and a loop option are both checked, so a naive rule would call the
         region populated. Only the live pairs get show/empty-hide chains, so that
         selection leaves the empty message visible.
         """
         css = report_mod._filter_css(report_mod._facet_model(self._rep(self._results())))
         # The three live pairs, each with the loop clause it needs.
-        self.assertIn("#f-s-fail:checked ~ #f-l-inner:checked ~ #f-p1:checked"
-                      " ~ .criteria-body .p1 { display: block; }", css)
-        self.assertIn("#f-s-pass:checked ~ #f-l-outer:checked ~ #f-p1:checked"
-                      " ~ .criteria-body .p1 { display: block; }", css)
-        self.assertIn("#f-s-pass:checked ~ #f-p1:checked ~ .criteria-body .p1"
-                      " { display: block; }", css)
-        self.assertIn("#f-s-fail:checked ~ #f-l-inner:checked ~ #f-p1:checked"
-                      " ~ .criteria-body .criteria-empty { display: none; }", css)
+        self.assertIn(".report:has(#f-s-fail:checked):has(#f-l-inner:checked)"
+                      ":has(#f-p1:checked) .criteria-body .p1 { display: block; }", css)
+        self.assertIn(".report:has(#f-s-pass:checked):has(#f-l-outer:checked)"
+                      ":has(#f-p1:checked) .criteria-body .p1 { display: block; }", css)
+        self.assertIn(".report:has(#f-s-pass:checked):has(#f-p1:checked)"
+                      " .criteria-body .p1 { display: block; }", css)
+        self.assertIn(".report:has(#f-s-fail:checked):has(#f-l-inner:checked)"
+                      ":has(#f-p1:checked) .criteria-body .criteria-empty"
+                      " { display: none; }", css)
         # Fail x Outer is NOT live: no chain may hide the empty message for it.
-        self.assertNotIn("#f-s-fail:checked ~ #f-l-outer:checked", css)
-        self.assertNotIn("#f-s-pass:checked ~ #f-l-inner:checked", css)
+        self.assertNotIn("#f-s-fail:checked):has(#f-l-outer:checked", css)
+        self.assertNotIn("#f-s-pass:checked):has(#f-l-inner:checked", css)
 
-    def test_facet_inputs_follow_status_loop_pillar_dom_order(self):
-        """The sibling chains address status ~ loop ~ pillar; the inputs must agree."""
-        html = report_mod.render_html(self._rep(self._results()))
-        positions = [html.index(f'id="{fid}"')
-                     for fid in ("f-s-fail", "f-l-inner", "f-p1")]
+    def test_nested_controls_follow_status_loop_pillar_order(self):
+        """Menus render Status → AC/DC loop → Pillar, and each menu's checkboxes sit inside
+        its own panel immediately ahead of their labels."""
+        doc = _parse(report_mod.render_html(self._rep(self._results())))
+        menus = [a for t, a in doc.elements
+                 if t == "details" and a.get("class") == "facet-menu"]
+        self.assertEqual([m["id"] for m in menus],
+                         ["status-facets", "loop-facets", "pillar-facets"])
+        ids = [a["id"] for t, a in doc.elements if t == "input"]
+        # Statuses in urgency order, then loops in inner/outer order, then pillars.
+        self.assertEqual(ids, ["f-s-fail", "f-s-pass", "f-l-inner", "f-l-outer", "f-p1"])
+
+    def test_triggers_follow_status_loop_pillar_order_and_stay_collapsed(self):
+        doc = _parse(report_mod.render_html(self._rep(self._results())))
+        text = doc.body_text
+        self.assertIn("Status 2 options", text)
+        self.assertIn("AC/DC loop 2 options", text)
+        self.assertIn("Pillar 1 options", text)
+        positions = [text.index(label) for label in
+                     ("Status 2 options", "AC/DC loop 2 options", "Pillar 1 options")]
         self.assertEqual(positions, sorted(positions))
+        menus = [a for t, a in doc.elements
+                 if t == "details" and a.get("class") == "facet-menu"]
+        self.assertEqual(len([a for t, a in doc.elements
+                              if a.get("class") == "facet-trigger"]), 3)
+        for menu in menus:
+            self.assertEqual(menu["name"], "criteria-filters")
+            self.assertNotIn("open", menu)
 
-    def test_visible_groups_follow_input_dom_order(self):
-        """Tabbing walks the visually-hidden inputs in DOM order, so the rendered
-        legends must appear in the same sequence or the focus ring jumps backwards."""
-        html = report_mod.render_html(self._rep(self._results()))
-        legends = [html.index(f'<p class="facet-legend">{name}</p>')
-                   for name in ("Status", "AC/DC loop", "Pillar")]
-        self.assertEqual(legends, sorted(legends))
+
+class TestHtmlEducation(unittest.TestCase):
+    """The three teaching disclosures: levels, pillars, and the AC/DC mapping."""
+
+    def _rep(self, **kw):
+        kw.setdefault("project_path", "/p")
+        kw.setdefault("schema_version", "2")
+        kw.setdefault("engine_version", "0.9.0")
+        kw.setdefault("registry_version", "0.7.0")
+        kw.setdefault("detector_version", "0.5.0")
+        return Report(**kw)
+
+    def _score(self, levels, pillars=None):
+        return ScoreSummary(level=1, level_name="Functional", pass_rate=0.5,
+                            gating_passed=4, gating_total=8, levels=levels,
+                            pillars=pillars or {})
+
+    def _five_levels(self, level5_total=0):
+        return [LevelScore(level=n, name=f"Name{n}", passed=0,
+                           total=4 if n < 5 else level5_total, achieved=n == 1)
+                for n in range(1, 6)]
+
+    def test_level_disclosure_teaches_cumulative_gates_with_canonical_names(self):
+        rep = self._rep(score=self._score(self._five_levels()))
+        doc = _parse(report_mod.render_html(rep))
+        text = doc.body_text
+        self.assertIn("Each level is cumulative. A gate clears when at least 80% of its "
+                      "applicable gating criteria pass and every lower level has cleared. "
+                      "Advisory, skipped, and waived criteria do not move the level; an "
+                      "unknown gating result counts as not passed.", text)
+        # Names come from model.LEVEL_NAMES even though the LevelScore rows carry others.
+        for number, name in ((1, "Functional"), (2, "Documented"), (3, "Standardized"),
+                             (4, "Optimized"), (5, "Autonomous")):
+            self.assertIn(f"{number} {name}", text)
+        for description in report_mod._LEVEL_EDUCATION.values():
+            self.assertIn(description, text)
+
+    def test_empty_level_says_so_only_when_it_has_no_gating_criteria(self):
+        note = "No gating criteria are defined for this level yet."
+        rep = self._rep(score=self._score(self._five_levels(level5_total=0)))
+        text = _parse(report_mod.render_html(rep)).body_text
+        self.assertEqual(text.count(note), 1)  # level 5 only
+        rep = self._rep(score=self._score(self._five_levels(level5_total=2)))
+        self.assertNotIn(note, _parse(report_mod.render_html(rep)).body_text)
+
+    def test_pillar_disclosure_reuses_all_nine_mapping_descriptions(self):
+        pillars = {"Documentation": {"passed": 3, "total": 4},
+                   "Build System": {"passed": 1, "total": 2},
+                   "Testing": {"passed": 2, "total": 2}}
+        rep = self._rep(score=self._score(self._five_levels(), pillars))
+        text = _parse(report_mod.render_html(rep)).body_text
+        self.assertIn("Pillars organize checks by the kind of support an agent needs. "
+                      "Coverage uses applicable gating criteria only; advisory, skipped, "
+                      "and waived criteria do not change the chart.", text)
+        self.assertEqual(len(report_mod._PILLAR_ELI5), 9)
+        for name, why in report_mod._PILLAR_ELI5.items():
+            self.assertIn(name, text)
+            self.assertIn(why, text)
+
+    def test_education_disclosures_render_collapsed(self):
+        pillars = {"Documentation": {"passed": 1, "total": 2},
+                   "Build System": {"passed": 1, "total": 2},
+                   "Testing": {"passed": 2, "total": 2}}
+        rep = self._rep(score=self._score(self._five_levels(), pillars))
+        blocks = [a for t, a in _parse(report_mod.render_html(rep)).elements
+                  if t == "details" and a.get("class") == "education"]
+        self.assertEqual([b["id"] for b in blocks],
+                         ["levels-education", "pillars-education"])
+        for block in blocks:
+            self.assertNotIn("open", block)
+
+    def _acdc_rep(self):
+        results = [CriterionResult(id="b.check", title="Check", pillar="Build", level=2,
+                                   scope="repository", gating=True, status=Status.PASS,
+                                   acdc_stage="verify", acdc_loop="inner")]
+        return self._rep(results=results)
+
+    def test_acdc_disclosure_quotes_and_cites_the_source_exactly(self):
+        doc = _parse(report_mod.render_html(self._acdc_rep()))
+        text = doc.body_text
+        self.assertIn("Sonar’s Agent Centric Development Cycle surrounds generated code "
+                      "with Guide → Verify → Solve. Ready Agent 1 uses AC/DC stage and "
+                      "loop as advisory metadata; it never changes the Level 1–5 score.",
+                      text)
+        for term in ("Inner", "Outer", "Both"):
+            self.assertIn(term, text)
+        self.assertIn("Fast feedback during the agent’s reasoning process: local "
+                      "guidance, a single verify command, and post-edit checks.", text)
+        self.assertIn("Broader verification after the agent considers the task complete: "
+                      "CI, coverage and changed-code quality gates, and branch "
+                      "protection.", text)
+        self.assertIn("Guidance that must remain available during local work and final "
+                      "verification.", text)
+        self.assertIn("“The inner loop: Guide-Verify-Solve happens in each agentic "
+                      "reasoning loop, ensuring that the agent stays on track as it "
+                      "methodically works to achieve the plans.”", text)
+        self.assertIn("“The outer loop: Guide-Verify-Solve happens once the agent has "
+                      "‘finished’ its work.”", text)
+        self.assertIn("Sonar, “The future is AC/DC: the Agent Centric Development "
+                      "Cycle”", text)
+        self.assertEqual(doc.find("a"),
+                         [{"href": report_mod._SONAR_ACDC_URL, "target": "_blank",
+                           "rel": "noopener noreferrer"}])
+        quotes = [a for t, a in doc.elements if t == "blockquote"]
+        self.assertEqual(quotes, [{"class": "education-quote"}])
+
+    def test_no_acdc_disclosure_without_mapped_loop_results(self):
+        results = [CriterionResult(id="d.readme", title="README", pillar="Docs", level=1,
+                                   scope="repository", gating=True, status=Status.PASS)]
+        doc = _parse(report_mod.render_html(self._rep(results=results)))
+        self.assertNotIn("How AC/DC loops map to this report", doc.body_text)
+        self.assertNotIn("Guide-Verify-Solve", doc.body_text)
+        self.assertEqual(doc.find("a"), [])
 
 
 class TestActionLayer(unittest.TestCase):
