@@ -247,10 +247,10 @@ legible, the tone is wrong — fix the tone.
 
 ## 5. Components
 
-Twenty components. Every one is assembled in `engine/readiness/report.py` from the shared
+Twenty-two components. Every one is assembled in `engine/readiness/report.py` from the shared
 component helpers (`_section`, `_row`, `_meta`, `_badge`, `_icon`, `_tip`, `_evidence`, `_callout`,
-`_empty`, `_gate_track`, `_radar`, `_distribution`, `_facets`, `_pillar_header`); no markup shape
-is spelled out twice.
+`_empty`, `_gate_track`, `_radar`, `_distribution`, `_education`, `_facet_menu`,
+`_pillar_header`); no markup shape is spelled out twice.
 
 **The three tiers.** Every criterion row is blocking, suggested or settled, and the tier is the
 first thing the design communicates:
@@ -389,24 +389,63 @@ to do it is useful either way. The "counts as not passed" sentence appears only 
 
 ### Facet Filter
 
-- **Shape:** two groups, each with its legend above the chip row so nine pillar chips get the full
-  width instead of a ragged two-line wrap inside a narrow column.
-- **Rank:** Status is the filter a reader reaches for, so it keeps the chip box and a full-colour
-  legend. Pillar is secondary: plain text plus a mark, no box, muted legend. Nine boxed chips were
-  the noisiest thing on the page.
-- **Mark:** a small square in the facet's own status colour, filled when checked and hollow when
-  not. A box that fills, never a tick: a checkmark beside the word *Fail* reads as a pass. Its
-  colour is what binds these words to the segments in the bar above them.
-- **Mechanism:** a real `<input type="checkbox">` per facet, visually hidden but focusable, hoisted
-  to precede the rows it governs so a plain sibling combinator does the filtering. No `:has()`, no
-  script. Keyboard operation and screen-reader announcement come free from the native control.
+- **Shape:** three native `<details>` dropdown menus — Status, AC/DC loop (only when mapped
+  criteria exist), Pillar, in that order — in an `auto-fit` grid of `12rem`-minimum columns,
+  stacking to one column below `720px`.
+- **Mechanism:** a real `<input type="checkbox">` per option, nested inside its own menu's
+  panel immediately ahead of its label, and generated `.report:has(...)` selectors that hide
+  rows and show pillar sections. No script, no hoisted controls: modern `:has()` is what lets
+  correctly nested, keyboard-operable checkboxes govern the rows below. The shared
+  `name="criteria-filters"` gives supporting browsers one-open-menu behaviour for free.
 - **Default:** `skipped` arrives unchecked. It is the noise floor, and hiding it is the single
-  highest-value default on a 100+ criterion report.
+  highest-value default on a 100+ criterion report. Zero selections is valid and simply
+  reaches the no-match state.
 - **States:** a pillar group hides once every status it contains is switched off, so no heading
   ever outlives its own rows. The `No criteria match these filters` message is **visible by
-  default** and hidden by each surviving (status, pillar) pair, which is what covers a cross-facet
-  zero match: check only *Fail* and only *Build* and nothing matches even though a status is still
-  checked. `@media print` neutralises the whole layer, so paper always carries every row.
+  default** and hidden by each surviving (status, pillar, loop) triple, which is what covers a
+  cross-facet zero match: check only *Fail* and only *Build* and nothing matches even though a
+  status is still checked. `@media print` neutralises the whole layer, so paper always carries
+  every row.
+
+### Facet Menu
+
+- **Trigger:** a full-width `<summary>` (`2.75rem` minimum height, `--surface` fill, hairline
+  `--border`, `2px` radius) carrying the group glyph, the title, a static `N options` count,
+  and a chevron that rotates on open. The count is deliberately static: script-free CSS cannot
+  keep a selected count from going stale, and the real checkbox states inside the open menu
+  are the source of truth. The native disclosure marker is suppressed here only, so the
+  chevron is never duplicated.
+- **Panel:** absolutely positioned below the trigger (`22rem` maximum height, scrolling,
+  `--border-strong` hairline, no shadow); below `720px` it returns to the flow so an open
+  menu pushes content down instead of covering it. The panel holds a `<fieldset>` with a
+  visually-hidden `<legend>`, then input-plus-label pairs in reading order — so a closed menu
+  contributes nothing to the tab sequence and an open one walks its options in order.
+- **Option rows:** a four-column grid — check square, option glyph, label, count. Status
+  options tint square and glyph with their `--mark` status colour (the same binding the
+  distribution bar uses); loop and pillar glyphs stay neutral. Checked fills the square and
+  sinks the row to `--surface-sunken`; the focus ring lands on the label via the adjacent
+  visually-hidden input, using the shared `--focus` tokens.
+
+### Education Disclosure
+
+- **Shape:** a closed `<details class="education">` with a focusable `<summary>`, its body
+  capped at the `72ch` measure. Three instances: *How the levels work* after the gate track,
+  *What the pillars measure* after the pillar key, and *How AC/DC loops map to this report*
+  between the criteria denominator note and the distribution bar (the last only when at
+  least one criterion carries an AC/DC loop mapping).
+- **Definition lists:** term/definition rows on a two-column `minmax(10rem, 14rem) minmax(0,
+  1fr)` grid, one column below `720px`, separated by full-width hairlines — never cards,
+  never colored side stripes. The five level definitions are keyed by level number and take
+  their names from `LEVEL_NAMES`; the nine pillar definitions reuse `_PILLAR_ICONS` and
+  `_PILLAR_ELI5` rather than copying them. A level with no defined gating criteria says so
+  in one appended sentence.
+- **Source quotation:** the AC/DC disclosure closes with a `<blockquote>` holding Sonar's two
+  loop-defining sentences, set off by top and bottom hairlines, and exactly one citation
+  anchor in `--accent` with an underline and the standard focus outline. That anchor is the
+  artifact's only external reference: authored, user-initiated navigation, never a render
+  dependency (The Single-File Rule).
+- **Print:** closed disclosures print expanded via the shared `@media print` rule, so the
+  teaching content survives on paper.
 
 ### Tooltip
 
@@ -465,9 +504,12 @@ to do it is useful either way. The "counts as not passed" sentence appears only 
 
 ### Named Rules
 
-**The Single-File Rule.** The artifact fetches nothing, ever. No `<script>`, `<link>`, `<img>`,
-`@import`, `url()`, remote font, or protocol-relative reference. If it needs a network to look
-right, it is broken. Enforced by `tests/test_report.py::TestHtmlSafety`.
+**The Single-File Rule.** The artifact makes no network request at render time, ever. No
+`<script>`, `<link>`, `<img>`, `@import`, `url()`, remote font, or protocol-relative reference.
+"Single-file" means exactly that: nothing is fetched to render. The one authored exception is
+the Sonar citation anchor in the AC/DC education disclosure — a user-initiated navigation that
+loads only on an explicit click, and the report renders identically whether or not it is ever
+clicked. Enforced by `tests/test_report.py::TestHtmlSafety`.
 
 ## 6. Do's and Don'ts
 
@@ -481,13 +523,14 @@ right, it is broken. Enforced by `tests/test_report.py::TestHtmlSafety`.
 - **Do** express depth with `--bg` < `--surface-sunken` < `--surface` plus `--hairline` rules, and
   reserve `--rule` (`2px`) with `--border-strong` for the single blocked gate (The No-Shadow Rule).
 - **Do** route every value that came from the scanned repository through `_html()` or `_meta()`, and
-  keep `_callout` bodies authored-markup-only.
+  keep `_callout` bodies authored-markup-only. Repository and report values never reach a
+  URL-bearing attribute: the artifact's one `href` is the authored Sonar citation constant.
 - **Do** read coverage from `score.pillars`, never from a fresh aggregation over `results`: the
   engine already excludes non-gating and skipped/waived criteria, and that is the denominator the
   headline score uses.
-- **Do** build interactivity from native controls plus sibling combinators. A real
-  `<input type="checkbox">` is keyboard-operable and announced for free; a scripted one is not,
-  and a script cannot enter this file at all.
+- **Do** build interactivity from native controls plus `:has()`. A real `<input type="checkbox">`
+  inside a grouped `<details>` menu is keyboard-operable and announced for free; a scripted one is
+  not, and a script cannot enter this file at all.
 - **Do** inline every glyph in Lucide's grammar (24-unit box, 1.5 stroke, `currentColor`) rather
   than adding an icon dependency.
 - **Do** cap prose at `--prose-max` (`72ch`) and keep the artifact one column.
@@ -504,7 +547,8 @@ right, it is broken. Enforced by `tests/test_report.py::TestHtmlSafety`.
 - **Don't** ship attract-mode decoration into the report: no gradients, no glow, no scanlines, no
   perspective grid, no display face, no decorative animation (The Play-Screen Rule).
 - **Don't** add a `<script>`, `<link>`, `<img>`, webfont, `@import` or `url()` (The Single-File
-  Rule).
+  Rule). The only external reference permitted is the authored Sonar citation anchor, and it is
+  user-initiated navigation, not a render-time fetch.
 - **Don't** use `border-left` greater than 1px as a colored side stripe.
 - **Don't** use gradient text, glassmorphism, a hero-metric template, or a grid of identical cards.
 - **Don't** add a shadow token or an elevation scale.

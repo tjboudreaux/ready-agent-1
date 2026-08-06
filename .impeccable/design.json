@@ -373,7 +373,7 @@
       {
         "name": "The Single-File Rule",
         "section": "components",
-        "body": "The artifact fetches nothing, ever. No `<script>`, `<link>`, `<img>`, `@import`, `url()`, remote font, or protocol-relative reference. If it needs a network to look right, it is broken. Enforced by `tests/test_report.py::TestHtmlSafety`."
+        "body": "The artifact makes no network request at render time, ever. No `<script>`, `<link>`, `<img>`, `@import`, `url()`, remote font, or protocol-relative reference. \"Single-file\" means exactly that: nothing is fetched to render. The one authored exception is the Sonar citation anchor in the AC/DC education disclosure — a user-initiated navigation that loads only on an explicit click, and the report renders identically whether or not it is ever clicked. Enforced by `tests/test_report.py::TestHtmlSafety`."
       }
     ],
     "dos": [
@@ -381,9 +381,9 @@
       "**Do** keep every neutral on hue **283** (The Same-Hue Rule) and every color in OKLCH.",
       "**Do** pair every status color with a symbol and a word (The Two-Signal Rule).",
       "**Do** express depth with `--bg` < `--surface-sunken` < `--surface` plus `--hairline` rules, and reserve `--rule` (`2px`) with `--border-strong` for the single blocked gate (The No-Shadow Rule).",
-      "**Do** route every value that came from the scanned repository through `_html()` or `_meta()`, and keep `_callout` bodies authored-markup-only.",
+      "**Do** route every value that came from the scanned repository through `_html()` or `_meta()`, and keep `_callout` bodies authored-markup-only. Repository and report values never reach a URL-bearing attribute: the artifact's one `href` is the authored Sonar citation constant.",
       "**Do** read coverage from `score.pillars`, never from a fresh aggregation over `results`: the engine already excludes non-gating and skipped/waived criteria, and that is the denominator the headline score uses.",
-      "**Do** build interactivity from native controls plus sibling combinators. A real `<input type=\"checkbox\">` is keyboard-operable and announced for free; a scripted one is not, and a script cannot enter this file at all.",
+      "**Do** build interactivity from native controls plus `:has()`. A real `<input type=\"checkbox\">` inside a grouped `<details>` menu is keyboard-operable and announced for free; a scripted one is not, and a script cannot enter this file at all.",
       "**Do** inline every glyph in Lucide's grammar (24-unit box, 1.5 stroke, `currentColor`) rather than adding an icon dependency.",
       "**Do** cap prose at `--prose-max` (`72ch`) and keep the artifact one column.",
       "**Do** state absence explicitly with the empty state rather than rendering a blank section."
@@ -393,7 +393,7 @@
       "**Don't** reference *Ready Player One* by name, its characters, the OASIS, or its key art, logo or typography; and never use a trademarked tagline (`BRAND.md`'s \"Don't\" column, verbatim).",
       "**Don't** overclaim — the score is deterministic, not vibes (`BRAND.md`'s \"Don't\"). The advisory layer never changes a number.",
       "**Don't** ship attract-mode decoration into the report: no gradients, no glow, no scanlines, no perspective grid, no display face, no decorative animation (The Play-Screen Rule).",
-      "**Don't** add a `<script>`, `<link>`, `<img>`, webfont, `@import` or `url()` (The Single-File Rule).",
+      "**Don't** add a `<script>`, `<link>`, `<img>`, webfont, `@import` or `url()` (The Single-File Rule). The only external reference permitted is the authored Sonar citation anchor, and it is user-initiated navigation, not a render-time fetch.",
       "**Don't** use `border-left` greater than 1px as a colored side stripe.",
       "**Don't** use gradient text, glassmorphism, a hero-metric template, or a grid of identical cards.",
       "**Don't** add a shadow token or an elevation scale.",
