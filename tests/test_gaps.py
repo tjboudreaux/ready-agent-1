@@ -162,6 +162,60 @@ class TestDetectionGaps(unittest.TestCase):
             self.assertNotEqual(rows[cid].status, Status.SKIPPED,
                                 f"{cid} should apply once both surfaces are declared")
 
+    def test_surface_order_changes_display_but_never_a_result(self):
+        """First-entry display semantics must not leak into applicability.
+
+        Repository-scope criteria were matched against `project_type`, which is the first
+        declared surface, so `["frontend", "service"]` skipped seven repository-scope
+        service-only criteria that `["service", "frontend"]` evaluated — the same declaration
+        hiding findings based on the order it was written in.
+
+        Two total assertions, guarding different things. The (id, app_path, status) comparison
+        is what catches that regression: every affected criterion today is advisory, so the
+        level never moved and a score-only check would have passed straight through it. The
+        score comparison guards the stronger claim for the day a repository-scope
+        surface-specific *gating* criterion is registered, of which there are currently none.
+        """
+        files = {"README.md": "# app",
+                 "requirements.txt": "flask>=3\n",
+                 "package.json": '{"name":"web","dependencies":{"next":"14"}}'}
+        # Repository scope (service, not frontend) and application scope (frontend only):
+        # these must be *evaluated*, not merely equal, or both orders could skip them alike.
+        probes = ("security.dast", "observability.runbooks", "docs.architecture_doc",
+                  "build.dependency_weight_budget")
+        results, scores = {}, {}
+        for order in (["service", "frontend"], ["frontend", "service"]):
+            root = make_repo(files)
+            self.addCleanup(rmtree, root)
+            cfg = Path(root) / ".agents" / "readiness"
+            cfg.mkdir(parents=True, exist_ok=True)
+            (cfg / "config.json").write_text(json.dumps({"detect": {"surfaces": order}}),
+                                             encoding="utf-8")
+            report = analyze(root, {"no_github": True})
+            key = tuple(order)
+            results[key] = sorted((r.id, r.app_path, r.status.value) for r in report.results)
+            scores[key] = report.score.to_dict()
+            rows = {r.id: r for r in report.results}
+            # Only the displayed type follows declaration order.
+            self.assertEqual(report.detection.project_type, order[0])
+            self.assertEqual(report.detection.match_surfaces(), order)
+            for cid in probes:
+                self.assertNotEqual(rows[cid].status, Status.SKIPPED,
+                                    f"{cid} skipped with surfaces={order}")
+        forward, reversed_ = ("service", "frontend"), ("frontend", "service")
+        # Every registered criterion is accounted for, so "equal" cannot mean "both empty".
+        self.assertEqual(len(results[forward]), len(load_registry()))
+        self.assertEqual(results[forward], results[reversed_])   # catches the regression
+        self.assertEqual(scores[forward], scores[reversed_])     # guards a future gating one
+
+    def test_an_undeclared_repository_matches_on_its_inferred_type(self):
+        """The fallback: no declaration means applicability is exactly as before."""
+        root = make_repo({"README.md": "# x", "requirements.txt": "flask>=3\n"})
+        self.addCleanup(rmtree, root)
+        report = analyze(root, {"no_github": True})
+        self.assertEqual(report.detection.surfaces, [])
+        self.assertEqual(report.detection.match_surfaces(), ["service"])
+
     def test_an_invalid_surfaces_pin_is_ignored_and_disclosed(self):
         root = make_repo({"README.md": "# x", "requirements.txt": "flask>=3\n"})
         self.addCleanup(rmtree, root)

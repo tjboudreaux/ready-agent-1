@@ -439,4 +439,7 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
         # What the scanner considered, pin or no pin: the gaps layer needs the inference to
         # explain a contested classification, and a pin is recorded in `signals` above.
         candidates=app.type_candidates,
+        # Declared multi-surface sets reach repository-scope applicability through this, so
+        # the order a developer wrote them in cannot change a score.
+        surfaces=list(app.surfaces),
     )

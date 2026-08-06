@@ -99,6 +99,14 @@ class Detection:
     # Ranked alternatives for the root classification, strongest first. Empty for a
     # monorepo root, where the per-app lists on App carry the ambiguity instead.
     candidates: list = field(default_factory=list)
+    # Every surface the root serves, when more than one was declared. Repository-scope
+    # applicability reads this, so declaring ["frontend", "service"] and ["service",
+    # "frontend"] score identically and only the display type differs.
+    surfaces: list = field(default_factory=list)
+
+    def match_surfaces(self) -> list:
+        """The surfaces repository-scope applicability is judged against."""
+        return list(self.surfaces) or [self.project_type]
 
     def to_dict(self) -> dict:
         return {
@@ -110,6 +118,7 @@ class Detection:
             "apps": [a.to_dict() for a in self.apps],
             "opt_in": dict(self.opt_in),
             "candidates": [dict(c) for c in self.candidates],
+            "surfaces": list(self.surfaces),
         }
 
 

@@ -157,8 +157,9 @@ def _eval_criterion(crit, root, detection, static, git, github, waivers, options
         return _aggregate(base, per)
 
     # repository scope
-    tm = _type_match(types, detection.project_type)
-    app = App(path=".", languages=detection.languages, deploy_surface=detection.project_type)
+    tm = _type_match(types, detection.match_surfaces())
+    app = App(path=".", languages=detection.languages,
+              deploy_surface=detection.project_type, surfaces=list(detection.surfaces))
     if tm == "skip":
         return CriterionResult(status=Status.SKIPPED,
                                rationale="Not applicable to this project type.",
