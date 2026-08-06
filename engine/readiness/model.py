@@ -63,6 +63,14 @@ class App:
     # deploy_surface, while the gaps layer reads these to ask a precise question.
     type_confidence: float = 0.0
     type_candidates: list = field(default_factory=list)
+    # Every surface this app serves, when a developer declared more than one (a fullstack
+    # directory is a service *and* a frontend). Empty means "just deploy_surface", so the
+    # applicability of an undeclared repository is unchanged.
+    surfaces: list = field(default_factory=list)
+
+    def match_surfaces(self) -> list:
+        """The surfaces applicability is judged against: declared, else the inferred one."""
+        return list(self.surfaces) or [self.deploy_surface]
 
     def to_dict(self) -> dict:
         return {
@@ -75,6 +83,7 @@ class App:
             "ci_jobs": list(self.ci_jobs),
             "type_confidence": round(self.type_confidence, 3),
             "type_candidates": [dict(c) for c in self.type_candidates],
+            "surfaces": list(self.surfaces),
         }
 
 

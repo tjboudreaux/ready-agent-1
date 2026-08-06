@@ -10,9 +10,10 @@ One object, read by the engine on every run. Create it if absent; **merge** if p
 {
   "detect": {
     "project_type": "service",
+    "surfaces": ["service", "frontend"],
     "apps": {
       "apps/web": "frontend",
-      "apps/worker": "service"
+      "apps/worker": ["service", "data"]
     }
   },
   "loop_ready": false,
@@ -25,11 +26,27 @@ One object, read by the engine on every run. Create it if absent; **merge** if p
 
 | Gap `answer.path` | Accepted values |
 |---|---|
-| `detect.project_type` | `library`, `service`, `frontend`, `cli`, `data`, `infra` |
-| `detect.apps.<dir>` | same enum, per application directory |
+| `detect.project_type` | one of `library`, `service`, `frontend`, `cli`, `data`, `infra` |
+| `detect.surfaces` | a **list** of that enum: every surface one directory serves |
+| `detect.apps.<dir>` | the same enum or list, per application directory |
 | `loop_ready` | `true` / `false` (boolean, not a string) |
 | `ci_budget_minutes` | integer minutes |
 | `acdc.verify_command` | string; must resolve to a real target or script |
+
+### One directory, several surfaces
+
+A directory that serves a Flask API *and* ships a Next.js frontend is one application with two
+surfaces, not two applications. Answer `detect.surfaces: ["service", "frontend"]` and every
+criterion for **both** surfaces applies — the union, because the app owes both sets of
+practices. Expect the criteria count to rise and the level to fall; that is the app being
+measured against what it actually is.
+
+`surfaces` outranks `project_type` when both are present. `project_type` remains the answer
+when the directory genuinely serves one purpose, and the first entry of `surfaces` is what the
+report displays as the app's type.
+
+If the code for each surface genuinely lives in its own directory, that is a monorepo: pin
+`detect.apps.<dir>` per directory instead, and each is scanned on its own.
 
 Rules:
 

@@ -59,12 +59,22 @@ def load_waivers(root, options):
     return out
 
 
-def _type_match(applies_types, actual_type):
+def _type_match(applies_types, actual):
+    """Applicability against one surface or several.
+
+    A fullstack directory declares `["service", "frontend"]`, and a criterion applies when
+    *any* declared surface matches: the union, because the app genuinely owes both sets of
+    practices. `unknown` only survives when nothing is known, so one confident surface beside
+    an ambiguous one no longer drags the criterion into `unknown`.
+    """
+    actual_types = [actual] if isinstance(actual, str) else list(actual) or ["unknown"]
     if "*" in applies_types:
         return "match"
-    if actual_type == "unknown":
+    if any(t in applies_types for t in actual_types):
+        return "match"
+    if any(t == "unknown" for t in actual_types):
         return "unknown"
-    return "match" if actual_type in applies_types else "skip"
+    return "skip"
 
 
 def _lang_match(applies_langs, actual_langs):
@@ -135,7 +145,7 @@ def _eval_criterion(crit, root, detection, static, git, github, waivers, options
         ]
         per = []
         for app in apps:
-            tm = _type_match(types, app.deploy_surface)
+            tm = _type_match(types, app.match_surfaces())
             if tm == "skip":
                 continue
             if not _lang_match(langs, app.languages or detection.languages):

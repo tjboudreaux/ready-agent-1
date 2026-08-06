@@ -108,18 +108,19 @@ def _detection_gaps(report, config) -> list[Gap]:
     # never surfaced, so criteria for the losing type were skipped with no trace.
     contested = [c for c in d.candidates if c.get("type") != "unknown"]
     if (len(contested) > 1 and not d.is_monorepo
-            and detect_cfg.get("project_type") is None):
+            and detect_cfg.get("project_type") is None
+            and not detect_cfg.get("surfaces")):
         types = [c["type"] for c in contested]
         out.append(Gap(
             id="detect.project_type.contested",
             kind="detection",
-            question=f"This directory shows evidence of {_and_list(types)}. Is it one "
-                     f"application of a single type, or several that should be scanned "
-                     f"separately?",
-            why=f"The scan treats it as `{types[0]}`, so criteria that apply only to "
-                f"{_and_list(types[1:])} were skipped without saying so.",
-            answer={"file": _CONFIG_PATH, "path": "detect.project_type",
-                    "kind_of_value": "enum"},
+            question=f"This directory shows evidence of {_and_list(types)}. Which of those "
+                     f"does it actually serve? Declare every surface that applies.",
+            why=f"The scan treats it as `{types[0]}` alone, so criteria that apply only to "
+                f"{_and_list(types[1:])} were skipped without saying so. Declaring several "
+                f"surfaces makes all of their criteria apply.",
+            answer={"file": _CONFIG_PATH, "path": "detect.surfaces",
+                    "kind_of_value": "list of enum (one or more)"},
             evidence=[c["signal"] for c in contested],
             options=types,
         ))

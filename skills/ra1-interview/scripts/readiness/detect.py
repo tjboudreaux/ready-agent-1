@@ -73,9 +73,26 @@ def load_detect_config(root, options=None) -> dict:
     return detect_cfg if isinstance(detect_cfg, dict) else {}
 
 
-def _pin_app(app: App, pinned: str) -> None:
-    app.runtime = pinned
-    app.deploy_surface = pinned
+def _pin_app(app: App, pinned) -> None:
+    """Apply a type pin: one surface, or several for a fullstack directory.
+
+    `deploy_surface` keeps the first declared surface so display and prod-facing heuristics
+    stay single-valued; `surfaces` carries the full set that applicability is judged against.
+    """
+    surfaces = _pin_surfaces(pinned)
+    app.runtime = surfaces[0]
+    app.deploy_surface = surfaces[0]
+    app.surfaces = surfaces if len(surfaces) > 1 else []
+
+
+def _pin_surfaces(pinned) -> list:
+    """Valid surfaces from a pin value (string or list), in declared order, deduplicated."""
+    values = [pinned] if isinstance(pinned, str) else list(pinned or [])
+    out = []
+    for value in values:
+        if value in VALID_PIN_TYPES and value not in out:
+            out.append(value)
+    return out
 
 
 def _candidate(value: str, confidence: float, signal: str) -> dict:
@@ -350,6 +367,8 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
     cfg = load_detect_config(root, options)
     opt_in = {"loop_ready": readiness_cfg.get("loop_ready") is True}
     root_pin = cfg.get("project_type")
+    # A directory can serve several surfaces; `surfaces` is the richer input and wins.
+    surfaces_pin = _pin_surfaces(cfg.get("surfaces")) if cfg.get("surfaces") else []
     app_pins = cfg.get("apps") if isinstance(cfg.get("apps"), dict) else {}
 
     ws = _workspace_dirs(root, static)
@@ -363,9 +382,11 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
         for rel in ws or ["."]:
             app = _build_app(root, rel, static)
             pinned = app_pins.get(rel)
-            if pinned in VALID_PIN_TYPES:
-                _pin_app(app, pinned)
-                signals.append(f"app '{rel}' type pinned to '{pinned}' via {PIN_SOURCE}")
+            valid = _pin_surfaces(pinned)
+            if valid:
+                _pin_app(app, valid)
+                signals.append(
+                    f"app '{rel}' surfaces pinned to {valid} via {PIN_SOURCE}")
             elif pinned is not None:
                 signals.append(
                     f"ignored invalid type pin '{pinned}' for app '{rel}' in {PIN_SOURCE}")
@@ -391,12 +412,18 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
     app = _build_app(root, ".", static)
     if app.languages:
         signals.append("languages: " + ", ".join(app.languages))
-    if root_pin in VALID_PIN_TYPES:
+    if surfaces_pin:
+        surface, conf = surfaces_pin[0], CONF_HIGH
+        _pin_app(app, surfaces_pin)
+        signals.append(f"surfaces pinned to {surfaces_pin} via {PIN_SOURCE}")
+    elif root_pin in VALID_PIN_TYPES:
         surface, conf = root_pin, CONF_HIGH
         _pin_app(app, root_pin)
         signals.append(f"project_type pinned to '{root_pin}' via {PIN_SOURCE}")
     elif root_pin is not None:
         signals.append(f"ignored invalid project_type pin '{root_pin}' in {PIN_SOURCE}")
+    if cfg.get("surfaces") and not surfaces_pin:
+        signals.append(f"ignored invalid surfaces pin '{cfg['surfaces']}' in {PIN_SOURCE}")
     project_type = surface if conf >= UNKNOWN_THRESHOLD else "unknown"
     if conf < UNKNOWN_THRESHOLD:
         signals.append(

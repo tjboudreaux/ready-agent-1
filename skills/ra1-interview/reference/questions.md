@@ -24,9 +24,12 @@ The scan classified the repository with too little evidence, or found competing 
 - Lead with what you found in the repo, not with the taxonomy. *"There's a `Dockerfile` and a
   FastAPI dependency, so I'd call this a service"* beats *"is this a library, service, frontend,
   CLI, data pipeline, or infrastructure?"*
-- For `detect.project_type.contested`, the real question is often **structural**: one fullstack
-  app, or two apps that deserve separate scanning? If the answer is "two", the fix is
-  `detect.apps`, not a root pin — say that.
+- For `detect.project_type.contested`, the answer is a **set**, not a choice: ask which of the
+  detected surfaces the directory actually serves and record every one
+  (`detect.surfaces: ["service", "frontend"]`). Never make the developer pick one of two true
+  answers — that is what silently skipped the loser's criteria in the first place. Say plainly
+  that declaring both raises the criteria count and may lower the level. If each surface really
+  lives in its own directory, it is a monorepo instead: pin `detect.apps.<dir>` per directory.
 - For a monorepo app gap, name the directory every time. `apps/worker` and `apps/web` get
   different answers and the developer is holding both in their head.
 

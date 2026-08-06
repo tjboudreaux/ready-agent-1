@@ -128,6 +128,52 @@ class TestDetectionGaps(unittest.TestCase):
         self.assertNotIn("detect.project_type", {g.id for g in report.gaps})
         self.assertNotIn("detect.project_type.contested", {g.id for g in report.gaps})
 
+    def test_declaring_several_surfaces_applies_every_surfaces_criteria(self):
+        """The full-stack answer, end to end: declare two surfaces, get both criteria sets.
+
+        Without this the contested question was unanswerable — picking `service` silently
+        skipped frontend-only criteria and picking `frontend` skipped the service-only ones,
+        which is the exact defect the question exists to surface.
+        """
+        files = {"README.md": "# app",
+                 "requirements.txt": "flask>=3\n",
+                 "package.json": '{"name":"web","dependencies":{"next":"14"}}'}
+        root = make_repo(files)
+        self.addCleanup(rmtree, root)
+        service_only = "docs.api_schema_docs"        # service/api, never frontend
+        frontend_only = "build.dependency_weight_budget"  # frontend only
+
+        before = analyze(root, {"no_github": True})
+        self.assertIn("detect.project_type.contested", {g.id for g in before.gaps})
+        rows = {r.id: r for r in before.results}
+        # Inferred as a service: the frontend-only criterion is skipped as inapplicable.
+        self.assertEqual(rows[frontend_only].status, Status.SKIPPED)
+
+        cfg = Path(root) / ".agents" / "readiness"
+        cfg.mkdir(parents=True, exist_ok=True)
+        (cfg / "config.json").write_text(
+            json.dumps({"detect": {"surfaces": ["service", "frontend"]}}), encoding="utf-8")
+
+        after = analyze(root, {"no_github": True})
+        self.assertNotIn("detect.project_type.contested", {g.id for g in after.gaps})
+        self.assertEqual(after.detection.apps[0].surfaces, ["service", "frontend"])
+        rows = {r.id: r for r in after.results}
+        for cid in (service_only, frontend_only):
+            self.assertNotEqual(rows[cid].status, Status.SKIPPED,
+                                f"{cid} should apply once both surfaces are declared")
+
+    def test_an_invalid_surfaces_pin_is_ignored_and_disclosed(self):
+        root = make_repo({"README.md": "# x", "requirements.txt": "flask>=3\n"})
+        self.addCleanup(rmtree, root)
+        cfg = Path(root) / ".agents" / "readiness"
+        cfg.mkdir(parents=True, exist_ok=True)
+        (cfg / "config.json").write_text(
+            json.dumps({"detect": {"surfaces": ["nonsense"]}}), encoding="utf-8")
+        report = analyze(root, {"no_github": True})
+        self.assertEqual(report.detection.apps[0].surfaces, [])
+        self.assertTrue(any("ignored invalid surfaces pin" in s
+                            for s in report.detection.signals))
+
     def test_monorepo_asks_per_app_only_for_unevidenced_apps(self):
         apps = [App(path="apps/web", type_confidence=0.9,
                     type_candidates=[{"type": "frontend", "confidence": 0.9, "signal": "next"}]),
