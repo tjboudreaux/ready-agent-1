@@ -597,7 +597,9 @@ class TestHtmlReport(unittest.TestCase):
         joined = " | ".join(sorted(classes))
         for s in Status:
             self.assertIn(f"row criterion status-{s.value}", joined)
-            self.assertIn(f"{s.value.capitalize()} ·", text)
+        # The status word is its own slot beside the badge: two signals before color.
+        statuses = [a for t, a in doc.elements if a.get("class") == "row-status"]
+        self.assertEqual(len(statuses), len(list(Status)))
         self.assertLessEqual(set(icons), {"icon", "radar", "dist"})
         self.assertGreaterEqual(icons.count("icon"), len(list(Status)))  # one badge per row
         # Every fail/unknown here is advisory, so none blocks: the advisory failure is
@@ -605,9 +607,9 @@ class TestHtmlReport(unittest.TestCase):
         self.assertEqual({c for c in classes if "needs-action" in c}, set())
         self.assertEqual({c.split(" status-")[1].split()[0]
                           for c in classes if "suggested" in c}, {"fail"})
-        self.assertIn("Pass · Level 1 gate", text)
+        self.assertIn("Pass Level 1 gate", text)
         # An unregistered fix kind emits no action line at all.
-        self.assertIn("Fail · advisory why fail", text)
+        self.assertIn("Fail advisory why fail", text)
         self.assertNotIn("Manual work", text)
 
     def test_criteria_grouped_by_pillar_in_first_seen_order(self):
@@ -1079,8 +1081,9 @@ class TestFacets(unittest.TestCase):
                       " margin-top: var(--space-1); }", narrow)
         printed = css.split("@media print", 1)[1]
         self.assertIn(".facets, .facet-input { display: none; }", printed)
-        self.assertIn(".criteria-body .criterion, .criteria-body .pillar"
-                      " { display: block !important; }", printed)
+        # Criteria stay grids on paper so the badge rail survives print.
+        self.assertIn(".criteria-body .criterion { display: grid !important; }", printed)
+        self.assertIn(".criteria-body .pillar { display: block !important; }", printed)
         # Closed disclosures — education included — print expanded.
         self.assertIn("details:not([open]) > *:not(summary) { display: block; }", printed)
 
@@ -1310,6 +1313,67 @@ class TestHtmlEducation(unittest.TestCase):
         self.assertNotIn("How AC/DC loops map to this report", doc.body_text)
         self.assertNotIn("Guide-Verify-Solve", doc.body_text)
         self.assertEqual(doc.find("a"), [])
+
+
+class TestRowAnatomy(unittest.TestCase):
+    """The criterion entry: rail grid, fixed tag slots, and the --status-color token."""
+
+    def _rep(self, results):
+        return Report(project_path="/p", schema_version="2", engine_version="0.9.1",
+                      registry_version="0.7.0", detector_version="0.5.0", results=results)
+
+    def _crit(self, **kw):
+        base = dict(id="x.y", title="X", pillar="P", level=2, scope="repository",
+                    gating=True, status=Status.FAIL, rationale="r",
+                    passed_apps=0, evaluated_apps=1)
+        base.update(kw)
+        return CriterionResult(**base)
+
+    def test_badge_is_the_rail_column_ahead_of_the_head(self):
+        elements = _parse(report_mod.render_html(self._rep([self._crit()]))).elements
+        li = next(i for i, (t, a) in enumerate(elements)
+                  if a.get("class", "").startswith("row criterion"))
+        self.assertEqual(elements[li + 1][1].get("class"), "badge")
+        head_index = next(i for i, (t, a) in enumerate(elements)
+                          if a.get("class") == "row-head")
+        self.assertGreater(head_index, li + 1)
+
+    def test_tag_slots_render_in_fixed_order_and_absent_slots_collapse(self):
+        mapped = self._crit(acdc_stage="verify", acdc_loop="outer")
+        doc = _parse(report_mod.render_html(self._rep([mapped])))
+        slots = [a["class"] for _, a in doc.elements
+                 if a.get("class", "").startswith("row-")
+                 and a["class"] not in ("row-head", "row-title", "row-tags")]
+        self.assertEqual(slots, ["row-status", "row-stake", "row-loop", "row-score"])
+        self.assertIn("Fail Level 2 gate outer loop · verify 0/1", doc.body_text)
+        # Unmapped, non-partial pass: loop and score slots must not render at all.
+        clean = self._crit(status=Status.PASS, passed_apps=1)
+        doc = _parse(report_mod.render_html(self._rep([clean])))
+        slots = {a.get("class") for _, a in doc.elements}
+        self.assertNotIn("row-loop", slots)
+        self.assertNotIn("row-score", slots)
+        self.assertIn("row-status", slots)
+        self.assertIn("row-stake", slots)
+
+    def test_status_color_token_replaces_per_status_meta_tinting(self):
+        css = report_mod._STATIC_CSS
+        for status, token in (("pass", "--status-pass"), ("fail", "--status-fail"),
+                              ("unknown", "--status-warn")):
+            self.assertIn(f".criterion.status-{status} {{ --status-color: var({token}); }}",
+                          css)
+        # The badge stroke, the blocking fill, and the status word all consume the token.
+        self.assertIn(".criterion > .badge { color: var(--status-color); }", css)
+        self.assertIn(".needs-action > .badge { background: var(--status-color); }", css)
+        self.assertIn(".row-status { color: var(--status-color);", css)
+        # The old wall of tinted meta is gone: only the status word carries color.
+        self.assertNotIn(".row-meta { color: var(--status-fail)", css)
+        self.assertNotIn(".status-fail .row-meta", css)
+
+    def test_criterion_is_a_rail_grid(self):
+        css = report_mod._STATIC_CSS
+        self.assertIn("grid-template-columns: 1.35rem minmax(0, 1fr);", css)
+        self.assertIn(".criterion > .badge { grid-column: 1; grid-row: 1; }", css)
+        self.assertIn(".criterion > :not(.badge) { grid-column: 2; }", css)
 
 
 class TestActionLayer(unittest.TestCase):
