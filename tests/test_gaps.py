@@ -103,6 +103,31 @@ class TestDetectionGaps(unittest.TestCase):
             candidates=[{"type": "service", "confidence": 0.9, "signal": "django"}])
         self.assertEqual(gaps_mod.derive_gaps(_rep(detection=detection), {}), [])
 
+    def test_three_candidates_read_as_a_sentence(self):
+        detection = Detection(
+            project_type="service", confidence=0.9, apps=[App(path=".")],
+            candidates=[{"type": "service", "confidence": 0.9, "signal": "flask"},
+                        {"type": "frontend", "confidence": 0.9, "signal": "next"},
+                        {"type": "library", "confidence": 0.6, "signal": "packaged"}])
+        found = {g.id: g for g in gaps_mod.derive_gaps(_rep(detection=detection), {})}
+        gap = found["detect.project_type.contested"]
+        self.assertIn("service, frontend, and library", gap.question)
+        self.assertIn("frontend and library", gap.why)
+
+    def test_a_requirements_only_service_is_never_asked_to_classify_itself(self):
+        """The inference fix, stated as an outcome: better detection means fewer questions.
+
+        A Flask app declaring deps only in requirements.txt used to scan as `unknown` and
+        earn a `detect.project_type` gap — the scan asking a developer to supply something it
+        could read for itself.
+        """
+        root = make_repo({"README.md": "# svc", "requirements.txt": "flask>=3\ngunicorn==21\n"})
+        self.addCleanup(rmtree, root)
+        report = analyze(root, {"no_github": True})
+        self.assertEqual(report.detection.project_type, "service")
+        self.assertNotIn("detect.project_type", {g.id for g in report.gaps})
+        self.assertNotIn("detect.project_type.contested", {g.id for g in report.gaps})
+
     def test_monorepo_asks_per_app_only_for_unevidenced_apps(self):
         apps = [App(path="apps/web", type_confidence=0.9,
                     type_candidates=[{"type": "frontend", "confidence": 0.9, "signal": "next"}]),

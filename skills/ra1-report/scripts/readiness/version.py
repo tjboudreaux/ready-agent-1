@@ -7,7 +7,7 @@ different engine/registry/detector version is re-evaluated rather than trusted.
 
 ENGINE_VERSION = "0.10.0"
 REGISTRY_VERSION = "0.7.0"
-DETECTOR_VERSION = "0.5.0"
+DETECTOR_VERSION = "0.6.0"
 SCHEMA_VERSION = "2"
 
 

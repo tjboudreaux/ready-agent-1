@@ -15,6 +15,11 @@ _IGNORE_DIRS = {
 _MANIFEST_FILES = {
     "package.json": "npm",
     "pyproject.toml": "python",
+    # The dominant Python dependency declaration outside packaging metadata. Without it a
+    # Flask or Django app whose only manifest is requirements.txt reports no manifest, no
+    # language, and no dependencies, so it classifies as `unknown` and every type-dependent
+    # criterion goes unknown with it.
+    "requirements.txt": "python",
     "setup.cfg": "python",
     "setup.py": "python",
     "go.mod": "go",
@@ -26,6 +31,11 @@ _MANIFEST_FILES = {
     "composer.json": "php",
     "Package.swift": "swift",
 }
+
+# Requirement-file names whose dependencies count as declared. Dev requirements matter: a
+# repo can declare pytest or ruff only there, and the checks look those up by name.
+_REQUIREMENT_GLOBS = ["requirements.txt", "requirements-*.txt", "requirements_*.txt",
+                      "requirements/*.txt"]
 
 _LOCKFILES = [
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb",
@@ -126,8 +136,24 @@ class StaticCollector:
             elif fname == "Gemfile" and isinstance(parsed, str):
                 for m in re.finditer(r"""^\s*gem\s+["']([^"']+)["']""", parsed, re.MULTILINE):
                     deps.add(m.group(1).lower())
+        deps |= self._requirement_deps()
         self._cache["deps"] = deps
         return deps
+
+    def _requirement_deps(self) -> set:
+        """Dependency names from every requirements file at this root.
+
+        Reads the files directly rather than through `manifests()` so dev requirements count
+        too: a repo may declare pytest or ruff only in requirements-dev.txt, and the checks
+        look those up by name.
+        """
+        out: set = set()
+        for rel in self.glob(_REQUIREMENT_GLOBS):
+            for raw in (parsers.read_text(self.root / rel) or "").splitlines():
+                name = _requirement_name(raw)
+                if name:
+                    out.add(name)
+        return out
 
     def has_dep(self, names) -> str | None:
         if isinstance(names, str):
@@ -165,3 +191,23 @@ def _pkg_name(requirement: str) -> str:
         if idx > 0:
             token = token[:idx]
     return token.strip().lower()
+
+
+
+def _requirement_name(line: str) -> str:
+    """A distribution name from one requirements.txt line, or "" when the line declares none.
+
+    Handles what real files carry: comments, inline comments, pins and ranges, extras, env
+    markers, and editable/URL/flag lines. `-r base.txt`, `-e .`, `--index-url ...` and bare
+    URLs name no distribution, so they yield "" rather than a junk dependency.
+    """
+    token = line.split("#", 1)[0].strip()
+    if not token or token.startswith("-"):
+        return ""
+    # A direct reference (`name @ https://…`) keeps its name; a bare URL has none.
+    if "@" in token:
+        head = token.split("@", 1)[0].strip()
+        return _pkg_name(head) if head else ""
+    if "://" in token:
+        return ""
+    return _pkg_name(token)

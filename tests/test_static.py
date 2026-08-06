@@ -29,6 +29,45 @@ class TestStatic(unittest.TestCase):
         m = c.manifests()
         self.assertEqual(m["setup.cfg"][0], "python")
 
+    def test_requirements_txt_is_a_python_manifest(self):
+        c = self._c({"requirements.txt": "flask>=3\n"})
+        self.assertEqual(c.manifests()["requirements.txt"][0], "python")
+        self.assertIn("python", c.languages())
+
+    def test_requirement_lines_yield_distribution_names(self):
+        """Pins, ranges, extras, markers, and inline comments all reduce to the name."""
+        c = self._c({"requirements.txt": (
+            "# core deps\n"
+            "Django==5.0  # pinned for LTS\n"
+            "psycopg[binary]>=3\n"
+            'flask[async]>=3.0,<4 ; python_version >= "3.11"\n'
+            "requests~=2.31\n"
+            "\n"
+        )})
+        self.assertEqual(c.declared_deps(), {"django", "psycopg", "flask", "requests"})
+
+    def test_requirement_lines_that_name_no_distribution_are_skipped(self):
+        """`-r`, `-e`, flags and bare URLs must not become junk dependency names."""
+        c = self._c({"requirements.txt": (
+            "-r base.txt\n"
+            "-e .\n"
+            "--index-url https://example.com/simple\n"
+            "https://example.com/pkg-1.0-py3-none-any.whl\n"
+            "uvicorn @ https://example.com/uvicorn.whl\n"
+            "pytest==8.0\n"
+        )})
+        self.assertEqual(c.declared_deps(), {"uvicorn", "pytest"})
+
+    def test_dev_requirements_files_count_as_declared(self):
+        """A repo can declare its only linter or test runner in a dev requirements file."""
+        c = self._c({"requirements.txt": "flask>=3\n",
+                     "requirements-dev.txt": "pytest==8.0\nruff==0.6.0\n",
+                     "requirements/extra.txt": "mypy==1.11\n"})
+        deps = c.declared_deps()
+        for name in ("flask", "pytest", "ruff", "mypy"):
+            self.assertIn(name, deps)
+        self.assertEqual(c.has_dep(["pytest"]), "pytest")
+
     def test_manifests_text_parsed_for_gomod(self):
         c = self._c({"go.mod": "module x\n\ngo 1.21\n"})
         m = c.manifests()

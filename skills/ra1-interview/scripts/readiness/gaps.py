@@ -59,6 +59,14 @@ _CONFIG_GAPS = {
 }
 
 
+def _and_list(items) -> str:
+    """'a', 'a and b', 'a, b, and c' — the question is read by a person."""
+    items = [str(i) for i in items]
+    if len(items) <= 2:
+        return " and ".join(items)
+    return ", ".join(items[:-1]) + ", and " + items[-1]
+
+
 def _next_locked_level(report) -> int:
     """The level a reader is trying to clear: one above the highest achieved."""
     return ((report.score.level if report.score else 0) or 0) + 1
@@ -105,11 +113,11 @@ def _detection_gaps(report, config) -> list[Gap]:
         out.append(Gap(
             id="detect.project_type.contested",
             kind="detection",
-            question=f"This directory shows evidence of {' and '.join(types)}. Is it one "
+            question=f"This directory shows evidence of {_and_list(types)}. Is it one "
                      f"application of a single type, or several that should be scanned "
                      f"separately?",
             why=f"The scan treats it as `{types[0]}`, so criteria that apply only to "
-                f"{', '.join(types[1:])} were skipped without saying so.",
+                f"{_and_list(types[1:])} were skipped without saying so.",
             answer={"file": _CONFIG_PATH, "path": "detect.project_type",
                     "kind_of_value": "enum"},
             evidence=[c["signal"] for c in contested],

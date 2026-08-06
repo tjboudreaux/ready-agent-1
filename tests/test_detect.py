@@ -19,6 +19,37 @@ class TestDetect(unittest.TestCase):
         self.assertEqual(len(d.apps), 1)
         self.assertIn("python", d.languages)
 
+    def test_flask_requirements_only_is_a_service(self):
+        """The common Python shape: no packaging metadata, just requirements.txt.
+
+        This asserts the expected type rather than an unchanged one: before requirements
+        files were parsed, this repo reported `unknown`, took every type-dependent criterion
+        down with it, and then asked the developer to classify what the scan could have read.
+        """
+        d = self._detect({"requirements.txt": "flask>=3.0\ngunicorn==21.2\n"})
+        self.assertEqual(d.project_type, "service")
+        self.assertGreaterEqual(d.confidence, 0.9)
+        self.assertIn("python", d.languages)
+
+    def test_django_requirements_with_comments_and_pins_is_a_service(self):
+        d = self._detect({"requirements.txt": "# web\nDjango==5.0  # LTS\npsycopg[binary]>=3\n"})
+        self.assertEqual(d.project_type, "service")
+
+    def test_airflow_requirements_is_a_data_pipeline(self):
+        d = self._detect({"requirements.txt": "apache-airflow==2.9\n"})
+        self.assertEqual(d.project_type, "data")
+
+    def test_requirements_without_a_framework_stays_honestly_unknown(self):
+        """A requirements file alone does not reveal the shape of the app."""
+        d = self._detect({"requirements.txt": "requests>=2\n"})
+        self.assertEqual(d.project_type, "unknown")
+
+    def test_competing_frameworks_keep_the_runner_up_visible(self):
+        d = self._detect({"requirements.txt": "flask>=3\n",
+                          "package.json": '{"name":"web","dependencies":{"next":"14"}}'})
+        self.assertEqual(d.project_type, "service")
+        self.assertEqual([c["type"] for c in d.candidates], ["service", "frontend"])
+
     def test_fastapi_service_without_dockerfile(self):
         d = self._detect({"pyproject.toml": '[project]\nname = "svc"\ndependencies = ["fastapi", '
                                             '"uvicorn"]\n'})
