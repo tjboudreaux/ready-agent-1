@@ -318,15 +318,26 @@ to do it is useful either way. The "counts as not passed" sentence appears only 
 - **Shape:** full-bleed list item, `12px` vertical padding, hairline top rule. Plain by default;
   a blocking row takes a `--surface-sunken` box with `16px` padding and a `--border-strong` edge.
   Two weights only, never three: a distinct third box shape read as two different components.
-- **Head:** a baseline-aligned flex line — badge, title (Title, 600), optional mono identifier,
-  meta. Wraps at `4px 8px` gaps.
-- **Meta:** status word, stakes (`Level 3 gate` or `advisory`), and `passed/evaluated` only when
-  that fraction says something. A repository-scope pass is always `1/1`, and printing it on every
-  green row is three tokens conveying nothing.
+- **Rail:** a criterion is a two-column grid — a `1.35rem` badge column, then content. Title,
+  tags, rationale, next step and evidence share one left edge, so every entry parses identically
+  and nothing zigzags back to the page margin under the badge.
+- **Head:** a baseline-aligned flex line — title (Title, 600), optional mono identifier, then the
+  tag slots. Wraps at `4px 8px` gaps.
+- **Tag slots, fixed order, register-differentiated.** `row-status` (Label, uppercase, the only
+  colored token), `row-stake` (`Level 3 gate` or `advisory`, muted), `row-loop` (the AC/DC
+  mapping, muted), `row-score` (`passed/evaluated`, muted mono). Slots separate by a `12px` gap
+  and their typographic register, not interpuncts; absent slots collapse. `passed/evaluated`
+  appears only when the fraction says something: a repository-scope pass is always `1/1`, and
+  printing it on every green row is three tokens conveying nothing.
+- **The `--status-color` token.** The row's `status-*` class sets one custom property; the badge
+  stroke, the blocking badge fill, and the status word all consume it. One place maps status to
+  color (the same idiom as the facet `--mark`), and only the status word is tinted — a fail-heavy
+  report never becomes a wall of colored meta text.
 - **Body:** optional rationale in Body at the `72ch` measure, then the optional next-step line,
   then the optional evidence disclosure.
-- **Variants:** `criterion` adds a status badge and a `status-*` class that colors badge and meta;
-  `action` adds the mono criterion id; `advisory-item` carries level and pillar only.
+- **Variants:** `criterion` carries the rail, badge, tag slots and `status-*` token class;
+  `action` adds the mono criterion id with a joined meta line; `advisory-item` carries level and
+  pillar only.
 
 ### Next Step
 
@@ -463,10 +474,10 @@ to do it is useful either way. The "counts as not passed" sentence appears only 
   `currentColor`: check, cross, minus, question, ban. Drawn in Lucide's grammar and vendored into
   `report.py`, because the artifact may not fetch an icon library. `aria-hidden`, because the
   status word beside it is the accessible signal.
-- **Three weights, matching the tiers.** A blocking row fills the square with its status colour
-  and knocks the glyph out in `--surface`; a suggested row leaves it outlined in `--status-fail`;
-  a settled row is muted. The fill is reserved for blocking work so that it keeps meaning
-  something.
+- **Three weights, matching the tiers.** A blocking row fills the square with the row's
+  `--status-color` and knocks the glyph out in `--surface`; a suggested row leaves it outlined in
+  that same token; a settled row is muted. The fill is reserved for blocking work so that it
+  keeps meaning something.
 
 ### Evidence Disclosure
 
