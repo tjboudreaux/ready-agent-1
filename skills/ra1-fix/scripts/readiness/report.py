@@ -362,8 +362,8 @@ _ROLE_SELECTORS = {
     "body": "body, tbody th, tbody td",
     "meta": (".meta, .row-meta, .gate-count, .row-id, code, .tier, .detail, .empty,\n"
              ".note, .report-footer, summary, .evidence > li, .facet, .pillar-why,\n"
-             ".facet-options"),
-    "label": "thead th, .gate-state, .pillar-state",
+             ".facet-options, .row-tags"),
+    "label": "thead th, .gate-state, .pillar-state, .row-status",
 }
 
 _STATIC_CSS = """
@@ -374,7 +374,7 @@ body {
   color: var(--text);
   overflow-wrap: break-word;
 }
-code, .tier, .row-id, .gate-count {
+code, .tier, .row-id, .gate-count, .row-score {
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
@@ -449,6 +449,15 @@ p:last-child { margin-bottom: 0; }
 .row, .advisory-notes > li {
   padding: var(--space-3) 0; border-top: var(--hairline) solid var(--border);
 }
+/* The criterion rail: badge column, then content. Title, tags, rationale, next step and
+   evidence share one left edge, so every entry parses the same way at a glance. */
+.criterion {
+  display: grid;
+  grid-template-columns: 1.35rem minmax(0, 1fr);
+  column-gap: var(--space-2);
+}
+.criterion > .badge { grid-column: 1; grid-row: 1; }
+.criterion > :not(.badge) { grid-column: 2; }
 .row-head {
   margin: 0;
   display: flex;
@@ -456,6 +465,17 @@ p:last-child { margin-bottom: 0; }
   gap: var(--space-1) var(--space-2);
   align-items: baseline;
 }
+/* Fixed tag slots, differentiated by typographic register rather than interpuncts:
+   colored small-caps status, muted stake and loop, muted mono score. */
+.row-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  color: var(--text-muted);
+}
+.row-status { color: var(--status-color); text-transform: uppercase; }
 /* Three tiers: a filled square blocks a gate, an outlined one is flagged, a muted one is
    settled. The fill is reserved for blocking work so that it keeps meaning something. */
 .badge {
@@ -467,8 +487,7 @@ p:last-child { margin-bottom: 0; }
   flex: none;
   border-radius: var(--radius-sm);
 }
-.status-fail.needs-action .badge { background: var(--status-fail); }
-.status-unknown.needs-action .badge { background: var(--status-warn); }
+.needs-action > .badge { background: var(--status-color); }
 .icon {
   width: var(--icon-size);
   height: var(--icon-size);
@@ -622,14 +641,16 @@ p:last-child { margin-bottom: 0; }
 }
 h3 .icon { color: var(--text-muted); vertical-align: -0.2em; margin-right: var(--space-2); }
 .badge { font-variant-emoji: text; }
-.status-pass .badge, .status-pass .row-meta { color: var(--status-pass); }
-.status-fail .badge, .status-fail .row-meta { color: var(--status-fail); }
-.status-unknown .badge, .status-unknown .row-meta { color: var(--status-warn); }
-.status-skipped .badge, .status-waived .badge { color: var(--status-idle); }
-/* Knocked out of the fill. Higher specificity than the status colour rules above, which
-   would otherwise paint the glyph the same colour as the square it sits in. */
-.status-fail.needs-action .badge,
-.status-unknown.needs-action .badge { color: var(--surface); }
+/* The row's one component token: the status-* class sets it once, and the badge stroke,
+   the blocking fill, and the status word all consume it. Same idiom as the facet --mark. */
+.criterion { --status-color: var(--status-idle); }
+.criterion.status-pass { --status-color: var(--status-pass); }
+.criterion.status-fail { --status-color: var(--status-fail); }
+.criterion.status-unknown { --status-color: var(--status-warn); }
+.criterion > .badge { color: var(--status-color); }
+/* Knocked out of the fill: later in the sheet than the stroke rule, so the glyph is never
+   painted the same colour as the square it sits in. */
+.needs-action > .badge { color: var(--surface); }
 /* Quiet rows, loud problems. Rhythm comes from which rows are filled, not from giving
    every row a card: 109 identical cards would be the same flat wall in a heavier costume. */
 .needs-action {
@@ -761,7 +782,8 @@ summary:focus-visible {
   details:not([open]) > *:not(summary) { display: block; }
   details::details-content { content-visibility: visible; display: block; }
   .facets, .facet-input { display: none; }
-  .criteria-body .criterion, .criteria-body .pillar { display: block !important; }
+  .criteria-body .criterion { display: grid !important; }
+  .criteria-body .pillar { display: block !important; }
   .criteria-empty { display: none !important; }
   .tip-body { display: inline; position: static; border: 0; padding: 0; }
 }
@@ -829,16 +851,20 @@ def _tip(text, tip_id, description) -> str:
             "</span>")
 
 
-def _row(out, *, cls, title, meta, badge="", ident="", rationale="", extra=()) -> None:
-    out += [
-        f'<li class="row {cls}">',
-        '<p class="row-head">',
-        badge,
-        f'<span class="row-title">{_html(title)}</span>',
-        ident,
-        f'<span class="row-meta">{meta}</span>',
-        "</p>",
-    ]
+def _row(out, *, cls, title, meta="", badge="", ident="", rationale="", extra=(), tags=()) -> None:
+    """One list entry. Criterion rows pass `badge` (the rail column) and `tags` (fixed
+    slots: status, stake, loop, score); action and advisory rows pass a joined `meta`."""
+    out.append(f'<li class="row {cls}">')
+    if badge:
+        out.append(badge)
+    out += ['<p class="row-head">', f'<span class="row-title">{_html(title)}</span>']
+    if ident:
+        out.append(ident)
+    if tags:
+        out.append('<span class="row-tags">' + "".join(tags) + "</span>")
+    else:
+        out.append(f'<span class="row-meta">{meta}</span>')
+    out.append("</p>")
     if rationale:
         out.append(f'<p class="rationale">{_html(rationale)}</p>')
     out += [chunk for chunk in extra if chunk]
@@ -1426,9 +1452,17 @@ def _html_criterion(out, r, index) -> None:
     # Membership test, not truthiness: only registry-validated loop values may reach a
     # class name, keeping the generated CSS closed to authored constants.
     loop = f" loop-{r.acdc_loop}" if r.acdc_loop in _LOOP_ORDER else ""
+    # Fixed slots in fixed order; absent slots collapse. Only the status word carries the
+    # row's --status-color, so a fail-heavy report is not a wall of tinted meta text.
+    tags = [f'<span class="row-status">{_html(status.capitalize())}</span>',
+            f'<span class="row-stake">{_html(_stakes(r))}</span>']
+    acdc = _acdc_label(r)
+    if acdc:
+        tags.append(f'<span class="row-loop">{_html(acdc)}</span>')
+    if score:
+        tags.append(f'<span class="row-score">{_html(score)}</span>')
     _row(out, cls=f"criterion status-{status}{loop}{tier}", badge=_badge(status), title=r.title,
-         meta=_meta([status.capitalize(), _stakes(r), _acdc_label(r), score]),
-         rationale=r.rationale, extra=tuple(extra))
+         tags=tuple(tags), rationale=r.rationale, extra=tuple(extra))
 
 
 def _html_advisory_improvements(out, d) -> None:
