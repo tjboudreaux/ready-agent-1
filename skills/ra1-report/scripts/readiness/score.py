@@ -15,6 +15,10 @@ from .model import LEVEL_NAMES, App, CriterionResult, Evidence, LevelScore, Scor
 
 _REGISTRY_PATH = Path(__file__).resolve().parent / "criteria" / "registry.json"
 
+# The exact rationale for a loop criterion the repository has not opted into. Shared so the
+# gaps layer can recognize it structurally instead of pattern-matching prose.
+NOT_OPTED_IN_LOOP = "not opted into loop readiness"
+
 
 def load_registry(path=None):
     with open(Path(path) if path else _REGISTRY_PATH, encoding="utf-8") as fh:
@@ -98,7 +102,7 @@ def _eval_criterion(crit, root, detection, static, git, github, waivers, options
 
     opt_in = aw.get("opt_in")
     if opt_in == "loop_ready" and not detection.opt_in.get("loop_ready"):
-        return CriterionResult(status=Status.SKIPPED, rationale="not opted into loop readiness",
+        return CriterionResult(status=Status.SKIPPED, rationale=NOT_OPTED_IN_LOOP,
                                app_path=".", **base)
     if opt_in is not None and opt_in != "loop_ready":
         return CriterionResult(status=Status.UNKNOWN,

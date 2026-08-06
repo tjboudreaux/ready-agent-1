@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "engine"))
 
 from readiness import version  # noqa: E402
 
-SKILLS = ["ra1-report", "ra1-fix"]
+SKILLS = ["ra1-report", "ra1-fix", "ra1-interview"]
 _SKIP_PARTS = {"__pycache__"}
 TEMPLATE_ALLOWLIST = [
     "AGENTS.md",

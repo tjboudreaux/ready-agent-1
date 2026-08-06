@@ -78,47 +78,47 @@ def _pin_app(app: App, pinned: str) -> None:
     app.deploy_surface = pinned
 
 
-def _classify(static: StaticCollector) -> tuple[str, float, list[str]]:
-    """Return (deploy_surface/project_type, confidence, signals) for a single app dir."""
-    signals: list[str] = []
+def _candidate(value: str, confidence: float, signal: str) -> dict:
+    return {"type": value, "confidence": confidence, "signal": signal}
+
+
+def classify_candidates(static: StaticCollector) -> list[dict]:
+    """Every type this directory could be, strongest first.
+
+    The list order IS the decision priority: :func:`_classify` takes the head. The tail is
+    what the old code threw away — a directory with both Django and Next.js resolved to
+    `service` and never said the frontend signal existed, so frontend-only criteria were
+    skipped with no trace of the ambiguity. The gaps layer reads the tail to ask about it.
+    """
     deps = static.declared_deps()
     manifests = static.manifests()
+    out: list[dict] = []
 
     def dep_hit(names):
         return sorted(deps & {n.lower() for n in names})
 
-    # Infra as code
     if static.glob(["*.tf", "**/*.tf", "main.tf"]) or static.exists_any(
             ["Pulumi.yaml", "cloudformation.yaml", "**/*.bicep"]):
-        signals.append("IaC files (.tf/Pulumi/CloudFormation) present")
-        return "infra", CONF_HIGH, signals
+        out.append(_candidate("infra", CONF_HIGH,
+                              "IaC files (.tf/Pulumi/CloudFormation) present"))
 
-    svc = dep_hit(WEB_SERVICE_DEPS)
-    fe = dep_hit(FRONTEND_DEPS)
-    data = dep_hit(DATA_DEPS)
-
+    data, svc, fe = dep_hit(DATA_DEPS), dep_hit(WEB_SERVICE_DEPS), dep_hit(FRONTEND_DEPS)
     if data:
-        signals.append(f"data-pipeline deps: {', '.join(data)}")
-        return "data", CONF_HIGH, signals
+        out.append(_candidate("data", CONF_HIGH, f"data-pipeline deps: {', '.join(data)}"))
     if svc:
-        signals.append(f"web/service framework deps: {', '.join(svc)}")
-        return "service", CONF_HIGH, signals
+        out.append(_candidate("service", CONF_HIGH,
+                              f"web/service framework deps: {', '.join(svc)}"))
     if fe:
-        signals.append(f"frontend framework deps: {', '.join(fe)}")
-        return "frontend", CONF_HIGH, signals
+        out.append(_candidate("frontend", CONF_HIGH,
+                              f"frontend framework deps: {', '.join(fe)}"))
 
-    # CLI: declared entrypoints
     pkg = manifests.get("package.json", (None, None))[1]
     if isinstance(pkg, dict) and pkg.get("bin"):
-        signals.append("package.json declares a bin entrypoint")
-        return "cli", CONF_MED, signals
+        out.append(_candidate("cli", CONF_MED, "package.json declares a bin entrypoint"))
     pyproject = manifests.get("pyproject.toml", (None, None))[1]
-    if isinstance(pyproject, dict):
-        if pyproject.get("project", {}).get("scripts"):
-            signals.append("pyproject declares console scripts")
-            return "cli", CONF_MED, signals
+    if isinstance(pyproject, dict) and pyproject.get("project", {}).get("scripts"):
+        out.append(_candidate("cli", CONF_MED, "pyproject declares console scripts"))
 
-    # Library: packaged, importable, no app entrypoint / no server dep
     if manifests:
         is_lib = False
         if isinstance(pkg, dict) and (pkg.get("main") or pkg.get("exports") or pkg.get("module")):
@@ -130,13 +130,23 @@ def _classify(static: StaticCollector) -> tuple[str, float, list[str]]:
         if static.exists_any(["Cargo.toml", "go.mod", "setup.py", "setup.cfg"]):
             is_lib = True
         if is_lib:
-            signals.append("packaged library (manifest, no service/app entrypoint)")
-            return "library", CONF_MED, signals
-        signals.append("manifest present but type ambiguous")
-        return "unknown", CONF_LOW, signals
+            out.append(_candidate("library", CONF_MED,
+                                  "packaged library (manifest, no service/app entrypoint)"))
+        if not out:
+            out.append(_candidate("unknown", CONF_LOW, "manifest present but type ambiguous"))
+    elif not out:
+        out.append(_candidate("unknown", CONF_LOW, "no recognizable manifest"))
+    return out
 
-    signals.append("no recognizable manifest")
-    return "unknown", CONF_LOW, signals
+
+def _classify(static: StaticCollector) -> tuple[str, float, list[str]]:
+    """Return (deploy_surface/project_type, confidence, signals) for a single app dir.
+
+    The head of :func:`classify_candidates`. Only the winning signal is reported here so
+    the detection output a score was computed from is unchanged by the candidate list.
+    """
+    top = classify_candidates(static)[0]
+    return top["type"], top["confidence"], [top["signal"]]
 
 
 def _workspace_dirs(root: Path, static: StaticCollector) -> list[str]:
@@ -289,11 +299,15 @@ def _go_root_surface(static: StaticCollector) -> str:
 
 def _build_app(root: Path, rel: str, root_static: StaticCollector = None) -> App:
     sub = StaticCollector(root / rel if rel != "." else root)
-    surface, _conf, _sig = _classify(sub)
+    candidates = classify_candidates(sub)
+    surface, conf = candidates[0]["type"], candidates[0]["confidence"]
     # A Go cmd/* binary has no manifest of its own; classify it from the module's deps.
     if (surface == "unknown" and rel != "." and (root / "go.mod").exists()
             and list((root / rel).glob("*.go"))):
         surface = _go_root_surface(root_static or StaticCollector(root))
+        conf = CONF_MED
+        candidates = [_candidate(surface, CONF_MED,
+                                 "go cmd/ binary classified from module dependencies")]
     langs = sub.languages() or (["go"] if list((root / rel).glob("*.go")) else [])
     test_cmd = _detect_test_cmd(sub)
     prod = "unknown"
@@ -308,6 +322,8 @@ def _build_app(root: Path, rel: str, root_static: StaticCollector = None) -> App
         deploy_surface=surface,
         prod_facing=prod,
         test_cmd=test_cmd,
+        type_confidence=conf,
+        type_candidates=candidates,
     )
 
 
@@ -393,4 +409,7 @@ def detect(root, static: StaticCollector = None, options=None) -> Detection:
         apps=[app],
         is_monorepo=False,
         opt_in=opt_in,
+        # What the scanner considered, pin or no pin: the gaps layer needs the inference to
+        # explain a contested classification, and a pin is recorded in `signals` above.
+        candidates=app.type_candidates,
     )

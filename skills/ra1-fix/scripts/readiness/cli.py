@@ -114,6 +114,21 @@ def cmd_detect(args) -> int:
     return 0
 
 
+def cmd_gaps(args) -> int:
+    """List what the scan could not determine for itself.
+
+    Exits 0 even when gaps exist: an unanswered question is a worklist item, not a failure,
+    and wiring it to a non-zero exit would turn missing inputs into a broken build.
+    """
+    report = analyze(args.project, {"no_github": args.no_github})
+    if args.format == "markdown":
+        print("\n".join(report_mod._gap_lines(report.gaps)) if report.gaps
+              else "No unanswered questions: every input the engine needed was inferable.")
+    else:
+        print(json.dumps([g.to_dict() for g in report.gaps], indent=2))
+    return 0
+
+
 def cmd_version(args) -> int:
     print(json.dumps(version.version_stamp(), indent=2))
     return 0
@@ -224,6 +239,13 @@ def build_parser() -> argparse.ArgumentParser:
     h_diff.add_argument("--history-dir", default=None)
     h_diff.add_argument("--format", default="json", help="json or markdown")
     h_diff.set_defaults(func=cmd_history_diff)
+
+    p_gaps = sub.add_parser("gaps", help="List inputs the scan could not determine")
+    p_gaps.add_argument("--project", default=".")
+    p_gaps.add_argument("--format", default="markdown", help="markdown or json")
+    p_gaps.add_argument("--no-github", action="store_true",
+                        help="Skip GitHub (T2) collection")
+    p_gaps.set_defaults(func=cmd_gaps)
 
     sub.add_parser("version", help="Print version stamps").set_defaults(func=cmd_version)
     sub.add_parser("formats", help="List supported report formats").set_defaults(func=cmd_formats)

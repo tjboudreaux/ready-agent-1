@@ -265,6 +265,10 @@ def render_markdown(report) -> str:
             lines.append(f"- **{rec['title']}** ({rec['id']}, L{rec['level']}, {rec['pillar']}) "
                          f"— {effort} — {rec['rationale']}")
 
+    if d.gaps:
+        lines.append("")
+        lines.extend(_gap_lines(d.gaps))
+
     advisory_actions = _advisory_items(d.results)
     if advisory_actions:
         lines.append("")
@@ -303,6 +307,54 @@ def render_markdown(report) -> str:
                      "by the ra1-report skill; the score above is deterministic._")
 
     return "\n".join(lines) + "\n"
+
+
+_WAIVERS_FILE = ".agents/readiness/waivers.json"
+
+_GAP_KINDS = {
+    "detection": "the scan could not classify this",
+    "config": "a value only your team can decide",
+    "capability": "a data source the scan could not reach",
+}
+
+
+def _gap_lines(gaps) -> list:
+    """The unanswered-questions section, shared by the report and `ra1 gaps`.
+
+    Advisory framing is deliberate and load-bearing: answering a gap supplies an input the
+    engine re-evaluates, so the section never presents an answer as credit.
+    """
+    blocked = sum(g.blocked_gating for g in gaps)
+    lines = [f"## Unanswered Questions ({len(gaps)})", ""]
+    lines.append(
+        f"_{len(gaps)} input(s) the scan could not determine for itself"
+        + (f", holding back {blocked} gating criteria" if blocked else "")
+        + ". Answering one lets the engine judge the affected criteria; it never marks them "
+          "passing. Run the `ra1-interview` skill to work through them._")
+    for g in gaps:
+        lines.append("")
+        stake = (f"{g.blocked_gating} gating"
+                 + (f" at L{'/L'.join(str(x) for x in g.levels)}" if g.levels else "")
+                 if g.blocked_gating else f"{len(g.blocks)} advisory")
+        lines.append(f"### {g.question}")
+        lines.append("")
+        lines.append(f"- **Gap:** `{g.id}` — {_GAP_KINDS.get(g.kind, g.kind)} ({stake})")
+        lines.append(f"- **Why it matters:** {g.why}")
+        if g.options:
+            lines.append("- **Accepted answers:** "
+                         + ", ".join(f"`{o}`" for o in g.options))
+        if g.answer.get("path"):
+            lines.append(f"- **Recorded at:** `{g.answer['file']}` → `{g.answer['path']}`")
+        elif g.answer.get("action"):
+            lines.append(f"- **Resolved by:** {g.answer['action']}")
+        if g.evidence:
+            lines.append("- **What the scan saw:** " + "; ".join(g.evidence))
+        if g.waivable:
+            lines.append("- **If it lives outside this repo:** record a disclosed waiver in "
+                         f"`{_WAIVERS_FILE}`; waived criteria leave the gate denominator "
+                         "and are never counted as passing.")
+    return lines
+
 
 
 def _pillars_in_order(results):
@@ -1026,6 +1078,17 @@ def _html_status(out, d) -> None:
         _html_level_education(out, s.levels)
     else:
         _empty(out, "Score unavailable")
+    # Advisory pointer, not a finding: the artifact is read away from a terminal, so it has
+    # to say that some results are stuck on an input rather than on the repository.
+    if d.gaps:
+        blocked = sum(g.blocked_gating for g in d.gaps)
+        _callout(out, "warn",
+                 f"<strong>{_html(len(d.gaps))} unanswered question(s)</strong> the scan could "
+                 "not determine for itself"
+                 + (f", holding back {_html(blocked)} gating criteria" if blocked else "")
+                 + ". Run <code>ra1 gaps</code> to list them, or the "
+                   "<code>ra1-interview</code> skill to answer them. Answers supply inputs the "
+                   "engine re-evaluates; they never mark a criterion passing.")
     out.append("</section>")
 
 

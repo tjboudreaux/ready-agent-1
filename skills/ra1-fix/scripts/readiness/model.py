@@ -58,6 +58,11 @@ class App:
     prod_facing: object = "unknown"  # True | False | "unknown"
     test_cmd: str = ""
     ci_jobs: list = field(default_factory=list)
+    # How well the surface above is evidenced, and every type the directory could be
+    # ({"type", "confidence", "signal"}, strongest first). Advisory: the score reads
+    # deploy_surface, while the gaps layer reads these to ask a precise question.
+    type_confidence: float = 0.0
+    type_candidates: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -68,6 +73,8 @@ class App:
             "prod_facing": self.prod_facing,
             "test_cmd": self.test_cmd,
             "ci_jobs": list(self.ci_jobs),
+            "type_confidence": round(self.type_confidence, 3),
+            "type_candidates": [dict(c) for c in self.type_candidates],
         }
 
 
@@ -80,6 +87,9 @@ class Detection:
     apps: list = field(default_factory=list)       # list[App]
     is_monorepo: bool = False
     opt_in: dict = field(default_factory=dict)
+    # Ranked alternatives for the root classification, strongest first. Empty for a
+    # monorepo root, where the per-app lists on App carry the ambiguity instead.
+    candidates: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -90,6 +100,7 @@ class Detection:
             "is_monorepo": self.is_monorepo,
             "apps": [a.to_dict() for a in self.apps],
             "opt_in": dict(self.opt_in),
+            "candidates": [dict(c) for c in self.candidates],
         }
 
 
@@ -185,6 +196,45 @@ class ScoreSummary:
 
 
 @dataclass
+class Gap:
+    """A question the scanner cannot answer for itself, and what answering it unblocks.
+
+    Advisory by construction: a gap never enters the score. It records what the engine
+    could not determine, which criteria are stuck on it, and exactly where an answer is
+    written so the *engine* can re-evaluate. An answer supplies an input; it never
+    supplies a verdict.
+    """
+
+    id: str
+    kind: str                 # detection | config | capability
+    question: str             # authored, precise, never repository text
+    why: str                  # what answering it changes, one sentence
+    answer: dict = field(default_factory=dict)   # where/how the answer is recorded
+    evidence: list = field(default_factory=list)  # what the scanner did see (strings)
+    options: list = field(default_factory=list)   # accepted values, when closed
+    blocks: list = field(default_factory=list)    # criterion ids stuck on this gap
+    blocked_gating: int = 0                        # of `blocks`, how many are gating
+    levels: list = field(default_factory=list)     # levels those gating criteria sit at
+    waivable: bool = False    # true when "we do this outside this repo" is a real answer
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "question": self.question,
+            "why": self.why,
+            "answer": dict(self.answer),
+            "evidence": list(self.evidence),
+            "options": list(self.options),
+            "blocks": list(self.blocks),
+            "blocked_gating": self.blocked_gating,
+            "levels": list(self.levels),
+            "waivable": self.waivable,
+        }
+
+
+
+@dataclass
 class Report:
     project_path: str
     schema_version: str
@@ -201,6 +251,9 @@ class Report:
     score: ScoreSummary | None = None
     # advisory is filled by the agent layer; the engine always leaves it empty
     advisory: list = field(default_factory=list)
+    # Questions the scan could not answer for itself (list[Gap]). Advisory: derived from
+    # the results after scoring, never an input to them.
+    gaps: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -217,6 +270,7 @@ class Report:
             "score": self.score.to_dict() if self.score else None,
             "results": [r.to_dict() for r in self.results],
             "advisory": list(self.advisory),
+            "gaps": [g.to_dict() for g in self.gaps],
         }
 
 

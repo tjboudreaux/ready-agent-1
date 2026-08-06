@@ -11,7 +11,8 @@ Briefing for agents working in **agent-readiness**.
 - `engine/readiness/` — canonical pure-stdlib engine. Flow: `detect` → `collectors` (T0 static / T1 git / T2 gh) → `checks/` (typed `fn(ctx)->Verdict`) → `score` (applicability, aggregation, level gating) → `report` (json/markdown/junit/sarif/github).
 - `criteria/registry.json` — criteria **metadata only**; logic lives in `checks/`.
 - `fix/recipes.py` — safe remediation (scaffolds only; never overwrites; refuses dirty worktree).
-- `skills/` — two agentskills.io skills; each is self-contained (engine + templates **vendored** in).
+- `skills/` — three agentskills.io skills (`ra1-report`, `ra1-fix`, `ra1-interview`); each is
+  self-contained (engine + templates **vendored** in).
 - `evals/` — agent-contract evals (deterministic contracts + LLM-as-judge).
 
 ## Conventions

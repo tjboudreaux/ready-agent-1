@@ -4,7 +4,7 @@ description: Ready Agent 1 scans your repo for agent-readiness — a determinist
 license: MIT
 compatibility: Python 3.11+; optional authenticated gh CLI for GitHub (T2) checks
 metadata:
-  version: 0.9.1
+  version: 0.10.0
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
@@ -33,14 +33,20 @@ score**; you (the agent) add **advisory** commentary only. You must never change
    `latest.json` first, if present, to compute a **Δ vs last run** (only when the schema, engine,
    registry, and detector versions match; otherwise skip the delta).
 
-2. **Emit the score verbatim.** Your final report MUST contain a fenced ```json block holding the
+2. **Check for unanswered questions.** If the engine's `gaps` array is non-empty, the scan was
+   missing inputs it could not infer — some `unknown` results are stuck on a question, not on the
+   repository. Report the count and the gating criteria they hold back, and hand off to the
+   **ra1-interview** skill to resolve them. Never answer them on the developer's behalf, and never
+   treat an unanswered gap as a finding against the repo.
+
+3. **Emit the score verbatim.** Your final report MUST contain a fenced ```json block holding the
    engine's `score` object **exactly** — `level`, `level_name`, `pass_rate`, `gating_passed`,
    `gating_total`, `pillars`. Do not change a single number. This is the authoritative, reproducible score.
 
-3. **Add the human summary** from the engine's markdown (Level, Applications, per-pillar criteria with
+4. **Add the human summary** from the engine's markdown (Level, Applications, per-pillar criteria with
    their statuses and cited evidence, Action Items).
 
-4. **Add a `## T4 Advisory` section** (qualitative, non-gating). The engine deliberately leaves these
+5. **Add a `## T4 Advisory` section** (qualitative, non-gating). The engine deliberately leaves these
    soft judgments to you; label each clearly as advisory opinion grounded strictly in engine findings
    and files you actually read. Use one labelled sub-heading per registered judgment id:
    - **Naming Consistency** (`naming_consistency`)

@@ -21,6 +21,10 @@ Two agent skills over one pure-stdlib Python engine:
   cites the file, commit, or GitHub setting that justifies it.
 - **`ra1-fix`** — the Loadout: writes the safe config scaffolds that are simply *missing*, proposes
   documentation for your review, and lists the GitHub settings to change — all on a local branch, never pushed.
+- **`ra1-interview`** — the questions the scan cannot answer itself: when a criterion is `unknown`
+  because the project type is ambiguous, a value only your team can decide is missing, or a data
+  source was unreachable, this interviews you one question at a time and records each answer where
+  the engine reads it. Answers supply inputs the engine re-evaluates; they never mark a check passing.
 
 Ready Agent 1 doesn't play the game for you (it won't write your features). It makes sure the level is beatable.
 

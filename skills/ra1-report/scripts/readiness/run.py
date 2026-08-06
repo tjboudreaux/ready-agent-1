@@ -49,4 +49,9 @@ def analyze(root, options=None) -> Report:
     )
 
     report.results, report.score = evaluate(root, detection, static, git, github, options)
+    # Derived last and from the finished report: gaps explain the results, so they can never
+    # be an input to them.
+    from .detect import load_readiness_config
+    from .gaps import derive_gaps
+    report.gaps = derive_gaps(report, load_readiness_config(root, options))
     return report
