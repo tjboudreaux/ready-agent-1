@@ -11,7 +11,7 @@ import os
 from xml.etree import ElementTree as ET
 
 from . import theme
-from .model import Status
+from .model import LEVEL_NAMES, Status
 from .score import _recommendations
 
 _SYMBOL = {
@@ -50,6 +50,11 @@ _ICON_PATHS = {
     "activity": '<path d="M3 12h4l2.5-7 4 14L16 12h5"/>',
     "target": ('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/>'
                '<circle cx="12" cy="12" r="1.4"/>'),
+    "repeat": ('<path d="m17 2 4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/>'
+               '<path d="m7 22-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>'),
+    "layers": ('<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/>'
+               '<path d="m3 17 9 5 9-5"/>'),
+    "chevron-down": '<path d="m6 9 6 6 6-6"/>',
     "dot": '<circle cx="12" cy="12" r="9"/>',
 }
 _STATUS_ICONS = {"pass": "check", "fail": "x", "skipped": "minus",
@@ -78,6 +83,44 @@ _PILLAR_ELI5 = {
     "Debugging & Observability": "What an agent can see when something breaks.",
     "Product & Experimentation": "Whether an agent can tell if a shipped change worked.",
 }
+
+# ---- education copy. Authored product content: it teaches the reader how to read the
+# report, so it lives here with the renderer, never in registry data.
+# One line per level, keyed by the canonical level number. The names come from
+# model.LEVEL_NAMES at render time so this table can never drift from the engine's.
+_LEVEL_EDUCATION = {
+    1: "Minimum runnable foundation: setup guidance, pinned dependencies, source-control "
+       "tools, ignore rules, and unit tests.",
+    2: "Repeatable project guidance: agent instructions, environment templates, linting, "
+       "formatting, CI, security policy, and contribution templates.",
+    3: "Standardized delivery controls: typing, integration tests, hooks, protected CI, "
+       "ownership, secrets, dependency updates, and a reproducible dev environment.",
+    4: "Deeper quality and delivery automation: strict typing, automated security review, "
+       "API documentation, releases, and a healthy labeled backlog.",
+    5: "Bounded agent-led work can progress through dependable guardrails, feedback, and "
+       "human governance without ad hoc intervention.",
+}
+_LEVEL_INTRO = ("Each level is cumulative. A gate clears when at least 80% of its applicable "
+                "gating criteria pass and every lower level has cleared. Advisory, skipped, "
+                "and waived criteria do not move the level; an unknown gating result counts "
+                "as not passed.")
+_PILLAR_INTRO = ("Pillars organize checks by the kind of support an agent needs. Coverage "
+                 "uses applicable gating criteria only; advisory, skipped, and waived "
+                 "criteria do not change the chart.")
+_ACDC_INTRO = ("Sonar’s Agent Centric Development Cycle surrounds generated code with "
+               "Guide → Verify → Solve. Ready Agent 1 uses AC/DC stage and loop as advisory "
+               "metadata; it never changes the Level 1–5 score.")
+_ACDC_LOOPS_EDUCATION = [
+    ("Inner", "Fast feedback during the agent’s reasoning process: local guidance, "
+              "a single verify command, and post-edit checks."),
+    ("Outer", "Broader verification after the agent considers the task complete: CI, "
+              "coverage and changed-code quality gates, and branch protection."),
+    ("Both", "Guidance that must remain available during local work and final verification."),
+]
+# The one external reference in the artifact: an authored citation, clicked deliberately,
+# never fetched at render time. Quoted from Sonar's March 2, 2026 AC/DC overview.
+_SONAR_ACDC_URL = ("https://www.sonarsource.com/blog/"
+                   "the-future-is-ac-dc-the-agent-centric-development-cycle/")
 
 # What to actually do about a failure, per remediation kind. Wording is checked against
 # fix/recipes.py: only `plan["auto"]` is ever written, `propose` and `github_setting` are
@@ -315,11 +358,12 @@ _CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-act
 _ROLE_SELECTORS = {
     "display": "h1",
     "headline": "h2, .status-level, .gate-num",
-    "title": "h3, .gate-name, .row-title",
+    "title": "h3, .gate-name, .row-title, .facet-trigger, .education-term",
     "body": "body, tbody th, tbody td",
     "meta": (".meta, .row-meta, .gate-count, .row-id, code, .tier, .detail, .empty,\n"
-             ".note, .report-footer, summary, .evidence > li, .facet, .pillar-why"),
-    "label": "thead th, .gate-state, .facet-legend, .pillar-state",
+             ".note, .report-footer, summary, .evidence > li, .facet, .pillar-why,\n"
+             ".facet-options"),
+    "label": "thead th, .gate-state, .pillar-state",
 }
 
 _STATIC_CSS = """
@@ -464,42 +508,68 @@ p:last-child { margin-bottom: 0; }
 .dist-seg.status-fail { fill: var(--status-fail); }
 .dist-seg.status-unknown { fill: var(--status-warn); }
 .dist-seg.status-skipped, .dist-seg.status-waived { fill: var(--border-strong); }
-/* Legend above its row, not beside it: the pillar group has nine chips and a narrow
-   column forced them into a ragged two-line wrap. */
-.facets { margin-bottom: var(--space-5); }
-.facet-group + .facet-group { margin-top: var(--space-3); }
-/* Status is the filter a reader reaches for, so its legend sits at full text colour and
-   the pillar legend stays muted. Same chip geometry, different rank. */
-.facet-legend {
-  margin: 0 0 var(--space-1);
-  color: var(--text);
-  text-transform: uppercase;
+/* Three native dropdown menus — Status, AC/DC loop, Pillar — in one grid row. The shared
+   `name` lets supporting browsers keep at most one menu open, with no script. */
+.facets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-2);
+  position: relative;
+  margin-bottom: var(--space-5);
 }
-.facet-plain .facet-legend { color: var(--text-muted); }
-.facet-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.facet-menu { position: relative; margin: 0; }
+.facet-trigger {
+  width: 100%;
+  min-height: 2.75rem;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-2);
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-sm);
+  list-style: none;
 }
-/* Status is the primary filter and keeps its chip box. Pillar is secondary: nine boxes
-   was the noise in the screenshot, so those are text plus a mark. */
-.facet-plain .facet { border-color: transparent; padding-left: 0; padding-right: 0; }
-.facet-plain .facet-list { gap: var(--space-1) var(--space-4); }
+/* The custom chevron replaces the native disclosure marker on the trigger only; every
+   other summary in the artifact keeps its marker. */
+.facet-trigger::marker { content: ""; }
+.facet-trigger::-webkit-details-marker { display: none; }
+.facet-trigger .icon { color: var(--text-muted); }
+.facet-title { color: var(--text); }
+.facet-options { margin-left: auto; color: var(--text-muted); }
+.facet-chevron { display: inline-flex; color: var(--text-muted); }
+.facet-menu[open] .facet-chevron { transform: rotate(180deg); }
+.facet-panel {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 2;
+  width: 100%;
+  min-width: 0;
+  max-height: 22rem;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--surface);
+  border: var(--hairline) solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+.facet-fields { margin: 0; padding: 0; border: 0; min-width: 0; }
+/* Option row: check square, option glyph, label, count. The real checkbox sits
+   immediately before its label, so the adjacent-sibling rules below own its states. */
 .facet {
   --mark: currentColor;
   --check-fill: transparent;
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: 0.7em var(--icon-size) minmax(0, 1fr) auto;
+  gap: var(--space-2);
   align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  border: var(--hairline) solid var(--border);
+  padding: var(--space-2);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   cursor: pointer;
 }
+.facet .icon { color: var(--text-muted); }
 /* A box that fills, not a tick: a checkmark beside the word "Fail" reads as a pass. The
    mark carries its own status colour, which is what binds these words to the segments in
    the bar above them. Colour is the third signal here, never the first. */
@@ -516,6 +586,18 @@ p:last-child { margin-bottom: 0; }
 .facet-fail { --mark: var(--status-fail); }
 .facet-unknown { --mark: var(--status-warn); }
 .facet-skipped, .facet-waived { --mark: var(--border-strong); }
+/* Status options tint their glyph with the mark; loop and pillar glyphs stay muted. */
+.facet-pass .icon, .facet-fail .icon, .facet-unknown .icon,
+.facet-skipped .icon, .facet-waived .icon { color: var(--mark); }
+.facet-input:checked + .facet {
+  --check-fill: var(--mark);
+  color: var(--text);
+  background: var(--surface-sunken);
+}
+.facet-input:focus-visible + .facet {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+}
 /* Visible by default; the generated pair rules hide it whenever any row survives. */
 .criteria-empty { display: block; }
 .tip { position: relative; text-decoration: underline dotted; cursor: help; }
@@ -619,6 +701,33 @@ thead th {
   white-space: nowrap;
   border: 0;
 }
+/* Teaching disclosures: how the ladder, the pillars, and the AC/DC mapping work. Quiet
+   definition lists — full-width hairlines between rows, no cards, no side stripes. */
+.education { margin-top: var(--space-3); }
+.education-body { padding-top: var(--space-3); max-width: var(--prose-max); }
+.education-list { margin: var(--space-2) 0 0; padding: 0; }
+.education-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+  padding: var(--space-2) 0;
+  border-top: var(--hairline) solid var(--border);
+}
+.education-def { margin: 0; }
+.education-quote {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) 0;
+  border-top: var(--hairline) solid var(--border);
+  border-bottom: var(--hairline) solid var(--border);
+}
+.education-quote a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.education-quote a:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--focus-offset);
+}
 details { margin: var(--space-2) 0 0; }
 summary {
   cursor: pointer;
@@ -642,6 +751,9 @@ summary:focus-visible {
   .coverage { grid-template-columns: minmax(0, 1fr); justify-items: center; }
   .pillar-key { width: 100%; }
   .facets { grid-template-columns: minmax(0, 1fr); }
+  /* Menus stack and an open panel re-enters the flow instead of floating over content. */
+  .facet-panel { position: static; max-height: none; margin-top: var(--space-1); }
+  .education-row { grid-template-columns: minmax(0, 1fr); }
 }
 @media print {
   body { background: none; }
@@ -684,6 +796,17 @@ def _empty(out, message) -> None:
 def _callout(out, tone, body) -> None:
     """`body` is authored markup (it carries <strong>/<code>) and never report data."""
     out.append(f'<p class="callout tone-{tone}">{body}</p>')
+
+
+def _education(out, slug, summary, content) -> None:
+    """A collapsed teaching disclosure. `content` is authored markup only — report data
+    never reaches it, so nothing here is escaped at emit time."""
+    out += [f'<details class="education" id="{slug}-education">',
+            f"<summary>{summary}</summary>",
+            '<div class="education-body">',
+            *content,
+            "</div>",
+            "</details>"]
 
 
 def _icon(name) -> str:
@@ -874,9 +997,34 @@ def _html_status(out, d) -> None:
             + "</p>",
         ]
         _gate_track(out, s.levels)
+        _html_level_education(out, s.levels)
     else:
         _empty(out, "Score unavailable")
     out.append("</section>")
+
+
+def _html_level_education(out, levels) -> None:
+    """How the ladder works: the same five canonical levels for every report.
+
+    Names come from LEVEL_NAMES, not from the LevelScore rows, so a partial or synthetic
+    score cannot make the renderer invent alternate level names. A level with no defined
+    gating criteria says so plainly instead of implying a gate that cannot be cleared.
+    """
+    by_level = {lv.level: lv for lv in levels}
+    content = [f"<p>{_LEVEL_INTRO}</p>", '<dl class="education-list">']
+    for level in range(1, 6):
+        description = _LEVEL_EDUCATION[level]
+        state = by_level.get(level)
+        if state is None or not state.total:
+            description += " No gating criteria are defined for this level yet."
+        content += [
+            '<div class="education-row">',
+            f'<dt class="education-term">{_html(level)} {LEVEL_NAMES[level]}</dt>',
+            f'<dd class="education-def">{description}</dd>',
+            "</div>",
+        ]
+    content.append("</dl>")
+    _education(out, "levels", "How the levels work", content)
 
 
 def _gate_track(out, levels) -> None:
@@ -928,7 +1076,25 @@ def _html_pillars(out, d) -> None:
             f'<span class="pillar-count">{_html(passed)}/{_html(total)}</span>',
             "</li>",
         ]
-    out += ["</ol>", "</div>", "</section>"]
+    out += ["</ol>", "</div>"]
+    _html_pillar_education(out)
+    out.append("</section>")
+
+
+def _html_pillar_education(out) -> None:
+    """What each pillar measures, built from the same _PILLAR_ICONS/_PILLAR_ELI5 mappings
+    the key and section headers read — never a second copy of the nine descriptions."""
+    content = [f"<p>{_PILLAR_INTRO}</p>", '<dl class="education-list">']
+    for name, why in _PILLAR_ELI5.items():
+        content += [
+            '<div class="education-row">',
+            f'<dt class="education-term">{_icon(_PILLAR_ICONS.get(name, "dot"))}'
+            f"{_html(name)}</dt>",
+            f'<dd class="education-def">{why}</dd>',
+            "</div>",
+        ]
+    content.append("</dl>")
+    _education(out, "pillars", "What the pillars measure", content)
 
 
 def _html_applications(out, d) -> None:
@@ -979,26 +1145,30 @@ def _html_actions(out, d) -> None:
 
 _LOOP_ORDER = ("inner", "outer", "both")
 _LOOP_LABELS = {"inner": "Inner", "outer": "Outer", "both": "Both"}
+_LOOP_ICONS = {"inner": "activity", "outer": "target", "both": "repeat"}
 
 
 def _facet_model(d):
     """The closed facet set: (status, loop, pillar facets, per-pillar live pairs).
 
-    Every id is derived from an enum value or an ordinal, never from repository text, so
-    the generated CSS and the `for=` attributes can only ever contain authored constants.
+    Each facet is (id, label, count, checked, icon). Every id is derived from an enum
+    value or an ordinal, never from repository text, so the generated CSS and the `for=`
+    attributes can only ever contain authored constants.
     """
     pillars = _pillars_in_order(d.results)
     statuses = [s for s in _DIST_ORDER if any(r.status.value == s for r in d.results)]
     status_facets = [(f"f-s-{s}", s.capitalize(),
                       sum(1 for r in d.results if r.status.value == s),
-                      s != "skipped")
+                      s != "skipped", _STATUS_ICONS[s])
                      for s in statuses]
     loops = [loop for loop in _LOOP_ORDER
              if any(r.acdc_loop == loop for r in d.results)]
     loop_facets = [(f"f-l-{loop}", _LOOP_LABELS[loop],
-                    sum(1 for r in d.results if r.acdc_loop == loop), True)
+                    sum(1 for r in d.results if r.acdc_loop == loop), True,
+                    _LOOP_ICONS[loop])
                    for loop in loops]
-    pillar_facets = [(f"f-p{i}", name, sum(1 for r in d.results if r.pillar == name), True)
+    pillar_facets = [(f"f-p{i}", name, sum(1 for r in d.results if r.pillar == name),
+                      True, _PILLAR_ICONS.get(name, "dot"))
                      for i, name in enumerate(pillars, 1)]
     # A pillar group lives exactly as long as one of the (status, loop) combinations it
     # actually contains has every chip on. Tracking pairs — not just statuses — is what
@@ -1020,14 +1190,14 @@ def _pillar_pairs(results, pillar):
 
 
 def _filter_css(model) -> str:
-    """Filtering with no script: each checkbox precedes the rows it governs, so a plain
-    sibling combinator does the work and no `:has()` support is required.
+    """Filtering with no script: modern `:has()` lets correctly nested checkboxes (inside
+    their own menu, keyboard-operable in reading order) govern the rows below them.
 
     Rows are hidden: a row dies when its status or its loop bucket is switched off.
     Pillar sections are *shown*, not hidden: with three facet axes, "this pillar is
-    empty" is a disjunction of (status ∧ loop ∧ pillar) conjunctions, which a sibling
-    chain cannot negate. Inverting the default makes emptiness the absence of a live
-    pair rather than a rule of its own, so an empty heading can never survive its rows.
+    empty" is a disjunction of (status ∧ loop ∧ pillar) conjunctions, which cannot be
+    negated directly. Inverting the default makes emptiness the absence of a live pair
+    rather than a rule of its own, so an empty heading can never survive its rows.
 
     The empty state follows the same inversion. It defaults to visible and each live
     pair hides it under exactly the condition that shows a pillar, so visible content
@@ -1036,67 +1206,90 @@ def _filter_css(model) -> str:
     status_facets, loop_facets, pillar_facets, owners = model
     if not status_facets:
         return ""
-    rules = [f"#{fid}:not(:checked) ~ .criteria-body .criterion.status-{fid[4:]}"
+    rules = [f".report:has(#{fid}:not(:checked)) .criteria-body .criterion.status-{fid[4:]}"
              " { display: none; }" for fid, *_ in status_facets]
-    rules += [f"#{fid}:not(:checked) ~ .criteria-body .criterion.loop-{fid[4:]}"
+    rules += [f".report:has(#{fid}:not(:checked)) .criteria-body .criterion.loop-{fid[4:]}"
               " { display: none; }" for fid, *_ in loop_facets]
     rules.append(".criteria-body .pillar { display: none; }")
     for cls, pairs in owners:
         for sid, lid in pairs:
-            chain = f"#{sid}:checked ~ "
+            chain = f".report:has(#{sid}:checked)"
             if lid:
-                chain += f"#{lid}:checked ~ "
-            chain += f"#f-{cls}:checked"
-            rules.append(f"{chain} ~ .criteria-body .{cls} {{ display: block; }}")
-            rules.append(f"{chain} ~ .criteria-body .criteria-empty {{ display: none; }}")
-    # Pillar and loop chips default to checked, so the checked rule is what a reader
-    # actually sees. Split it by rank: status keeps the box, the others stay text plus
-    # a mark. Sharing one rule silently re-boxed all nine pillar chips in the default
-    # state.
-    selector = lambda facets, state: ",\n".join(  # noqa: E731 - local formatting helper
-        f'#{fid}:{state} ~ .facets label[for="{fid}"]' for fid, *_ in facets)
-    rules.append(selector(status_facets, "checked")
-                 + " {\n  --check-fill: var(--mark);\n  color: var(--text);\n"
-                 "  border-color: var(--border-strong);\n"
-                 "  background: var(--surface-sunken);\n}")
-    rules.append(selector(pillar_facets + loop_facets, "checked")
-                 + " {\n  --check-fill: var(--mark);\n  color: var(--text);\n"
-                 "  border-color: transparent;\n  background: none;\n}")
-    rules.append(selector(status_facets + pillar_facets + loop_facets, "focus-visible")
-                 + " {\n  outline: var(--focus-width) solid var(--focus);\n"
-                 "  outline-offset: var(--focus-offset);\n}")
+                chain += f":has(#{lid}:checked)"
+            chain += f":has(#f-{cls}:checked)"
+            rules.append(f"{chain} .criteria-body .{cls} {{ display: block; }}")
+            rules.append(f"{chain} .criteria-body .criteria-empty {{ display: none; }}")
     return "\n" + "\n".join(rules) + "\n"
 
 
 def _facets(out, model) -> None:
     status_facets, loop_facets, pillar_facets, _owners = model
-    # Input DOM order is a correctness constraint, not a nicety: the generated sibling
-    # chains address status ~ loop ~ pillar, so the checkboxes must precede one another
-    # in exactly that order. The visible groups below render in the same sequence so
-    # keyboard focus order matches what the reader sees.
-    for fid, _label, _count, checked in status_facets + loop_facets + pillar_facets:
-        out.append(f'<input class="facet-input visually-hidden" type="checkbox" id="{fid}"'
-                   + (" checked" if checked else "") + ">")
     out.append('<div class="facets">')
-    # Visible order matches input DOM order (status, loop, pillar) deliberately: the
-    # focusable controls are the visually-hidden checkboxes, so tabbing walks inputs in
-    # DOM order and the focus ring would jump forward then backward if the groups
-    # rendered in any other sequence.
-    groups = [("Status", "", status_facets)]
+    _facet_menu(out, "status", "Status", "activity", status_facets)
     if loop_facets:
-        groups.append(("AC/DC loop", " facet-plain", loop_facets))
-    groups.append(("Pillar", " facet-plain", pillar_facets))
-    for legend, variant, facets in groups:
-        out += [f'<div class="facet-group{variant}">',
-                f'<p class="facet-legend">{legend}</p>', '<ul class="facet-list">']
-        for fid, label, count, _checked in facets:
-            # `f-s-pass` -> `facet-pass`; pillar and loop ids carry no status tint.
-            tint = f" facet-{fid[4:]}" if fid.startswith("f-s-") else ""
-            out.append(f'<li><label class="facet{tint}" for="{fid}">'
-                       + f'<span class="facet-name">{_html(label)}</span>'
-                       + f'<span class="facet-count">{_html(count)}</span></label></li>')
-        out += ["</ul>", "</div>"]
+        _facet_menu(out, "loop", "AC/DC loop", "repeat", loop_facets)
+    _facet_menu(out, "pillar", "Pillar", "layers", pillar_facets)
     out.append("</div>")
+
+
+def _facet_menu(out, slug, title, icon, facets) -> None:
+    """One native dropdown multi-select. Closed initially; the checkboxes live inside the
+    panel, so a closed menu contributes nothing to the tab sequence and opening it exposes
+    the options in reading order. The trigger carries a static option count, never a
+    selected count: script-free CSS cannot keep such a number from going stale.
+    """
+    out += [f'<details class="facet-menu" id="{slug}-facets" name="criteria-filters">',
+            '<summary class="facet-trigger">',
+            _icon(icon),
+            f'<span class="facet-title">{title}</span>',
+            f'<span class="facet-options">{len(facets)} options</span>',
+            f'<span class="facet-chevron">{_icon("chevron-down")}</span>',
+            "</summary>",
+            '<div class="facet-panel">',
+            '<fieldset class="facet-fields">',
+            f'<legend class="visually-hidden">{title} filter options</legend>']
+    for fid, label, count, checked, option_icon in facets:
+        # `f-s-pass` -> `facet-pass`; pillar and loop ids carry no status tint. The input
+        # immediately precedes its label so `.facet-input:checked + .facet` owns the state.
+        tint = f" facet-{fid[4:]}" if fid.startswith("f-s-") else ""
+        out.append(f'<input class="facet-input visually-hidden" type="checkbox" id="{fid}"'
+                   + (" checked" if checked else "") + ">"
+                   + f'<label class="facet{tint}" for="{fid}">'
+                   + _icon(option_icon)
+                   + f'<span class="facet-name">{_html(label)}</span>'
+                   + f'<span class="facet-count">{_html(count)}</span></label>')
+    out += ["</fieldset>", "</div>", "</details>"]
+
+
+def _html_acdc_education(out) -> None:
+    """How Sonar's AC/DC loops map onto this report, with the two sentences that define
+    the loops quoted and cited. The anchor is the artifact's one external reference:
+    authored, deliberate, and never a render-time dependency.
+    """
+    rows = []
+    for term, definition in _ACDC_LOOPS_EDUCATION:
+        rows += [
+            '<div class="education-row">',
+            f'<dt class="education-term">{term}</dt>',
+            f'<dd class="education-def">{definition}</dd>',
+            "</div>",
+        ]
+    content = [
+        f"<p>{_ACDC_INTRO}</p>",
+        '<dl class="education-list">',
+        *rows,
+        "</dl>",
+        '<blockquote class="education-quote">',
+        "<p>“The inner loop: Guide-Verify-Solve happens in each agentic reasoning loop, "
+        "ensuring that the agent stays on track as it methodically works to achieve the "
+        "plans.”</p>",
+        "<p>“The outer loop: Guide-Verify-Solve happens once the agent has ‘finished’ its "
+        "work.”</p>",
+        f'<p><a href="{_SONAR_ACDC_URL}" target="_blank" rel="noopener noreferrer">'
+        "Sonar, “The future is AC/DC: the Agent Centric Development Cycle”</a></p>",
+        "</blockquote>",
+    ]
+    _education(out, "acdc", "How AC/DC loops map to this report", content)
 
 
 def _html_criteria(out, d) -> None:
@@ -1113,9 +1306,11 @@ def _html_criteria(out, d) -> None:
     # rate. The score counts only applicable gating criteria; this section counts them all.
     out += [f'<p class="note">All {_html(len(d.results))} criteria evaluated, including '
             f"advisory and skipped. The score above rates only the {_html(gating)} "
-            "applicable gating criteria.</p>",
-            _distribution([(s, sum(1 for r in d.results if r.status.value == s))
-                           for s in _DIST_ORDER])]
+            "applicable gating criteria.</p>"]
+    if model[1]:
+        _html_acdc_education(out)
+    out.append(_distribution([(s, sum(1 for r in d.results if r.status.value == s))
+                              for s in _DIST_ORDER]))
     _facets(out, model)
     out += ['<div class="criteria-body">',
             '<p class="empty criteria-empty">No criteria match these filters</p>']
