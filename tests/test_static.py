@@ -1,6 +1,8 @@
 """Tests for the T0 static collector: globbing, manifests, and dependency parsing."""
+import os
 import unittest
 
+from readiness import safe_io
 from readiness.collectors.static import StaticCollector
 
 from tests._util import make_repo, rmtree
@@ -133,6 +135,36 @@ class TestStatic(unittest.TestCase):
         c = self._c({"pkg/package.json": "{}"})
         self.assertIn("package.json", c.within("pkg").manifests())
         self.assertIs(c.within("."), c)
+
+    def test_malformed_manifests_raise_repository_input_error(self):
+        """A malformed JSON/TOML/INI manifest is repository-indeterminate, never skipped."""
+        for fname, content in (
+            ("package.json", "{bad"),
+            ("pyproject.toml", "[project\n"),
+            ("setup.cfg", "[metadata"),
+        ):
+            c = self._c({fname: content})
+            with self.assertRaises(safe_io.RepositoryInputError):
+                c.manifests()
+
+    def test_unsafe_reads_raise_from_legacy_helpers(self):
+        """A symlinked file/manifest is unsafe: legacy read/manifests raise, never follow."""
+        root = make_repo({"outside.txt": "x", "outside.json": "{}"})
+        self.addCleanup(rmtree, root)
+        os.symlink("/etc/hosts", root / "link.txt")
+        os.symlink(str(root / "outside.json"), root / "package.json")
+        c = StaticCollector(root)
+        with self.assertRaises(safe_io.RepositoryInputError):
+            c.read("link.txt")
+        with self.assertRaises(safe_io.RepositoryInputError):
+            c.manifests()
+
+    def test_within_rejects_traversal_and_absolute_paths(self):
+        """Sub-collectors open fd-relative beneath the root: no '..' or absolute escape."""
+        c = self._c({"pkg/package.json": "{}"})
+        for bad in ("..", "/etc", "pkg/../.."):
+            with self.assertRaises(safe_io.RepositoryInputError):
+                c.within(bad)
 
 
 if __name__ == "__main__":

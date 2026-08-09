@@ -12,7 +12,7 @@ from readiness.context import Context
 from readiness.detect import detect
 from readiness.model import App, Detection
 
-from tests._util import fake_runner, make_repo, rmtree
+from tests._util import fake_runner, gh_runner, make_repo, rmtree
 
 
 class TestContext(unittest.TestCase):
@@ -77,35 +77,49 @@ class TestDetectBranches(unittest.TestCase):
 
 
 class TestGithubBranches(unittest.TestCase):
-    def test_repo_none_paths(self):
-        gh = GithubCollector("/tmp/x", runner=fake_runner({
-            ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner":"o/r"}',
+    def test_unavailable_without_origin_identity(self):
+        """No safe github.com origin identity: every T2 fact is unavailable, never a guess."""
+        gh = GithubCollector("/tmp/x", runner=gh_runner({}))
+        self.assertFalse(gh.available)
+        self.assertEqual(gh.repo().state, "unavailable")
+        self.assertEqual(gh.default_branch().state, "unavailable")
+        self.assertEqual(gh.secret_scanning_enabled().state, "unavailable")
+        self.assertEqual(gh.branch_protected().state, "unavailable")
+        self.assertFalse(gh.collection_complete)
+
+    def test_unprotected_branch_is_a_confirmed_absent(self):
+        """An exact 404 on the protection endpoint is present(False), not an error."""
+        gh = GithubCollector("/tmp/x", origin=("github.com", "o", "r"), runner=gh_runner({
+            "repos/o/r": '{"full_name":"o/r","default_branch":"main"}',
         }))
         self.assertTrue(gh.available)
-        self.assertIsNone(gh.repo())
-        self.assertIsNone(gh.default_branch())
-        self.assertIsNone(gh.secret_scanning_enabled())
-        self.assertFalse(gh.branch_protected())  # available but no protection object
+        protected = gh.branch_protected()
+        self.assertEqual(protected.state, "present")
+        self.assertFalse(protected.value)
 
     def test_topics_fallback_to_repo(self):
-        gh = GithubCollector("/tmp/x", runner=fake_runner({
-            ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner":"o/r"}',
-            ("api", "repos/o/r"): '{"topics":["fallback-topic"]}',
+        gh = GithubCollector("/tmp/x", origin=("github.com", "o", "r"), runner=gh_runner({
+            "repos/o/r/topics": "{}",
+            "repos/o/r": '{"full_name":"o/r","topics":["fallback-topic"]}',
         }))
-        self.assertEqual(gh.topics(), ["fallback-topic"])
+        topics = gh.topics()
+        self.assertEqual(topics.state, "present")
+        self.assertEqual(topics.value, ("fallback-topic",))
 
-    def test_malformed_collections_return_empty(self):
-        gh = GithubCollector("/tmp/x", runner=fake_runner({
-            ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner":"o/r"}',
-            ("api", "repos/o/r/actions/workflows"): "[]",
-            ("api", "repos/o/r/actions/runs?per_page=20"): "{}",
-            ("api", "repos/o/r/labels?per_page=100"): "{}",
-            ("api", "repos/o/r/issues?state=open&per_page=50"): "{}",
+    def test_malformed_collections_are_unreadable_not_empty(self):
+        """A wrong-shape body can no longer masquerade as a confirmed empty list."""
+        gh = GithubCollector("/tmp/x", origin=("github.com", "o", "r"), runner=gh_runner({
+            "repos/o/r": '{"full_name":"o/r"}',
+            "repos/o/r/actions/workflows?per_page=100": "[]",
+            "repos/o/r/actions/runs?per_page=20": "{}",
+            "repos/o/r/labels?per_page=100": "{}",
+            "repos/o/r/issues?state=open&per_page=50": "{}",
         }))
-        self.assertEqual(gh.workflows(), [])
-        self.assertEqual(gh.recent_runs(), [])
-        self.assertEqual(gh.labels(), [])
-        self.assertEqual(gh.open_issues(), [])
+        self.assertEqual(gh.workflows().state, "unreadable")
+        self.assertEqual(gh.recent_runs().state, "unreadable")
+        self.assertEqual(gh.labels().state, "unreadable")
+        self.assertEqual(gh.open_issues().state, "unreadable")
+        self.assertFalse(gh.collection_complete)
 
 
 class TestGitBranches(unittest.TestCase):
@@ -114,10 +128,13 @@ class TestGitBranches(unittest.TestCase):
             ("rev-parse", "--is-inside-work-tree"): "true\n",
             ("rev-parse", "HEAD"): "sha\n",
         }))
-        self.assertIsNone(g.file_last_commit_iso("README.md"))
-        self.assertIsNone(g.most_recent_commit_iso())
+        # Unmapped argv exits 128: a per-file log is a confirmed absence, while a bare
+        # commit-date query is unreadable — the two states are never collapsed into None.
+        self.assertEqual(g.file_last_commit_iso("README.md").state, "absent")
+        self.assertEqual(g.most_recent_commit_iso().state, "unreadable")
         # cache hit on repeated call
-        self.assertEqual(g.head_sha(), g.head_sha())
+        self.assertIs(g.head_sha(), g.head_sha())
+        self.assertEqual(g.head_sha().value, "sha")
 
 
 class TestCliBranches(unittest.TestCase):
@@ -131,19 +148,20 @@ class TestCliBranches(unittest.TestCase):
             code = cli.main(argv)
         return code, buf.getvalue()
 
-    def test_fix_without_report_returns_2(self):
-        code = cli.main(["fix", "--project", str(self.repo)])  # no report generated yet
-        self.assertEqual(code, 2)
+    def test_fix_plan_mode_is_source_less(self):
+        # plan mode runs a fresh in-memory scan — no stored report required
+        code = cli.main(["fix", "--project", str(self.repo)])
+        self.assertEqual(code, 0)
 
     def test_markdown_renders(self):
-        code, out = self._run(["report", "--project", str(self.repo), "--no-github"
-            , "--format", "markdown"])
+        code, out = self._run(["report", "--project", str(self.repo),
+                               "--format", "markdown"])
         self.assertEqual(code, 0)
         self.assertIn("# Agent Readiness Report", out)
 
     def test_fail_on_with_no_results_is_clean(self):
-        code, _ = self._run(["report", "--project", str(self.repo), "--no-github"
-            , "--fail-on", "x.y"])
+        code, _ = self._run(["report", "--project", str(self.repo),
+                             "--fail-on", "x.y"])
         self.assertEqual(code, 0)
 
 
@@ -165,18 +183,22 @@ class TestRealGitIntegration(unittest.TestCase):
             subprocess.run(cmd, cwd=repo, check=True, capture_output=True)
 
         g = GitCollector(repo)
-        self.assertTrue(g.available())
-        self.assertEqual(len(g.head_sha()), 40)
-        self.assertEqual(g.commit_count(), 1)
-        self.assertTrue(g.has_agent_coauthorship())
-        self.assertIsNotNone(g.most_recent_commit_iso())
+        try:
+            self.assertTrue(g.available())
+            self.assertEqual(len(g.head_sha().value), 40)
+            self.assertEqual(g.commit_count().value, 1)
+            self.assertTrue(g.has_agent_coauthorship().value)
+            self.assertEqual(g.most_recent_commit_iso().state, "present")
+        finally:
+            g.close()
 
         buf = io.StringIO()
         with redirect_stdout(buf):
-            code = cli.main(["report", "--project", str(repo), "--no-github"])
+            code = cli.main(["report", "--project", str(repo), "--format", "json"])
         self.assertEqual(code, 0)
         data = json.loads(buf.getvalue())
         self.assertEqual(len(data["commit"]), 40)
+        self.assertEqual(data["schema_version"], "3")
 
 
 if __name__ == "__main__":

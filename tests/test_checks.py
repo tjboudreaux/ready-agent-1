@@ -21,14 +21,18 @@ from readiness.collectors.static import StaticCollector
 from readiness.context import Context
 from readiness.detect import detect
 from readiness.model import Status
+from readiness.process import BoundedProcessResult, ProcessState
 
-from tests._util import fake_runner, make_repo, rmtree
+from tests._util import fake_runner, gh_runner, make_repo, rmtree
 
 
 def _gh_available(extra=None):
-    base = {("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner":"o/r"}'}
-    base.update(extra or {})
-    return base
+    """Endpoint map for an available GitHub collector (identity comes from ``origin``).
+
+    Keys are bare ``gh api`` endpoints; ``gh_runner`` wraps them in the fixed
+    ``("api", "--hostname", "github.com", "--include", endpoint)`` argv/envelope shape.
+    """
+    return dict(extra or {})
 
 
 class CheckCase(unittest.TestCase):
@@ -38,10 +42,14 @@ class CheckCase(unittest.TestCase):
         static = StaticCollector(root)
         det = detect(root, static)
         app = next((a for a in det.apps if a.path == app_path), det.apps[0])
+        git_runner = git if callable(git) else fake_runner(git or {})
         return Context(
             root=root, detection=det, static=static,
-            git=GitCollector(root, runner=fake_runner(git or {})),
-            github=GithubCollector(root, runner=fake_runner(gh or {})),
+            git=GitCollector(root, runner=git_runner, static=static),
+            github=GithubCollector(
+                root,
+                origin=("github.com", "o", "r") if gh is not None else (),
+                runner=gh_runner(gh or {})),
             app=app,
             options=options or {},
         )
@@ -135,6 +143,13 @@ class TestBuildChecks(CheckCase):
         self.assertEqual(self.s(build.vcs_cli(self.ctx({}, git=git_repo))), Status.PASS)
         self.assertEqual(self.s(build.vcs_cli(self.ctx({}))), Status.FAIL)
 
+    def test_vcs_cli_unreadable_git_is_unknown(self):
+        # An unsafe/unreadable repository is never called "not version controlled".
+        def timeout_runner(args):
+            return BoundedProcessResult(ProcessState.TIMEOUT, returncode=None)
+        self.assertEqual(self.s(build.vcs_cli(self.ctx({}, git=timeout_runner))),
+                         Status.UNKNOWN)
+
     def test_agentic_development(self):
         self.assertEqual(self.s(build.agentic_development(self.ctx({}))), Status.UNKNOWN)
         git_repo = {("rev-parse", "--is-inside-work-tree"): "true\n",
@@ -143,30 +158,33 @@ class TestBuildChecks(CheckCase):
 
     def test_ci_present_via_gh(self):
         ctx = self.ctx({}, gh=_gh_available(
-            {("api", "repos/o/r/actions/workflows"): '{"workflows":[{"name":"ci"}]}'}))
+            {"repos/o/r/actions/workflows?per_page=100": '{"workflows":[{"name":"ci"}]}'}))
         self.assertEqual(self.s(build.ci_present(ctx)), Status.PASS)
         self.assertEqual(self.s(build.ci_present(self.ctx({}))), Status.FAIL)
 
     def test_ci_runs_tests_variants(self):
         self.assertEqual(self.s(build.ci_runs_tests(self.ctx({}))), Status.SKIPPED)
         no_wf = self.ctx({}, gh=_gh_available(
-            {("api", "repos/o/r/actions/workflows"): '{"workflows":[]}'}))
+            {"repos/o/r/actions/workflows?per_page=100": '{"workflows":[]}'}))
         self.assertEqual(self.s(build.ci_runs_tests(no_wf)), Status.FAIL)
         wf_no_tests = self.ctx({}, gh=_gh_available({
-            ("api", "repos/o/r/actions/workflows"): '{"workflows":[{"name":"ci"}]}',
-            ("api", "repos/o/r/actions/runs?per_page=20"): '{"workflow_runs":[{}]}',
+            "repos/o/r/actions/workflows?per_page=100": '{"workflows":[{"name":"ci"}]}',
+            "repos/o/r/actions/runs?per_page=20": '{"workflow_runs":[{}]}',
         }))
         self.assertEqual(self.s(build.ci_runs_tests(wf_no_tests)), Status.FAIL)
         wf_tests_no_runs = self.ctx({"src/x.test.ts": "t"}, gh=_gh_available({
-            ("api", "repos/o/r/actions/workflows"): '{"workflows":[{"name":"ci"}]}',
-            ("api", "repos/o/r/actions/runs?per_page=20"): '{"workflow_runs":[]}',
+            "repos/o/r/actions/workflows?per_page=100": '{"workflows":[{"name":"ci"}]}',
+            "repos/o/r/actions/runs?per_page=20": '{"workflow_runs":[]}',
         }))
         self.assertEqual(self.s(build.ci_runs_tests(wf_tests_no_runs)), Status.FAIL)
 
     def test_release_automation(self):
         self.assertEqual(self.s(build.release_automation(self.ctx(
             {"package.json": '{"devDependencies":{"semantic-release":"^x"}}'}))), Status.PASS)
-        self.assertEqual(self.s(build.release_automation(self.ctx({}))), Status.FAIL)
+        # No explicit artifact-publication path: skipped, not failed (0.11.0 applicability).
+        v = build.release_automation(self.ctx({}))
+        self.assertEqual(v.status, Status.SKIPPED)
+        self.assertEqual(v.reason_code, "build.release_automation.not_applicable")
 
 
 class TestDocsChecks(CheckCase):
@@ -229,14 +247,30 @@ class TestDevenvChecks(CheckCase):
 
 class TestSecurityChecks(CheckCase):
     def test_branch_protection_fail(self):
-        ctx = self.ctx({}, gh=_gh_available({("api", "repos/o/r"): '{"default_branch":"main"}'}))
-        self.assertEqual(self.s(security.branch_protection(ctx)), Status.FAIL)
+        # The protection endpoint 404s: confirmed "not protected", never a crash or skip.
+        ctx = self.ctx({}, gh=_gh_available(
+            {"repos/o/r": '{"full_name":"o/r","default_branch":"main"}'}))
+        v = security.branch_protection(ctx)
+        self.assertEqual(v.status, Status.FAIL)
+        self.assertEqual(v.reason_code, "security.branch_protection.not_protected")
+
+    def test_branch_protection_pass(self):
+        ctx = self.ctx({}, gh=_gh_available({
+            "repos/o/r": '{"full_name":"o/r","default_branch":"main"}',
+            "repos/o/r/branches/main/protection":
+                '{"required_pull_request_reviews":{"required_approving_review_count":1}}',
+        }))
+        v = security.branch_protection(ctx)
+        self.assertEqual(v.status, Status.PASS)
+        self.assertEqual(v.reason_code, "security.branch_protection.protected")
 
     def test_secret_scanning_fail(self):
         ctx = self.ctx({}, gh=_gh_available(
-            {("api", "repos/o/r"): '{"default_branch":"main","security_and_analysis":{"secret_'
-                'scanning":{"status":"disabled"}}}'}))
-        self.assertEqual(self.s(security.secret_scanning(ctx)), Status.FAIL)
+            {"repos/o/r": '{"full_name":"o/r","default_branch":"main","security_and_analysis":'
+                '{"secret_scanning":{"status":"disabled"}}}'}))
+        v = security.secret_scanning(ctx)
+        self.assertEqual(v.status, Status.FAIL)
+        self.assertEqual(v.reason_code, "security.secret_scanning.disabled")
 
     def test_simple_fails(self):
         self.assertEqual(self.s(security.codeowners(self.ctx({}))), Status.FAIL)
@@ -287,15 +321,15 @@ class TestTaskDiscChecks(CheckCase):
 
     def test_issue_labeling(self):
         only_default = self.ctx({}, gh=_gh_available(
-            {("api", "repos/o/r/labels?per_page=100"): '[{"name":"bug"},{"name":"enhancement"}]'}))
+            {"repos/o/r/labels?per_page=100": '[{"name":"bug"},{"name":"enhancement"}]'}))
         self.assertEqual(self.s(taskdisc.issue_labeling(only_default)), Status.FAIL)
         via_file = self.ctx({".github/labels.yml": "x"}, gh=_gh_available(
-            {("api", "repos/o/r/labels?per_page=100"): '[{"name":"bug"}]'}))
+            {"repos/o/r/labels?per_page=100": '[{"name":"bug"}]'}))
         self.assertEqual(self.s(taskdisc.issue_labeling(via_file)), Status.PASS)
 
     def test_backlog_health_low(self):
         ctx = self.ctx({}, gh=_gh_available({
-            ("api", "repos/o/r/issues?state=open&per_page=50"): (
+            "repos/o/r/issues?state=open&per_page=50": (
                 '[{"number":1,"labels":[{"name":"bug"}]},{"number":2,"labels":[]},{"number":3,'
                 '"labels":[]}]'
             ),
@@ -314,8 +348,10 @@ class TestLoopChecks(CheckCase):
         "policies.\n"
     )
     DENY = (
-        "# Loop Denylist\n\nNever mutate secrets or deploy without confirmation. Block unsafe "
-        "paths.\n"
+        "# Loop Denylist\n\n- Never read or export secrets, credentials, or .env files.\n"
+        "- Never run destructive deletes or drop data.\n"
+        "- Never push, merge, deploy, release, or publish without human confirmation.\n"
+        "- Never disable CI, tests, security scanning, or branch protection.\n"
     )
     SIGNAL = (
         "# Signal Schema\n\n```json\n"
@@ -450,17 +486,18 @@ class TestPhase5BuildChecks(CheckCase):
         runs_slow = ('{"workflow_runs":[{"run_started_at":"2026-06-01T00:00:00Z",'
                      '"updated_at":"2026-06-01T00:30:00Z"}]}')
         runs_untimed = '{"workflow_runs":[{"conclusion":"success"}]}'
-        cfg = {".agents/readiness/config.json": '{"ci_budget_minutes": 15}'}
-        runs_key = ("api", "repos/o/r/actions/runs?per_page=20")
+        cfg = {".ra1/config.json": '{"ci_budget_minutes": 15}'}
+        runs_key = "repos/o/r/actions/runs?per_page=20"
         # no github -> skipped
         self.assertEqual(self.s(build.ci_duration_budget(self.ctx(cfg))), Status.SKIPPED)
         # github but no budget -> unknown
         self.assertEqual(self.s(build.ci_duration_budget(
             self.ctx({}, gh=_gh_available({runs_key: runs_fast})))), Status.UNKNOWN)
-        # injected budget option -> pass
+        # injected budget dependency -> pass
         self.assertEqual(self.s(build.ci_duration_budget(
             self.ctx({}, gh=_gh_available({runs_key: runs_fast}),
-                     options={"readiness_config": {"ci_budget_minutes": 15}}))), Status.PASS)
+                     options={"_deps": {"readiness_config": {"ci_budget_minutes": 15}}}),
+        )), Status.PASS)
         # budget but no timed runs -> unknown
         self.assertEqual(self.s(build.ci_duration_budget(
             self.ctx(cfg, gh=_gh_available({runs_key: runs_untimed})))), Status.UNKNOWN)
@@ -506,7 +543,7 @@ class TestPhase5TaskdiscChecks(CheckCase):
         issues_good = ('[{"number":1,"labels":[{"name":"bug"}],"body":"steps to reproduce"},'
                        '{"number":2,"milestone":{"title":"v1"},"body":"do the thing"}]')
         issues_bad = '[{"number":1,"labels":[],"body":""},{"number":2,"body":"   "}]'
-        key = ("api", "repos/o/r/issues?state=open&per_page=50")
+        key = "repos/o/r/issues?state=open&per_page=50"
         self.assertEqual(self.s(taskdisc.actionable_backlog_items(self.ctx({}))), Status.SKIPPED)
         self.assertEqual(self.s(taskdisc.actionable_backlog_items(
             self.ctx({}, gh=_gh_available({key: "[]"})))), Status.PASS)
@@ -900,12 +937,12 @@ class TestAcdcVerificationLoop(CheckCase):
         self.assertEqual(check_needles("jest --coverage"), {"jest"})
         self.assertEqual(check_needles("cargo test"), {"cargo test"})
         valid = self.ctx({
-            ".agents/readiness/config.json": (
+            ".ra1/config.json": (
                 '{"acdc":{"verify_command":"make check"}}'
             ),
         })
         self.assertEqual(acdc_config(valid), {"verify_command": "make check"})
-        invalid = self.ctx({".agents/readiness/config.json": '{"acdc":[]}'})
+        invalid = self.ctx({".ra1/config.json": '{"acdc":[]}'})
         self.assertEqual(acdc_config(invalid), {})
 
     def test_check_command_make_and_prerequisites(self):
@@ -948,34 +985,34 @@ class TestAcdcVerificationLoop(CheckCase):
     def test_check_command_config_designations(self):
         config = '{"schema_version":"1","acdc":{"verify_command":"make check"}}'
         verdict = build.check_command(self.ctx({
-            ".agents/readiness/config.json": config,
+            ".ra1/config.json": config,
             "Makefile": "check:\n\tpytest\n",
         }))
         self.assertEqual(self.s(verdict), Status.PASS)
-        self.assertTrue(any(e.source == ".agents/readiness/config.json" for e in verdict.evidence))
+        self.assertTrue(any(e.source == ".ra1/config.json" for e in verdict.evidence))
         self.assertEqual(self.s(build.check_command(self.ctx({
-            ".agents/readiness/config.json": '{"acdc":{"verify_command":"npm run check"}}',
+            ".ra1/config.json": '{"acdc":{"verify_command":"npm run check"}}',
             "package.json": '{"scripts":{"check":"jest --coverage"}}',
         }))), Status.PASS)
         self.assertEqual(self.s(build.check_command(self.ctx({
-            ".agents/readiness/config.json": '{"acdc":{"verify_command":"scripts/check.sh"}}',
+            ".ra1/config.json": '{"acdc":{"verify_command":"scripts/check.sh"}}',
             "scripts/check.sh": "pytest\n",
         }))), Status.PASS)
         self.assertEqual(self.s(build.check_command(self.ctx({
-            ".agents/readiness/config.json": '{"acdc":{"verify_command":"ruff check ."}}',
+            ".ra1/config.json": '{"acdc":{"verify_command":"ruff check ."}}',
+        }))), Status.FAIL)  # outside the §5.1.2 accepted grammar
+        self.assertEqual(self.s(build.check_command(self.ctx({
+            ".ra1/config.json": '{"acdc":{"verify_command":"python3 -m unittest"}}',
         }))), Status.PASS)
         self.assertEqual(self.s(build.check_command(self.ctx({
-            ".agents/readiness/config.json": '{"acdc":{"verify_command":"python3 -m unittest"}}',
-        }))), Status.PASS)
-        self.assertEqual(self.s(build.check_command(self.ctx({
-            ".agents/readiness/config.json": '{"acdc":{"verify_command":"task check"}}',
+            ".ra1/config.json": '{"acdc":{"verify_command":"task check"}}',
             "Taskfile.yaml": "tasks:\n  check:\n    cmds: [pytest]\n",
         }))), Status.PASS)
         self.assertEqual(self.s(build.check_command(self.ctx({
-            ".agents/readiness/config.json": config,
+            ".ra1/config.json": config,
         }))), Status.FAIL)
         self.assertEqual(self.s(build.check_command(self.ctx({
-            ".agents/readiness/config.json": '{"acdc":{"verify_command":42}}',
+            ".ra1/config.json": '{"acdc":{"verify_command":42}}',
             "Makefile": "check:\n\truff check . && pytest\n",
         }))), Status.PASS)
 
@@ -1002,7 +1039,7 @@ class TestAcdcVerificationLoop(CheckCase):
             with self.subTest(files=files):
                 self.assertEqual(self.s(docs.agent_verify_contract(self.ctx(files))), Status.PASS)
         configured = docs.agent_verify_contract(self.ctx({
-            ".agents/readiness/config.json": (
+            ".ra1/config.json": (
                 '{"acdc":{"instruction_files":["docs/agent-guide.md",42]}}'
             ),
             "docs/agent-guide.md": "Execute verification with `ra1 report --project .`.\n",
@@ -1016,7 +1053,7 @@ class TestAcdcVerificationLoop(CheckCase):
             {"AGENTS.md": "## Setup\n```sh\npython3 -m pytest\n```\n"},
             {"AGENTS.md": "## Verification\nNo command is documented.\n"},
             {
-                ".agents/readiness/config.json": (
+                ".ra1/config.json": (
                     '{"acdc":{"instruction_files":["docs/agent-guide.md"]}}'
                 ),
                 "docs/agent-guide.md": "## Verification\nDescribe checks without a command.\n",
@@ -1038,7 +1075,7 @@ class TestAcdcVerificationLoop(CheckCase):
             ".claude/settings.json": '{"hooks":{"Stop":{"command":"ra1 report --project ."}}}',
         }))), Status.PASS)
         configured = devenv.agent_hooks(self.ctx({
-            ".agents/readiness/config.json": (
+            ".ra1/config.json": (
                 '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh",7]}}'
             ),
             ".agents/hooks/post-edit.sh": "#!/bin/sh\nruff check .\n",
@@ -1048,9 +1085,9 @@ class TestAcdcVerificationLoop(CheckCase):
 
     def test_agent_hooks_fallthrough_and_failures(self):
         cases = [
-            {".agents/readiness/config.json": '{"acdc":{"hook_files":["missing/*.sh"]}}'},
+            {".ra1/config.json": '{"acdc":{"hook_files":["missing/*.sh"]}}'},
             {
-                ".agents/readiness/config.json": (
+                ".ra1/config.json": (
                     '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh"]}}'
                 ),
                 ".agents/hooks/post-edit.sh": "#!/bin/sh\necho done\n",
@@ -1104,24 +1141,24 @@ class TestAcdcVerificationLoop(CheckCase):
     def test_check_command_edge_branches(self):
         passes = [
             {
-                ".agents/readiness/config.json": '{"acdc":{"verify_command":"just check"}}',
+                ".ra1/config.json": '{"acdc":{"verify_command":"just check"}}',
                 "Justfile": "check:\n    pytest\n",
             },
             {
-                ".agents/readiness/config.json": '{"acdc":{"verify_command":"just check"}}',
+                ".ra1/config.json": '{"acdc":{"verify_command":"just check"}}',
                 "Justfile": "lint:\n    ruff check .\n",
                 "justfile": "check:\n    pytest\n",
             },
             {
-                ".agents/readiness/config.json": '{"acdc":{"verify_command":"yarn check"}}',
+                ".ra1/config.json": '{"acdc":{"verify_command":"yarn check"}}',
                 "package.json": '{"scripts":{"check":"pytest"}}',
             },
             {
-                ".agents/readiness/config.json": '{"acdc":{"verify_command":"pnpm run check"}}',
+                ".ra1/config.json": '{"acdc":{"verify_command":"pnpm run check"}}',
                 "package.json": '{"scripts":{"check":"pytest"}}',
             },
             {
-                ".agents/readiness/config.json": '{"acdc":{"verify_command":"./scripts/check.sh"}}',
+                ".ra1/config.json": '{"acdc":{"verify_command":"scripts/check.sh"}}',
                 "scripts/check.sh": "pytest\n",
             },
             {"Makefile": "check: absent\n\truff check . && pytest\n"},
@@ -1137,14 +1174,14 @@ class TestAcdcVerificationLoop(CheckCase):
                 self.assertEqual(self.s(build.check_command(self.ctx(files))), Status.PASS)
         failures = [
             {
-                ".agents/readiness/config.json": '{"acdc":{"verify_command":"task check"}}',
+                ".ra1/config.json": '{"acdc":{"verify_command":"task check"}}',
                 "Taskfile.yml": "tasks:\n  lint:\n    cmds: [ruff]\n",
             },
             {
-                ".agents/readiness/config.json": '{"acdc":{"verify_command":"npm run missing"}}',
+                ".ra1/config.json": '{"acdc":{"verify_command":"npm run missing"}}',
                 "package.json": '{"scripts":{"check":"pytest"}}',
             },
-            {".agents/readiness/config.json": '{"acdc":{"verify_command":"custom verify"}}'},
+            {".ra1/config.json": '{"acdc":{"verify_command":"custom verify"}}'},
             {"Makefile": "lint:\n\truff check .\n"},
             {"Taskfile.yml": "tasks:\n  lint:\n    cmds: [ruff]\n"},
             {"Taskfile.yml": "tasks:\n  check:\n    cmds:\n      - pytest\n"},
@@ -1166,13 +1203,13 @@ class TestAcdcVerificationLoop(CheckCase):
             "AGENTS.md": "Run verification now.\nnot the command\n\n`npm test`\n",
         }))), Status.FAIL)
         self.assertEqual(self.s(docs.agent_verify_contract(self.ctx({
-            ".agents/readiness/config.json": '{"acdc":{"instruction_files":{}}}',
+            ".ra1/config.json": '{"acdc":{"instruction_files":{}}}',
             "AGENTS.md": "## Verification\n`make check`\n",
         }))), Status.PASS)
 
     def test_agent_hook_vendor_needles(self):
         self.assertEqual(self.s(devenv.agent_hooks(self.ctx({
-            ".agents/readiness/config.json": (
+            ".ra1/config.json": (
                 '{"acdc":{"hook_files":[".agents/hooks/post-edit.sh"]}}'
             ),
             ".agents/hooks/post-edit.sh": "sonar analyze --file src/a.py\n",
@@ -1202,7 +1239,7 @@ class TestAcdcVerificationLoop(CheckCase):
 
     def test_configured_entrypoint_checks_all_candidate_files(self):
         ctx = self.ctx({
-            ".agents/readiness/config.json": '{"acdc":{"verify_command":"just check"}}',
+            ".ra1/config.json": '{"acdc":{"verify_command":"just check"}}',
             "first": "lint:\n    ruff check .\n",
             "second": "check:\n    pytest\n",
         })
@@ -1277,14 +1314,14 @@ class TestDoraAdvisoryChecks(CheckCase):
             {"AGENTS.md": "# Agents\n"},
             git={
                 **self._GIT_AVAIL,
-                ("rev-list", "--count", "--follow", "HEAD", "--", "AGENTS.md"): "3\n",
+                ("log", "--follow", "--format=%H", "HEAD", "--", "AGENTS.md"): "c1\nc2\nc3\n",
             },
         ))), Status.PASS)
         self.assertEqual(self.s(build.agent_config_versioned(self.ctx(
             {"AGENTS.md": "# Agents\n"},
             git={
                 **self._GIT_AVAIL,
-                ("rev-list", "--count", "--follow", "HEAD", "--", "AGENTS.md"): "1\n",
+                ("log", "--follow", "--format=%H", "HEAD", "--", "AGENTS.md"): "c1\n",
             },
         ))), Status.FAIL)
 
@@ -1292,54 +1329,30 @@ class TestDoraAdvisoryChecks(CheckCase):
         import json
 
         self.assertEqual(self.s(taskdisc.review_latency(self.ctx({}))), Status.SKIPPED)
-        pulls_key = (
-            "api",
-            "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=1",
-        )
-        insuff = []
-        extra = {}
-        for i in range(3):
-            insuff.append({
-                "number": i + 1,
-                "merged_at": "2026-06-01T00:00:00Z",
-                "created_at": "2026-06-01T00:00:00Z",
-            })
-            extra[("api", f"repos/o/r/pulls/{i + 1}/reviews")] = json.dumps(
-                [{"submitted_at": "2026-06-01T02:00:00Z"}]
-            )
-        extra[pulls_key] = json.dumps(insuff)
-        self.assertEqual(self.s(taskdisc.review_latency(self.ctx(
-            {}, gh=_gh_available(extra)))), Status.SKIPPED)
+        pulls_p1 = "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=1"
+        pulls_p2 = "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=2"
 
-        pass_extra = {}
-        pass_prs = []
-        for i in range(5):
-            pass_prs.append({
-                "number": i + 1,
-                "merged_at": "2026-06-02T00:00:00Z",
-                "created_at": "2026-06-01T00:00:00Z",
-            })
-            pass_extra[("api", f"repos/o/r/pulls/{i + 1}/reviews")] = json.dumps(
-                [{"submitted_at": "2026-06-01T12:00:00Z"}]
-            )
-        pass_extra[pulls_key] = json.dumps(pass_prs)
-        self.assertEqual(self.s(taskdisc.review_latency(self.ctx(
-            {}, gh=_gh_available(pass_extra)))), Status.PASS)
+        def pr_fixture(n, created, review):
+            prs = [{"number": i + 1, "merged_at": "2026-06-02T00:00:00Z",
+                    "created_at": created} for i in range(n)]
+            endpoints = {pulls_p1: json.dumps(prs), pulls_p2: "[]"}
+            for i in range(n):
+                reviews = [] if review is None else [{"submitted_at": review}]
+                endpoints[f"repos/o/r/pulls/{i + 1}/reviews?per_page=100"] = json.dumps(reviews)
+            return endpoints
 
-        fail_extra = {}
-        fail_prs = []
-        for i in range(5):
-            fail_prs.append({
-                "number": i + 1,
-                "merged_at": "2026-06-10T00:00:00Z",
-                "created_at": "2026-06-01T00:00:00Z",
-            })
-            fail_extra[("api", f"repos/o/r/pulls/{i + 1}/reviews")] = json.dumps(
-                [{"submitted_at": "2026-06-05T00:00:00Z"}]
-            )
-        fail_extra[pulls_key] = json.dumps(fail_prs)
+        # Fewer than 5 reviewed PRs -> skipped.
         self.assertEqual(self.s(taskdisc.review_latency(self.ctx(
-            {}, gh=_gh_available(fail_extra)))), Status.FAIL)
+            {}, gh=_gh_available(pr_fixture(3, "2026-06-01T00:00:00Z",
+                                            "2026-06-01T02:00:00Z"))))), Status.SKIPPED)
+        # Median first-review latency 12h <= 48h -> pass.
+        self.assertEqual(self.s(taskdisc.review_latency(self.ctx(
+            {}, gh=_gh_available(pr_fixture(5, "2026-06-01T00:00:00Z",
+                                            "2026-06-01T12:00:00Z"))))), Status.PASS)
+        # Median first-review latency 96h > 48h -> fail.
+        self.assertEqual(self.s(taskdisc.review_latency(self.ctx(
+            {}, gh=_gh_available(pr_fixture(5, "2026-06-01T00:00:00Z",
+                                            "2026-06-05T00:00:00Z"))))), Status.FAIL)
 
     def test_docs_ai_stance(self):
         self.assertEqual(self.s(docs.ai_stance(self.ctx({}))), Status.FAIL)
@@ -1370,19 +1383,25 @@ class TestDoraAdvisoryChecks(CheckCase):
             "llms.txt": "# Project\n\nhttps://example.com/docs\nSee docs/api.md for details.\n",
         }))), Status.PASS)
 
+    _SAFE_PERMS = (
+        '{"permissions":{"deny":["Read(.env*)","Read(**/*.pem)","Read(**/*.key)",'
+        '"Read(~/.ssh/**)","Read(~/.aws/**)","Read(~/.kube/**)"],"allow":["Bash(npm test)"]}}'
+    )
+
     def test_security_agent_permissions(self):
         self.assertEqual(self.s(security.agent_permissions(self.ctx({
             ".claude/settings.local.json": '{"permissions":{"deny":["Bash"]}}',
         }))), Status.FAIL)
         self.assertEqual(self.s(security.agent_permissions(self.ctx({
-            ".claude/settings.json": '{"permissions":{"deny":["Bash(rm *)"]}}',
+            ".claude/settings.json": self._SAFE_PERMS,
         }))), Status.PASS)
         self.assertEqual(self.s(security.agent_permissions(self.ctx({
             ".claude/settings.json": '{"permissions":{"allow":["*"]}}',
         }))), Status.FAIL)
         self.assertEqual(self.s(security.agent_permissions(self.ctx({
-            ".claude/settings.json": '{"permissions":{"allow":["Read","Edit"]}}',
-        }))), Status.PASS)
+            ".claude/settings.json": '{"permissions":{"deny":["Read(.env*)"],'
+            '"allow":["Bash(npm test)"]}}',
+        }))), Status.FAIL)  # missing mandatory secret classes
 
     def test_observability_slo_definitions(self):
         self.assertEqual(self.s(observability.slo_definitions(self.ctx({}))), Status.FAIL)
@@ -1506,17 +1525,21 @@ class TestDoraAdvisoryChecks(CheckCase):
         }))), Status.FAIL)
 
     def test_security_agent_permissions_edge_branches(self):
+        from readiness.checks import _agent_policy as ap
         from readiness.checks import security as sec
 
-        self.assertFalse(sec._is_unbounded_perm(123))
-        self.assertFalse(sec._is_unbounded_perm(None))
-        self.assertFalse(sec._permissions_policy_ok(None))
-        self.assertFalse(sec._permissions_policy_ok("x"))
-        self.assertFalse(sec._permissions_policy_ok({"other": True}))
-        # Top-level allow/deny (no permissions wrapper); non-str allow entries are ignored.
-        self.assertTrue(sec._permissions_policy_ok({"allow": ["Read", 1], "deny": []}))
-        self.assertTrue(sec._permissions_policy_ok({"deny": ["Bash"]}))
-        self.assertFalse(sec._permissions_policy_ok({"allow": [], "deny": []}))
+        self.assertEqual(ap.evaluate_claude_settings("p", None).state, "malformed")
+        self.assertEqual(ap.evaluate_claude_settings("p", "x").state, "malformed")
+        self.assertEqual(ap.evaluate_claude_settings(
+            "p", {"permissions": {"defaultMode": "bypassPermissions"}}).state,
+            "dangerous_allow")
+        self.assertEqual(ap.evaluate_claude_settings(
+            "p", {"permissions": {"defaultMode": "plan", "deny": ["*"]}}).state, "safe")
+        self.assertEqual(ap.evaluate_generic_policy("p", None, "").state, "malformed")
+        self.assertEqual(
+            ap.evaluate_generic_policy("p", {"deny": ["Read(.env*)"]},
+                                       "deny reading .env secrets").state,
+            "safe")
 
         self.assertIsNone(sec._parse_permissions_markdown(""))
         self.assertIsNone(sec._parse_permissions_markdown("# No fence\n"))
@@ -1528,90 +1551,57 @@ class TestDoraAdvisoryChecks(CheckCase):
 
         md = (
             "# Permissions\n\n```json\n"
-            '{"permissions":{"deny":["Bash(rm *)"]}}\n'
+            '{"permissions":{"deny":["Read(.env*)","Read(**/*.pem)","Read(**/*.key)",'
+            '"Read(~/.ssh/**)","Read(~/.aws/**)","Read(~/.kube/**)"]}}\n'
             "```\n"
         )
         self.assertEqual(self.s(security.agent_permissions(self.ctx({
             ".agents/shared/permissions.md": md,
         }))), Status.PASS)
 
-        v = security.agent_permissions(self.ctx({
-            ".claude/settings.json": "{not-json",
-        }))
-        self.assertEqual(v.status, Status.FAIL)
-        self.assertIn("could not be parsed", v.rationale)
-
-        v = security.agent_permissions(self.ctx({
-            ".agents/shared/permissions.md": "# Permissions\n\nNo fenced JSON here, only prose.\n",
-        }))
-        self.assertEqual(v.status, Status.FAIL)
-        self.assertIn("could not be parsed", v.rationale)
-
-        self.assertEqual(self.s(security.agent_permissions(self.ctx({
-            ".agents/team/permissions.json": '{"permissions":{"allow":["Read"]}}',
-        }))), Status.PASS)
-
     def test_taskdisc_review_latency_edge_branches(self):
         import json
 
-        pulls_key = (
-            "api",
-            "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=1",
-        )
-        extra = {}
+        pulls_p1 = "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=1"
+        pulls_p2 = "repos/o/r/pulls?state=closed&sort=updated&direction=desc&per_page=50&page=2"
         prs = [
-            "not-a-dict",
-            {"number": 1, "merged_at": "2026-06-02T00:00:00Z"},  # missing created_at
+            {"number": 1, "merged_at": "2026-06-02T00:00:00Z"},  # missing created_at -> skipped
             {
                 "number": 2,
                 "merged_at": "2026-06-02T00:00:00Z",
-                "created_at": "2026-06-01T00:00:00",  # naive
+                "created_at": "2026-06-01T00:00:00",  # naive -> localized to UTC
             },
             {
                 "number": 3,
                 "merged_at": "2026-06-02T00:00:00Z",
                 "created_at": "2026-06-01T00:00:00Z",
             },
-            {
-                "number": 4,
-                "merged_at": "2026-06-02T00:00:00Z",
-                "created_at": "2026-06-01T00:00:00",
-            },
-            {
-                "number": 5,
+            *[{
+                "number": i,
                 "merged_at": "2026-06-02T00:00:00Z",
                 "created_at": "2026-06-01T00:00:00Z",
-            },
-            {
-                "number": 6,
-                "merged_at": "2026-06-02T00:00:00Z",
-                "created_at": "2026-06-01T00:00:00Z",
-            },
-            {
-                "number": 7,
-                "merged_at": "2026-06-02T00:00:00Z",
-                "created_at": "2026-06-01T00:00:00Z",
-            },
+            } for i in (4, 5, 6, 7)],
         ]
-        extra[pulls_key] = json.dumps(prs)
-        # PR 2: naive created + naive review; PR 3: missing review
-        extra[("api", "repos/o/r/pulls/2/reviews")] = json.dumps(
+        extra = {pulls_p1: json.dumps(prs), pulls_p2: "[]"}
+        # PR 1: no created_at -> skipped (reviews still fetched first); PR 2: naive review
+        # time; PR 3: no reviews (absent) -> skipped.
+        extra["repos/o/r/pulls/1/reviews?per_page=100"] = "[]"
+        extra["repos/o/r/pulls/2/reviews?per_page=100"] = json.dumps(
             [{"submitted_at": "2026-06-01T12:00:00"}]
         )
-        extra[("api", "repos/o/r/pulls/3/reviews")] = "[]"
+        extra["repos/o/r/pulls/3/reviews?per_page=100"] = "[]"
         for i in (4, 5, 6, 7):
-            extra[("api", f"repos/o/r/pulls/{i}/reviews")] = json.dumps(
+            extra[f"repos/o/r/pulls/{i}/reviews?per_page=100"] = json.dumps(
                 [{"submitted_at": "2026-06-01T12:00:00Z"}]
             )
-        # Valid latencies: 2,4,5,6,7 (PR1 missing created, PR3 missing review).
+        # Valid latencies: 2,4,5,6,7 (PR1 missing created, PR3 missing review) -> 12h median.
         self.assertEqual(self.s(taskdisc.review_latency(self.ctx(
             {}, gh=_gh_available(extra)))), Status.PASS)
 
-        # Non-dict entries are skipped inside review_latency (collector normally filters them).
-        ctx = self.ctx({}, gh=_gh_available(extra))
-        original = ctx.github.recent_merged_prs
-        ctx.github.recent_merged_prs = lambda n=20: ["skip-me", *original(n)]
-        self.assertEqual(self.s(taskdisc.review_latency(ctx)), Status.PASS)
+        # A malformed PR entry makes the whole observation unreadable -> blocking unknown.
+        bad = {pulls_p1: json.dumps(["not-a-dict"]), pulls_p2: "[]"}
+        self.assertEqual(self.s(taskdisc.review_latency(self.ctx(
+            {}, gh=_gh_available(bad)))), Status.UNKNOWN)
 
     def test_observability_slo_artifact_variants(self):
         # sloth.yml / nobl9 / terraform `_slo"` artifact discovery
@@ -1710,6 +1700,137 @@ class TestLoopCoverageGaps(CheckCase):
             ".omp/skills/thin/SKILL.md": thin,
         }
         self.assertEqual(self.s(loop.skills_present(self.ctx(files))), Status.PASS)
+
+
+class TestDocsCoverageGaps(CheckCase):
+    def test_skills_without_agent_skills_topic(self):
+        # GitHub available and topics present but lacking 'agent-skills': no T2 evidence.
+        v = docs.skills(self.ctx(
+            {"skills/demo/SKILL.md": "# Demo\n\nA reusable skill artifact for agents.\n"},
+            gh={"repos/o/r/topics": '{"names":["python"]}'}))
+        self.assertEqual(self.s(v), Status.PASS)
+        self.assertEqual(len(v.evidence), 1)
+
+    def test_doc_freshness_absent_history_and_unreadable_file_date(self):
+        # Empty commit-date output: confirmed absence of history, not an error.
+        v = docs.doc_freshness(self.ctx({"README.md": "# x"}, git={
+            ("log", "-1", "--format=%cI"): "",
+        }))
+        self.assertEqual(self.s(v), Status.UNKNOWN)
+
+        # A modal per-file history failure surfaces as unknown, never as freshness.
+        def runner(args):
+            if tuple(args) == ("log", "-1", "--format=%cI"):
+                return BoundedProcessResult(
+                    ProcessState.OK, returncode=0,
+                    stdout="2026-06-01T00:00:00+00:00\n")
+            return BoundedProcessResult(ProcessState.TIMEOUT)
+
+        v = docs.doc_freshness(self.ctx({"README.md": "# x"}, git=runner))
+        self.assertEqual(self.s(v), Status.UNKNOWN)
+
+    def test_mcp_servers_ok_branches(self):
+        self.assertFalse(docs._mcp_servers_ok({"mcpServers": {}}))
+        self.assertFalse(docs._mcp_servers_ok({"mcpServers": "not-a-dict"}))
+        self.assertTrue(docs._mcp_servers_ok(
+            {"mcpServers": {"s": {"command": "npx"}}}))
+        self.assertTrue(docs._mcp_servers_ok(
+            {"mcpServers": {"s": {"url": "https://example.com"}}}))
+
+    def test_llms_has_ref_branches(self):
+        self.assertTrue(docs._llms_has_ref("\n\nSee https://example.com/docs\n"))
+        self.assertTrue(docs._llms_has_ref("docs/guide.md"))
+
+    def test_mcp_entry_issues_matrix(self):
+        expect = [
+            ({"command": "npx", "url": "https://example.com"},
+             "exactly one local-command or remote-URL transport is required"),
+            ({"command": "sh -c 'run thing'"},
+             "command uses a shell launcher or operators"),
+            ({"command": "run && deploy"},
+             "command uses a shell launcher or operators"),
+            ({"command": "line1\nline2"},
+             "command is not a nonempty one-line string"),
+            ({"command": "npx", "args": "oops"},
+             "argv entries must be bounded one-line strings"),
+            ({"command": "x", "args": ["--token", "abc123token"]},
+             "literal secret value after a secret flag"),
+            ({"command": "x", "args": ["ghp_secretvalue"]},
+             "literal credential token in argv"),
+            ({"command": "x", "env": "nope"}, "env must be an object"),
+            ({"command": "x", "env": {"A": 1}}, "env values must be strings"),
+            ({"command": "x", "env": {"API_KEY": "literal"}},
+             "literal secret in env value"),
+            ({"url": "not-a-url"}, "remote URL is malformed"),
+            ({"url": "http://example.com"},
+             "remote URL requires HTTPS (HTTP loopback excepted)"),
+            ({"url": "https://user@example.com"},
+             "remote URL must not carry userinfo/query/fragment"),
+            ({"url": "https://example.com", "headers": "nope"},
+             "headers must be an object"),
+            ({"url": "https://example.com", "headers": {"X": 1}},
+             "header values must be strings"),
+            ({"url": "https://example.com",
+              "headers": {"Authorization": "Bearer abc"}},
+             "header values must be placeholders"),
+        ]
+        for cfg, message in expect:
+            with self.subTest(message=message):
+                self.assertIn(message, docs._mcp_entry_issues("s", cfg))
+        # A secret-looking arg with no preceding secret flag and no token prefix is fine.
+        self.assertEqual(
+            docs._mcp_entry_issues("s", {"command": "x",
+                                         "args": ["user", "my password"]}), [])
+        # Placeholder env/header values satisfy the secret rules (loop-continue arcs).
+        self.assertEqual(docs._mcp_entry_issues(
+            "s", {"command": "x", "env": {"API_KEY": "${API_KEY}"}}), [])
+        self.assertEqual(docs._mcp_entry_issues(
+            "s", {"url": "https://example.com",
+                  "headers": {"Authorization": "Bearer <TOKEN>"}}), [])
+
+    def test_mcp_config_kind_branches(self):
+        self.assertEqual(docs._mcp_config_kind("p", None), ("config_invalid", []))
+        kind, _issues = docs._mcp_config_kind(
+            "p", {"servers": {"s": {"command": "npx"}}})
+        self.assertEqual(kind, "ok")
+        kind, issues = docs._mcp_config_kind("p", {"mcpServers": {"s": {
+            "command": "x", "env": {"API_KEY": "literal"}}}})
+        self.assertEqual(kind, "literal_secret")
+        self.assertIn("literal secret in env value", issues)
+        kind, _issues = docs._mcp_config_kind("p", {"mcpServers": {"s": {
+            "url": "http://example.com"}}})
+        self.assertEqual(kind, "transport_unsafe")
+
+    def test_machine_context_llms_markdown_ref_and_thin_fallback(self):
+        v = docs.machine_context(self.ctx({
+            "llms.txt": ("# Project context for language model consumers of this repo.\n"
+                         "See docs/guide.md\n"
+                         "docs/guide.md\n"),
+            "docs/guide.md": "# Guide\n\nDetailed documentation lives here for agents.\n",
+        }))
+        self.assertEqual((self.s(v), v.reason_code),
+                         (Status.PASS, "docs.machine_context.fallback_configured"))
+
+        v = docs.machine_context(self.ctx({"llms.txt": "tiny"}))
+        self.assertEqual((self.s(v), v.reason_code),
+                         (Status.FAIL, "docs.machine_context.fallback_incomplete"))
+
+    def test_context_map_reference_edge_branches(self):
+        refs, invalid = docs._context_map_references(
+            "# A\n\n[anchor](#section) and [self](AGENTS.md) and "
+            "[q](docs/x.md?raw=1)\n")
+        self.assertEqual(refs, ["docs/x.md"])
+        self.assertEqual(invalid, [])
+
+    def test_agent_context_map_indeterminate_target(self):
+        ctx = self.ctx({
+            "AGENTS.md": "# A\n\n## B\n\nSee [guide](docs/guide.md) for everything.\n",
+            "docs/guide.md": "# Guide\n\nValid text that is definitely long enough.\n",
+        })
+        (ctx.root / "docs/guide.md").write_bytes(b"\xff\xfe invalid utf-8 " * 8)
+        v = docs.agent_context_map(ctx)
+        self.assertEqual((self.s(v), v.reason_code),
+                         (Status.UNKNOWN, "docs.agent_context_map.indeterminate"))
 
 
 if __name__ == "__main__":

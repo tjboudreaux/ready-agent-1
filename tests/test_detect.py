@@ -1,6 +1,7 @@
 import json
 import unittest
 
+from readiness.collectors.static import StaticCollector
 from readiness.detect import detect
 
 from tests._util import make_repo, rmtree
@@ -115,8 +116,8 @@ class TestDetectPinning(unittest.TestCase):
     def test_pin_overrides_unknown(self):
         d = self._detect({
             "README.md": "# hi",
-            ".agents/readiness/config.json": '{"schema_version":"1","detect":{"project_type":'
-                                             '"service"}}',
+            ".ra1/config.json": '{"schema_version":"1","detect":{"project_type":'
+                                '"service"}}',
         })
         self.assertEqual(d.project_type, "service")
         self.assertGreaterEqual(d.confidence, 0.9)
@@ -126,23 +127,38 @@ class TestDetectPinning(unittest.TestCase):
     def test_invalid_pin_ignored_with_signal(self):
         d = self._detect({
             "README.md": "# hi",
-            ".agents/readiness/config.json": '{"detect":{"project_type":"spaceship"}}',
+            ".ra1/config.json": '{"detect":{"project_type":"spaceship"}}',
         })
         self.assertEqual(d.project_type, "unknown")
         self.assertTrue(any("ignored invalid project_type pin" in s for s in d.signals))
 
-    def test_malformed_config_ignored(self):
+    def test_malformed_config_marks_the_repository_indeterminate(self):
+        """A malformed .ra1/config.json is not "ignored": applicability cannot be trusted,
+        so detection degrades the whole scan to a blocking unknown."""
         d = self._detect({
             "README.md": "# hi",
-            ".agents/readiness/config.json": "{not json",
+            ".ra1/config.json": "{not json",
         })
         self.assertEqual(d.project_type, "unknown")
+        self.assertTrue(d.repository_indeterminate)
+        self.assertEqual(d.indeterminate_reason, "input.repository_indeterminate")
 
+    def test_legacy_policy_path_blocks_scoring(self):
+        """A legacy .agents/readiness policy file is never read; it blocks scoring with
+        migration guidance instead of being silently combined or ignored."""
+        d = self._detect({
+            "README.md": "# hi",
+            ".agents/readiness/config.json": '{"detect":{"project_type":"service"}}',
+        })
+        self.assertEqual(d.project_type, "unknown")
+        self.assertTrue(d.repository_indeterminate)
+        self.assertEqual(d.indeterminate_reason, "input.legacy_policy_path")
+        self.assertTrue(any(".ra1/" in s for s in d.signals))
 
     def test_loop_ready_config_serializes_opt_in(self):
         d = self._detect({
             "README.md": "# hi",
-            ".agents/readiness/config.json"
+            ".ra1/config.json"
             : json.dumps({"schema_version": "1", "loop_ready": True}),
         })
         self.assertEqual(d.opt_in, {"loop_ready": True})
@@ -151,22 +167,23 @@ class TestDetectPinning(unittest.TestCase):
     def test_loop_ready_requires_literal_true(self):
         cases = [
             {},
-            {".agents/readiness/config.json": "{not json"},
-            {".agents/readiness/config.json": json.dumps({"loop_ready": "true"})},
-            {".agents/readiness/config.json": json.dumps({"loop_ready": False})},
-            {".agents/readiness/config.json": json.dumps(["loop_ready"])},
+            {".ra1/config.json": "{not json"},
+            {".ra1/config.json": json.dumps({"loop_ready": "true"})},
+            {".ra1/config.json": json.dumps({"loop_ready": False})},
+            {".ra1/config.json": json.dumps(["loop_ready"])},
         ]
         for files in cases:
             with self.subTest(files=files):
                 d = self._detect({"README.md": "# hi", **files})
                 self.assertEqual(d.opt_in, {"loop_ready": False})
+
     def test_options_config_beats_file(self):
         d = self._detect(
             {
                 "README.md": "# hi",
-                ".agents/readiness/config.json": '{"detect":{"project_type":"library"}}',
+                ".ra1/config.json": '{"detect":{"project_type":"library"}}',
             },
-            options={"detect_config": {"detect": {"project_type": "cli"}}},
+            options={"_deps": {"detect_config": {"detect": {"project_type": "cli"}}}},
         )
         self.assertEqual(d.project_type, "cli")
 
@@ -175,7 +192,7 @@ class TestDetectPinning(unittest.TestCase):
             "package.json": '{"name":"root","workspaces":["packages/*"]}',
             "packages/a/package.json": '{"name":"a","dependencies":{"express":"^4"}}',
             "packages/b/package.json": '{"name":"b","main":"index.js"}',
-            ".agents/readiness/config.json": '{"detect":{"apps":{"packages/b":"frontend"}}}',
+            ".ra1/config.json": '{"detect":{"apps":{"packages/b":"frontend"}}}',
         })
         self.assertEqual(d.project_type, "monorepo-root")
         by_path = {a.path: a for a in d.apps}
@@ -187,7 +204,7 @@ class TestDetectPinning(unittest.TestCase):
             "package.json": '{"name":"root","workspaces":["packages/*"]}',
             "packages/a/package.json": '{"name":"a","dependencies":{"express":"^4"}}',
             "packages/b/package.json": '{"name":"b","main":"index.js"}',
-            ".agents/readiness/config.json": '{"detect":{"project_type":"service"}}',
+            ".ra1/config.json": '{"detect":{"project_type":"service"}}',
         })
         self.assertEqual(d.project_type, "monorepo-root")
         self.assertTrue(any("root project_type pin ignored" in s for s in d.signals))
@@ -274,7 +291,7 @@ class TestAppDiscovery(unittest.TestCase):
             "package.json": '{"name":"root","workspaces":["packages/*"]}',
             "packages/a/package.json": '{"name":"a","dependencies":{"express":"^4"}}',
             "packages/b/package.json": '{"name":"b","dependencies":{"fastify":"^4"}}',
-            ".agents/readiness/config.json": '{"detect":{"apps":{"packages/a":"notatype"}}}',
+            ".ra1/config.json": '{"detect":{"apps":{"packages/a":"notatype"}}}',
         })
         self.assertTrue(any("ignored invalid type pin" in s for s in d.signals))
 
@@ -299,16 +316,18 @@ class TestDetectInternals(unittest.TestCase):
         from readiness import detect as det
         no_go = make_repo({"cmd/api/main.go": "package main\n"})
         self.addCleanup(rmtree, no_go)
-        self.assertEqual(det._go_cmd_apps(no_go), [])
+        self.assertEqual(det._go_cmd_apps(no_go, StaticCollector(no_go)), [])
         no_cmd = make_repo({"go.mod": "module x\n"})
         self.addCleanup(rmtree, no_cmd)
-        self.assertEqual(det._go_cmd_apps(no_cmd), [])
+        self.assertEqual(det._go_cmd_apps(no_cmd, StaticCollector(no_cmd)), [])
 
     def test_maven_modules_malformed_pom(self):
         from readiness import detect as det
+        from readiness import safe_io
         root = make_repo({"pom.xml": "<project><modules><module>svc"})  # truncated/invalid
         self.addCleanup(rmtree, root)
-        self.assertEqual(det._maven_modules(root), [])
+        with self.assertRaises(safe_io.RepositoryInputError):
+            det._maven_modules(root, StaticCollector(root))
 
     _BOMB = (
         '<?xml version="1.0"{enc}?>\n'
@@ -322,55 +341,69 @@ class TestDetectInternals(unittest.TestCase):
     )
 
     def test_maven_modules_rejects_entity_expansion(self):
-        """A billion-laughs pom must be refused, not expanded."""
+        """A billion-laughs pom must be refused, not expanded — a typed input refusal."""
         from readiness import detect as det
+        from readiness import safe_io
         root = make_repo({"pom.xml": self._BOMB.format(enc="")})
         self.addCleanup(rmtree, root)
-        self.assertEqual(det._maven_modules(root), [])
+        with self.assertRaises(safe_io.RepositoryInputError):
+            det._maven_modules(root, StaticCollector(root))
 
     def test_maven_modules_rejects_utf16_entity_expansion(self):
-        """UTF-16 encodes no ASCII '<!DOCTYPE', so a byte-substring guard would miss this
-        while ElementTree honours the BOM and expands the bomb anyway."""
+        """UTF-16 encodes no ASCII '<!DOCTYPE', but the bounded reader is strict UTF-8,
+        so the bomb is refused at decode time and never reaches the XML parser."""
         import tempfile
         from pathlib import Path
 
         from readiness import detect as det
+        from readiness import safe_io
         root = Path(tempfile.mkdtemp(prefix="ar-utf16-"))
         self.addCleanup(rmtree, root)
         (root / "pom.xml").write_bytes(self._BOMB.format(enc=' encoding="UTF-16"').encode("utf-16"))
-        self.assertEqual(det._maven_modules(root), [])
+        with self.assertRaises(safe_io.RepositoryInputError):
+            det._maven_modules(root, StaticCollector(root))
 
-    def test_maven_modules_accepts_utf16_pom(self):
-        """Rejecting the bomb must not reject legitimate non-UTF-8 poms."""
+    def test_maven_modules_rejects_non_utf8_pom(self):
+        """Strict UTF-8 bounded reads refuse a legitimate UTF-16 pom as unreadable rather
+        than mis-decoding it; detect() degrades the scan to the indeterminate state."""
         import tempfile
         from pathlib import Path
 
         from readiness import detect as det
+        from readiness import safe_io
         root = Path(tempfile.mkdtemp(prefix="ar-utf16ok-"))
         self.addCleanup(rmtree, root)
         (root / "svc").mkdir()
         doc = ('<?xml version="1.0" encoding="UTF-16"?>'
                '<project><modules><module>svc</module></modules></project>')
         (root / "pom.xml").write_bytes(doc.encode("utf-16"))
-        self.assertEqual(det._maven_modules(root), ["svc"])
+        with self.assertRaises(safe_io.RepositoryInputError):
+            det._maven_modules(root, StaticCollector(root))
+        d = det.detect(root)
+        self.assertTrue(d.repository_indeterminate)
+        self.assertEqual(d.indeterminate_reason, "input.repository_indeterminate")
 
     def test_maven_modules_rejects_oversize_pom(self):
         from readiness import detect as det
+        from readiness import safe_io
         padding = "<!-- " + ("x" * (det._POM_MAX_BYTES + 64)) + " -->"
-        root = make_repo({"pom.xml": f"<project>{padding}<modules><module>svc</module></modules></"
+        root = make_repo({"pom.xml": f"<project>{padding}<modules><module>svc</module></"
                                      f"project>"})
         self.addCleanup(rmtree, root)
         (root / "svc").mkdir()
-        self.assertEqual(det._maven_modules(root), [])
+        with self.assertRaises(safe_io.RepositoryInputError):
+            det._maven_modules(root, StaticCollector(root))
 
     def test_maven_modules_unreadable_pom(self):
-        """pom.xml exists but cannot be opened -- a directory of that name is the simplest
-        real way to hit the OSError path."""
+        """pom.xml exists but cannot be opened as a regular file -- a directory of that
+        name is the simplest real way to hit the typed refusal."""
         from readiness import detect as det
+        from readiness import safe_io
         root = make_repo({"other.txt": "x"})
         self.addCleanup(rmtree, root)
         (root / "pom.xml").mkdir()
-        self.assertEqual(det._maven_modules(root), [])
+        with self.assertRaises(safe_io.RepositoryInputError):
+            det._maven_modules(root, StaticCollector(root))
 
     def test_maven_modules_skips_empty_and_missing_modules(self):
         """Blank, self-closing and non-existent module entries are all skipped."""
@@ -383,7 +416,7 @@ class TestDetectInternals(unittest.TestCase):
                                      "</modules></project>"})
         self.addCleanup(rmtree, root)
         (root / "svc").mkdir()
-        self.assertEqual(det._maven_modules(root), ["svc"])
+        self.assertEqual(det._maven_modules(root, StaticCollector(root)), ["svc"])
 
     def test_maven_modules_rejects_path_escaping_root(self):
         """A module pointing outside the project must not become a scanned app."""
@@ -406,11 +439,10 @@ class TestDetectInternals(unittest.TestCase):
             "</modules></project>",
             encoding="utf-8",
         )
-        self.assertEqual(det._maven_modules(root), ["svc"])
+        self.assertEqual(det._maven_modules(root, StaticCollector(root)), ["svc"])
 
     def test_detect_test_cmd_variants(self):
         from readiness import detect as det
-        from readiness.collectors.static import StaticCollector
         cases = [
             ({"package.json": '{"scripts":{"test":"jest"}}'}, "npm test"),
             ({"pyproject.toml": '[tool.pytest.ini_options]\n'}, "pytest"),
@@ -423,27 +455,77 @@ class TestDetectInternals(unittest.TestCase):
             self.addCleanup(rmtree, root)
             self.assertEqual(det._detect_test_cmd(StaticCollector(root)), expected)
 
-    def test_malformed_config_is_ignored(self):
-        bad = self._d({".agents/readiness/config.json": "{not json"})
-        self.assertEqual(bad.project_type, "unknown")  # config error -> no pin, no crash
+    def test_malformed_config_is_indeterminate_not_ignored(self):
+        bad = self._d({".ra1/config.json": "{not json"})
+        # A malformed policy file degrades the whole scan; it is never silently dropped.
+        self.assertTrue(bad.repository_indeterminate)
+        self.assertEqual(bad.indeterminate_reason, "input.repository_indeterminate")
         nondict = self._d({"pyproject.toml": '[project]\nname="x"\n',
-                           ".agents/readiness/config.json": '{"detect":"notadict"}'})
+                           ".ra1/config.json": '{"detect":"notadict"}'})
         self.assertEqual(nondict.project_type, "library")  # detect block ignored
 
     def test_config_via_options(self):
         root = make_repo({"pyproject.toml": '[project]\nname="x"\n'})
         self.addCleanup(rmtree, root)
-        # explicit readiness_config option beats on-disk file (covers the options branch)
-        d = detect(root, None, {"readiness_config": {"loop_ready": True}})
+        # injected readiness_config dependency beats the on-disk file
+        d = detect(root, None, {"_deps": {"readiness_config": {"loop_ready": True}}})
         self.assertTrue(d.opt_in["loop_ready"])
-        # non-dict detect_config option is ignored without crashing
-        d2 = detect(root, None, {"detect_config": "notadict"})
+        # non-dict detect_config dependency is ignored without crashing
+        d2 = detect(root, None, {"_deps": {"detect_config": "notadict"}})
         self.assertEqual(d2.project_type, "library")
 
     def _d(self, files):
         root = make_repo(files)
         self.addCleanup(rmtree, root)
         return detect(root)
+
+
+class TestDetectBranchCoverage(unittest.TestCase):
+    def test_read_policy_json_degraded_state_is_invalid(self):
+        from readiness import detect as det
+        from readiness import safe_io
+        root = make_repo({".ra1/config.json": " " * (safe_io.MAX_CONFIG_BYTES + 16)})
+        self.addCleanup(rmtree, root)
+        static = StaticCollector(root)
+        self.assertEqual(det.read_policy_json(static, ".ra1/config.json"),
+                         ("invalid", None))
+        static.close()
+
+    def test_static_for_returns_the_given_collector(self):
+        from readiness import detect as det
+        static = StaticCollector(".")
+        self.assertIs(det._static_for(".", static), static)
+        static.close()
+
+    def test_workspace_pattern_validation(self):
+        from readiness import detect as det
+        from readiness import safe_io
+        with self.assertRaises(safe_io.RepositoryInputError):
+            det._validated_workspace_patterns([123])          # not a string
+        self.assertEqual(det._validated_workspace_patterns(["/"]), [])  # empty after strip
+        with self.assertRaises(safe_io.RepositoryInputError):
+            det._validated_workspace_patterns(["../x"])       # invalid grammar
+        # duplicates collapse; a trailing slash normalizes away
+        self.assertEqual(det._validated_workspace_patterns(["a", "a", "b/"]), ["a", "b"])
+        with self.assertRaises(safe_io.RepositoryInputError):
+            det._validated_workspace_patterns(
+                [f"p{i:03d}" for i in range(safe_io.MAX_CONFIG_PATTERNS + 1)])
+
+    def test_gradle_modules_skip_empty_absolute_and_escaping_tokens(self):
+        from readiness import detect as det
+        # ':' -> empty after the colon strip; '/abs' is absolute; ':..:evil' escapes root.
+        root = make_repo({"settings.gradle": "include ':svc', ':', '/abs', ':..:evil'\n"})
+        self.addCleanup(rmtree, root)
+        (root / "svc").mkdir()
+        self.assertEqual(det._gradle_modules(root, StaticCollector(root)), ["svc"])
+
+    def test_build_app_without_root_static(self):
+        from readiness import detect as det
+        root = make_repo({"pyproject.toml": '[project]\nname="lib"\nversion="1.0"\n'})
+        self.addCleanup(rmtree, root)
+        app = det._build_app(root, ".")
+        self.assertEqual(app.path, ".")
+        self.assertIn("python", app.languages)
 
 
 if __name__ == "__main__":

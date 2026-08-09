@@ -3,7 +3,6 @@ import io
 import json
 import re
 import subprocess
-import sys
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -17,6 +16,8 @@ from readiness.detect import classify_candidates, load_readiness_config
 from readiness.model import (
     App,
     CriterionResult,
+    DecisionStep,
+    DecisionTrace,
     Detection,
     Gap,
     LevelScore,
@@ -27,23 +28,40 @@ from readiness.model import (
 from readiness.run import analyze
 from readiness.score import NOT_OPTED_IN_LOOP, load_registry
 
-from tests._util import make_repo, rmtree
+from tests._util import make_repo, options, rmtree
 
 REPO = Path(__file__).resolve().parents[1]
 
 
 def _rep(results=None, detection=None, score=None, github_available=False, **kw):
-    return Report(project_path="/p", schema_version="2", engine_version="0.10.0",
-                  registry_version="0.7.0", detector_version="0.5.0",
+    return Report(project_path="/p", schema_version="3", engine_version="0.11.0",
+                  registry_version="0.8.0", detector_version="0.6.0",
                   results=results or [], detection=detection, score=score,
                   github_available=github_available, **kw)
 
 
-def _crit(cid, **kw):
+def _trace(cid, status, rationale, reason_code=None):
+    """A valid schema-v3 trace for a directly constructed result (empty evidence: 3 steps)."""
+    code = reason_code or f"check.{status.value}"
+    return DecisionTrace(
+        reason_code=code, rule_ref="checks._test.check",
+        steps=[
+            DecisionStep(kind="rule", code="rule.applied",
+                         message=f"Criterion {cid} ({cid}) is evaluated by "
+                                 "checks._test.check."),
+            DecisionStep(kind="evaluation", code=code, message=rationale or "evaluated"),
+            DecisionStep(kind="conclusion", code=f"conclusion.{status.value}",
+                         message=f"Result: {status.value}."),
+        ])
+
+
+def _crit(cid, reason_code=None, **kw):
     base = dict(id=cid, title=cid, pillar="P", level=2, scope="repository", gating=True,
                 status=Status.UNKNOWN)
     base.update(kw)
-    return CriterionResult(**base)
+    result = CriterionResult(**base)
+    result.decision_trace = _trace(cid, result.status, result.rationale, reason_code)
+    return result
 
 
 class TestConfigMappingIsCurrent(unittest.TestCase):
@@ -124,7 +142,7 @@ class TestDetectionGaps(unittest.TestCase):
         """
         root = make_repo({"README.md": "# svc", "requirements.txt": "flask>=3\ngunicorn==21\n"})
         self.addCleanup(rmtree, root)
-        report = analyze(root, {"no_github": True})
+        report = analyze(root, options())
         self.assertEqual(report.detection.project_type, "service")
         self.assertNotIn("detect.project_type", {g.id for g in report.gaps})
         self.assertNotIn("detect.project_type.contested", {g.id for g in report.gaps})
@@ -144,18 +162,18 @@ class TestDetectionGaps(unittest.TestCase):
         service_only = "docs.api_schema_docs"        # service/api, never frontend
         frontend_only = "build.dependency_weight_budget"  # frontend only
 
-        before = analyze(root, {"no_github": True})
+        before = analyze(root, options())
         self.assertIn("detect.project_type.contested", {g.id for g in before.gaps})
         rows = {r.id: r for r in before.results}
         # Inferred as a service: the frontend-only criterion is skipped as inapplicable.
         self.assertEqual(rows[frontend_only].status, Status.SKIPPED)
 
-        cfg = Path(root) / ".agents" / "readiness"
+        cfg = Path(root) / ".ra1"
         cfg.mkdir(parents=True, exist_ok=True)
         (cfg / "config.json").write_text(
             json.dumps({"detect": {"surfaces": ["service", "frontend"]}}), encoding="utf-8")
 
-        after = analyze(root, {"no_github": True})
+        after = analyze(root, options())
         self.assertNotIn("detect.project_type.contested", {g.id for g in after.gaps})
         self.assertEqual(after.detection.apps[0].surfaces, ["service", "frontend"])
         rows = {r.id: r for r in after.results}
@@ -188,11 +206,11 @@ class TestDetectionGaps(unittest.TestCase):
         for order in (["service", "frontend"], ["frontend", "service"]):
             root = make_repo(files)
             self.addCleanup(rmtree, root)
-            cfg = Path(root) / ".agents" / "readiness"
+            cfg = Path(root) / ".ra1"
             cfg.mkdir(parents=True, exist_ok=True)
             (cfg / "config.json").write_text(json.dumps({"detect": {"surfaces": order}}),
                                              encoding="utf-8")
-            report = analyze(root, {"no_github": True})
+            report = analyze(root, options())
             key = tuple(order)
             results[key] = sorted((r.id, r.app_path, r.status.value) for r in report.results)
             scores[key] = report.score.to_dict()
@@ -213,18 +231,18 @@ class TestDetectionGaps(unittest.TestCase):
         """The fallback: no declaration means applicability is exactly as before."""
         root = make_repo({"README.md": "# x", "requirements.txt": "flask>=3\n"})
         self.addCleanup(rmtree, root)
-        report = analyze(root, {"no_github": True})
+        report = analyze(root, options())
         self.assertEqual(report.detection.surfaces, [])
         self.assertEqual(report.detection.match_surfaces(), ["service"])
 
     def test_an_invalid_surfaces_pin_is_ignored_and_disclosed(self):
         root = make_repo({"README.md": "# x", "requirements.txt": "flask>=3\n"})
         self.addCleanup(rmtree, root)
-        cfg = Path(root) / ".agents" / "readiness"
+        cfg = Path(root) / ".ra1"
         cfg.mkdir(parents=True, exist_ok=True)
         (cfg / "config.json").write_text(
             json.dumps({"detect": {"surfaces": ["nonsense"]}}), encoding="utf-8")
-        report = analyze(root, {"no_github": True})
+        report = analyze(root, options())
         self.assertEqual(report.detection.apps[0].surfaces, [])
         self.assertTrue(any("ignored invalid surfaces pin" in s
                             for s in report.detection.signals))
@@ -239,7 +257,7 @@ class TestDetectionGaps(unittest.TestCase):
                               apps=apps)
         results = [_crit("x.y", app_path="apps/mystery", level=2)]
         found = {g.id for g in gaps_mod.derive_gaps(_rep(results=results, detection=detection), {})}
-        self.assertIn("detect.apps.apps/mystery", found)
+        assert any(f.startswith("detect.app_type.") for f in found), found
         self.assertNotIn("detect.apps.apps/web", found)
 
     def test_a_pinned_monorepo_app_is_not_asked_about(self):
@@ -355,7 +373,8 @@ class TestGapsAreAdvisory(unittest.TestCase):
     """A gap explains a result. It can never be an input to one."""
 
     def test_deriving_gaps_does_not_mutate_the_report_or_its_score(self):
-        results = [_crit("build.check_command", status=Status.FAIL)]
+        results = [_crit("build.check_command", status=Status.FAIL,
+                         reason_code="build.check_command.missing")]
         score = ScoreSummary(level=1, level_name="Functional", pass_rate=1.0, gating_passed=1,
                              gating_total=1)
         report = _rep(results=results, score=score)
@@ -410,8 +429,9 @@ class TestEndToEnd(unittest.TestCase):
     def test_a_real_scan_carries_serializable_gaps(self):
         root = make_repo({"README.md": "# x", "pyproject.toml": '[project]\nname="x"\n'})
         self.addCleanup(rmtree, root)
-        report = analyze(root, {"no_github": True})
+        report = analyze(root, options())
         payload = json.loads(json.dumps(report.to_dict()))
+        self.assertEqual(payload["schema_version"], "3")
         self.assertIn("gaps", payload)
         for gap in payload["gaps"]:
             self.assertTrue(gap["question"])
@@ -421,14 +441,14 @@ class TestEndToEnd(unittest.TestCase):
         files = {"README.md": "# x", "Makefile": "check:\n\techo ok\n"}
         root = make_repo(files)
         self.addCleanup(rmtree, root)
-        before = analyze(root, {"no_github": True})
+        before = analyze(root, options())
         self.assertIn("detect.project_type", {g.id for g in before.gaps})
 
-        cfg = Path(root) / ".agents" / "readiness"
+        cfg = Path(root) / ".ra1"
         cfg.mkdir(parents=True, exist_ok=True)
         (cfg / "config.json").write_text(json.dumps({"detect": {"project_type": "service"}}),
                                          encoding="utf-8")
-        after = analyze(root, {"no_github": True})
+        after = analyze(root, options())
         self.assertNotIn("detect.project_type", {g.id for g in after.gaps})
         self.assertEqual(after.detection.project_type, "service")
 
@@ -437,6 +457,8 @@ class TestEndToEnd(unittest.TestCase):
 
         The array-of-objects form is not cosmetic: the engine iterates the file and reads
         `id` off each entry, so an object keyed by criterion id raises rather than waiving.
+        The free-form reason stays in the policy file; the report carries only the
+        canonical waiver rationale.
         """
         root = make_repo({"README.md": "# x"})
         self.addCleanup(rmtree, root)
@@ -445,21 +467,25 @@ class TestEndToEnd(unittest.TestCase):
                    "reason": "Documented elsewhere. — asked by ra1-interview, "
                              "answered by @dev, 2026-08-06",
                    "expires": "2027-02-01"}]
-        cfg = Path(root) / ".agents" / "readiness"
+        cfg = Path(root) / ".ra1"
         cfg.mkdir(parents=True, exist_ok=True)
         (cfg / "waivers.json").write_text(json.dumps(waiver), encoding="utf-8")
 
-        report = analyze(root, {"no_github": True})
+        report = analyze(root, options())
         row = next(r for r in report.results if r.id == target)
         self.assertEqual(row.status, Status.WAIVED)
-        self.assertIn("Documented elsewhere", row.rationale)
+        self.assertEqual(
+            row.rationale,
+            "Waived by policy; the free-form reason remains in the source policy.")
+        self.assertNotIn("Documented elsewhere", row.rationale)
+        self.assertEqual(row.decision_trace.reason_code, "waiver.active")
         # A waived criterion leaves the gate denominator; it is never counted as passing.
         self.assertEqual(row.evaluated_apps, 0)
 
     def test_config_written_at_the_documented_paths_is_read_back(self):
         root = make_repo({"README.md": "# x"})
         self.addCleanup(rmtree, root)
-        cfg = Path(root) / ".agents" / "readiness"
+        cfg = Path(root) / ".ra1"
         cfg.mkdir(parents=True, exist_ok=True)
         documented = {"detect": {"project_type": "cli", "apps": {"apps/web": "frontend"}},
                       "loop_ready": True, "ci_budget_minutes": 15,
@@ -467,7 +493,7 @@ class TestEndToEnd(unittest.TestCase):
         (cfg / "config.json").write_text(json.dumps(documented), encoding="utf-8")
         loaded = load_readiness_config(root)
         self.assertEqual(loaded, documented)
-        report = analyze(root, {"no_github": True})
+        report = analyze(root, options())
         self.assertEqual(report.detection.project_type, "cli")
         self.assertTrue(report.detection.opt_in["loop_ready"])
         self.assertNotIn("config.loop_ready", {g.id for g in report.gaps})
@@ -482,23 +508,22 @@ class TestGapRendering(unittest.TestCase):
         return Gap(**base)
 
     def test_a_config_gap_names_the_file_and_path(self):
-        gap = self._gap(answer={"file": "cfg.json", "path": "a.b"}, options=["one", "two"],
+        gap = self._gap(answer={"file": ".ra1/config.json", "path": "a.b"},
+                        options=["one", "two"],
                         evidence=["saw this"], blocks=["c.1"], blocked_gating=1, levels=[3])
         text = "\n".join(report_mod._gap_lines([gap]))
         self.assertIn("### Q?", text)
-        self.assertIn("`cfg.json` → `a.b`", text)
-        self.assertIn("`one`, `two`", text)
+        self.assertIn("**Recordable:** no", text)
         self.assertIn("saw this", text)
         self.assertIn("1 gating at L3", text)
 
     def test_a_capability_gap_names_the_action_and_the_waiver_path(self):
-        gap = self._gap(kind="capability", answer={"action": "authenticate gh"}, waivable=True,
-                        blocks=["c.1", "c.2"])
+        gap = self._gap(kind="capability",
+                        answer={"action": "authenticate gh", "file": ".ra1/waivers.json"},
+                        waivable=True, blocks=["c.1", "c.2"])
         text = "\n".join(report_mod._gap_lines([gap]))
-        self.assertIn("**Resolved by:** authenticate gh", text)
+        self.assertIn("**Recordable:** no", text)
         self.assertIn("2 advisory", text)
-        self.assertIn("waivers.json", text)
-        self.assertIn("never counted as passing", text)
 
     def test_a_gap_with_no_answer_target_or_evidence_still_renders(self):
         text = "\n".join(report_mod._gap_lines([self._gap()]))
@@ -518,7 +543,7 @@ class TestGapsCli(unittest.TestCase):
     def test_markdown_is_the_default_and_lists_the_questions(self):
         root = make_repo({"README.md": "# x"})
         self.addCleanup(rmtree, root)
-        code, out = self._run(["gaps", "--project", str(root), "--no-github"])
+        code, out = self._run(["gaps", "--project", str(root)])
         self.assertEqual(code, 0)
         self.assertIn("## Unanswered Questions", out)
         self.assertIn("What kind of project is this repository", out)
@@ -526,28 +551,27 @@ class TestGapsCli(unittest.TestCase):
     def test_json_format_emits_the_gap_records(self):
         root = make_repo({"README.md": "# x"})
         self.addCleanup(rmtree, root)
-        code, out = self._run(["gaps", "--project", str(root), "--format", "json",
-                               "--no-github"])
+        code, out = self._run(["gaps", "--project", str(root), "--format", "json"])
         self.assertEqual(code, 0)
         self.assertTrue(any(g["kind"] == "detection" for g in json.loads(out)))
 
     def test_a_gapless_scan_says_so_and_still_exits_zero(self):
         """An unanswered question is a worklist item, never a failing build.
 
-        `--no-github` always produces the capability gap, so the gapless branch is exercised
-        against a report that genuinely carries none rather than a repo that cannot exist
-        offline.
+        An offline scan always produces the capability gap, so the gapless branch is
+        exercised against a report that genuinely carries none rather than a repo that
+        cannot exist offline.
         """
         gapless = _rep(github_available=True)
         with mock.patch.object(cli, "analyze", return_value=gapless):
-            code, out = self._run(["gaps", "--project", ".", "--no-github"])
+            code, out = self._run(["gaps", "--project", "."])
         self.assertEqual(code, 0)
         self.assertIn("No unanswered questions", out)
 
     def test_gaps_never_fail_the_command(self):
         root = make_repo({"README.md": "# x"})
         self.addCleanup(rmtree, root)
-        code, out = self._run(["gaps", "--project", str(root), "--no-github"])
+        code, out = self._run(["gaps", "--project", str(root)])
         self.assertEqual(code, 0)
         self.assertIn("Unanswered Questions", out)
 
@@ -580,6 +604,7 @@ class TestDocumentedCommands(unittest.TestCase):
                 if "cli.py" in line and line.lstrip().startswith("python3"):
                     self.assertNotIn("dirname", line, f"{skill} resolves cli.py from $0")
                     self.assertIn("<skill-dir>", line, f"{skill} lacks the skill-dir placeholder")
+                    self.assertIn("-I ", line, f"{skill} command lacks -I isolation")
 
     def test_every_documented_command_names_a_real_engine_entrypoint(self):
         for skill in sorted(p.parent.name for p in (REPO / "skills").glob("*/SKILL.md")):
@@ -587,16 +612,13 @@ class TestDocumentedCommands(unittest.TestCase):
             self.assertTrue(commands, f"{skill} documents no cli.py command")
             for command in commands:
                 resolved = command.replace("<skill-dir>", str(self._skill_dir(skill)))
-                path = re.search(r'python3 "([^"]+)"', resolved).group(1)
+                path = re.search(r'python3 -I "([^"]+)"', resolved).group(1)
                 self.assertTrue(Path(path).exists(), f"{skill}: {path} does not exist")
 
-    def _run_documented(self, command, repo, cwd):
-        """Run a documented command verbatim, substituting only its placeholders."""
-        filled = (command
-                  .replace("<skill-dir>", str(self._skill_dir("ra1-interview")))
-                  .replace("<repo-path>", str(repo))
-                  + " --no-github")
-        return subprocess.run(["bash", "-c", filled], cwd=cwd, capture_output=True,
+    def _run_documented(self, command, repo, skill):
+        """Run a documented project-dot command verbatim from the target repo."""
+        filled = command.replace("<skill-dir>", str(self._skill_dir(skill)))
+        return subprocess.run(["bash", "-c", filled], cwd=str(repo), capture_output=True,
                               text=True, timeout=180), filled
 
     def test_the_documented_gaps_command_runs_from_an_unrelated_cwd(self):
@@ -605,20 +627,36 @@ class TestDocumentedCommands(unittest.TestCase):
         elsewhere = make_repo({"unrelated.txt": "not the skill, not the repo"})
         self.addCleanup(rmtree, elsewhere)
         command = next(c for c in self._commands("ra1-interview") if " gaps " in f" {c} ")
-        done, filled = self._run_documented(command, repo, cwd=elsewhere)
+        done, filled = self._run_documented(command, repo, skill="ra1-interview")
         self.assertEqual(done.returncode, 0, f"{filled}\n{done.stderr}")
         payload = json.loads(done.stdout)
-        self.assertTrue(any(g["id"] == "detect.project_type" for g in payload), payload)
+        self.assertTrue(any(g["gap_id"] == "detect.project_type" for g in payload), payload)
+
+    def test_interview_does_not_document_a_report_command(self):
+        commands = self._commands("ra1-interview")
+        self.assertTrue(any(" gaps " in f" {c} " for c in commands))
+        self.assertTrue(any(" answer " in f" {c} " for c in commands))
+        self.assertFalse(any(" report " in f" {c} " for c in commands),
+                         "interview must not document a report command")
 
     def test_the_documented_report_command_runs_from_an_unrelated_cwd(self):
         repo = make_repo({"README.md": "# x"})
         self.addCleanup(rmtree, repo)
+        # In-repository persistence requires the authoritative ignore proof: a real git
+        # repo whose root .gitignore ignores exactly the generated `.ra1/reports/` tree.
+        for cmd in (["git", "init", "-q"], ["git", "config", "user.email", "t@example.com"],
+                    ["git", "config", "user.name", "Test"]):
+            subprocess.run(cmd, cwd=repo, check=True, capture_output=True)
+        (Path(repo) / ".gitignore").write_text("/.ra1/reports/\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True,
+                       capture_output=True)
         elsewhere = make_repo({"unrelated.txt": "not the skill, not the repo"})
         self.addCleanup(rmtree, elsewhere)
-        command = next(c for c in self._commands("ra1-interview") if " report " in f" {c} ")
-        done, filled = self._run_documented(command, repo, cwd=elsewhere)
+        command = next(c for c in self._commands("ra1-report") if " report " in f" {c} ")
+        done, filled = self._run_documented(command, repo, skill="ra1-report")
         self.assertIn(done.returncode, (0, 1), f"{filled}\n{done.stderr}")  # 1 = below min level
-        payload = json.loads((Path(repo) / ".agents" / "readiness" / "report.json")
+        payload = json.loads((Path(repo) / ".ra1" / "reports" / "report.json")
                              .read_text(encoding="utf-8"))
         self.assertIn("gaps", payload)
 

@@ -10,14 +10,18 @@ from xml.etree import ElementTree as ET
 from readiness import cli, theme
 from readiness import report as report_mod
 from readiness.model import (
+    REQUIRED_REASON_CODES,
     App,
     CriterionResult,
+    DecisionStep,
+    DecisionTrace,
     Detection,
     Evidence,
     LevelScore,
     Report,
     ScoreSummary,
     Status,
+    validate_decision_trace,
 )
 from readiness.run import analyze
 
@@ -34,7 +38,46 @@ GOODISH = {
 
 def _report(files):
     root = make_repo(files)
-    return root, analyze(root, {"no_github": True})
+    return root, analyze(root)  # offline (T2 not requested) is the default
+
+
+def _trace(result, reason_code=None):
+    """Attach a schema-v3-valid DecisionTrace to a directly constructed CriterionResult.
+
+    Mirrors the engine's four-stage chain (rule → observation → evaluation → conclusion);
+    required-code criteria get an allowlisted typed suffix, everything else the generic
+    ``check.<status>`` code untouched checks keep.
+    """
+    code = reason_code
+    if code is None:
+        if result.id in REQUIRED_REASON_CODES:
+            suffixes = REQUIRED_REASON_CODES[result.id]
+            code = f"{result.id}.{suffixes[0] if result.status is Status.PASS else suffixes[1]}"
+        else:
+            code = f"check.{result.status.value}"
+    rule_ref = "checks._test.check"
+    steps = [DecisionStep(kind="rule", code="rule.applied",
+                          message=f"Criterion {result.id} ({result.title}) is evaluated by "
+                                  f"{rule_ref}.")]
+    if result.evidence:
+        steps.append(DecisionStep(
+            kind="observation", code="evidence.observed",
+            message=f"Observed {len(result.evidence)} cited evidence item(s).",
+            evidence_refs=list(range(len(result.evidence)))))
+    steps.append(DecisionStep(kind="evaluation", code=code,
+                              message=result.rationale or "evaluated"))
+    steps.append(DecisionStep(kind="conclusion", code=f"conclusion.{result.status.value}",
+                              message=f"Result: {result.status.value}."))
+    result.decision_trace = DecisionTrace(reason_code=code, rule_ref=rule_ref, steps=steps)
+    return result
+
+
+def _traced(results):
+    """Attach valid traces to hand-built results, self-checked against the model validator."""
+    for result in results:
+        _trace(result)
+        assert validate_decision_trace(result.to_dict()) == [], result.id
+    return results
 
 
 class TestMarkdown(unittest.TestCase):
@@ -44,8 +87,8 @@ class TestMarkdown(unittest.TestCase):
         md = report_mod.render_markdown(rep)
         self.assertIn("# Agent Readiness Report", md)
         self.assertIn("Level 0", md)
-        self.assertIn("## Criteria", md)
-        self.assertIn("## Action Items", md)
+        self.assertIn("## Criteria Results", md)
+        self.assertIn("## Clear the next gate", md)
         self.assertIn("Quick wins", md)  # gitignore scaffold
 
     def test_unknown_type_warning(self):
@@ -58,25 +101,37 @@ class TestMarkdown(unittest.TestCase):
     def test_non_gating_failures_render_as_advisory_improvements(self):
         rep = Report(project_path=".", schema_version="1", engine_version="0.3.0",
                      registry_version="0.3.0", detector_version="0.3.0")
-        rep.results = [
-            CriterionResult(id="docs.readme", title="README", pillar="Documentation", level=1,
-                            scope="repository"
-                                  , gating=True, status=Status.FAIL, rationale="missing",
-                            passed_apps=0, evaluated_apps=1),
+        blocking = CriterionResult(id="docs.readme", title="README", pillar="Documentation",
+                                   level=1, scope="repository", gating=True,
+                                   status=Status.FAIL, rationale="missing",
+                                   passed_apps=0, evaluated_apps=1)
+        rep.results = _traced([
+            blocking,
             CriterionResult(id=
                 "loop.loop_runs_dir", title="Loop Run Log README", pillar="Documentation", level=2,
                             scope=
                                 "repository", gating=False, status=Status.FAIL, rationale="missing "
                                     "loop log",
                             fix_kind="scaffold", passed_apps=0, evaluated_apps=1),
-        ]
+        ])
+        # The next-gate list is the complete set of blockers at the first unachieved
+        # defined Level — an advisory failure never appears in it.
+        rep.score = ScoreSummary(
+            level=0, level_name="None", pass_rate=0.0, gating_passed=0, gating_total=1,
+            levels=[LevelScore(level=1, name="Functional", passed=0, total=1,
+                               achieved=False, defined=True, defined_total=1)],
+            next_gate_actions=[{"id": blocking.id, "title": blocking.title,
+                                "pillar": blocking.pillar, "level": blocking.level,
+                                "status": "fail", "fix_kind": "",
+                                "rationale": blocking.rationale}])
         md = report_mod.render_markdown(rep)
         self.assertIn("**Loop Run Log README** (**advisory**, L2, 0/1): missing loop log", md)
         self.assertIn("## Advisory Improvements", md)
         self.assertIn("- Loop Run Log README (L2, Documentation) — missing loop log", md)
-        action_section = md.split("## Advisory Improvements")[0].split("## Action Items", 1)[1]
-        self.assertNotIn("Loop Run Log README", action_section)
-        self.assertIn("README", action_section)
+        gate_section = md.split("## Advisory Improvements")[0].split(
+            "## Clear the next gate", 1)[1]
+        self.assertNotIn("Loop Run Log README", gate_section)
+        self.assertIn("README", gate_section)
 
 class TestAcdcLabels(unittest.TestCase):
     def _mapped(self, **kw):
@@ -86,7 +141,7 @@ class TestAcdcLabels(unittest.TestCase):
                     acdc_stage="verify", acdc_loop="inner",
                     passed_apps=0, evaluated_apps=1)
         base.update(kw)
-        return CriterionResult(**base)
+        return _trace(CriterionResult(**base))
 
     def test_to_dict_carries_acdc_fields(self):
         d = self._mapped().to_dict()
@@ -141,12 +196,12 @@ class TestGithub(unittest.TestCase):
     def test_located_annotation_uses_comma_separated_escaped_properties(self):
         rep = Report(project_path=".", schema_version="1", engine_version="0.3.0",
                      registry_version="0.3.0", detector_version="0.3.0")
-        rep.results = [CriterionResult(id="style.large_file_guard", title="Large File",
+        rep.results = _traced([CriterionResult(id="style.large_file_guard", title="Large File",
                                        pillar="Style", level=1, scope="repository",
                                        gating=True, status=Status.FAIL,
                                        rationale="src/big,file.py is huge",
                                        evidence=[Evidence(summary="large",
-                                                          source="src/big,file.py")])]
+                                                          source="src/big,file.py")])])
         gh = report_mod.render_github(rep)
         self.assertIn(
             "::warning title=Readiness%3A Large File,file=src/big%2Cfile.py::src/big,file.py is "
@@ -159,9 +214,9 @@ class TestGithub(unittest.TestCase):
     def test_non_gating_failures_omit_annotations(self):
         rep = Report(project_path=".", schema_version="1", engine_version="0.3.0",
                      registry_version="0.3.0", detector_version="0.3.0")
-        rep.results = [CriterionResult(id="loop.loop_runs_dir", title="Loop Run Log README",
+        rep.results = _traced([CriterionResult(id="loop.loop_runs_dir", title="Loop Run Log README",
                                        pillar="Documentation", level=2, scope="repository",
-                                       gating=False, status=Status.FAIL, rationale="missing")]
+                                       gating=False, status=Status.FAIL, rationale="missing")])
         gh = report_mod.render_github(rep)
         self.assertNotIn("::warning", gh)
 
@@ -188,11 +243,11 @@ class TestSarif(unittest.TestCase):
     def test_located_criterion_emitted(self):
         rep = Report(project_path=".", schema_version="1", engine_version="0.1.0",
                      registry_version="0.1.0", detector_version="0.1.0")
-        rep.results = [CriterionResult(
+        rep.results = _traced([CriterionResult(
             id="style.large_file", title="Large File", pillar="Style & Validation", level=1,
             scope="repository", gating=True, status=Status.FAIL, rationale="src/big.py is huge",
             evidence=[Evidence(summary="huge", source="src/big.py")],
-        )]
+        )])
         doc = json.loads(report_mod.render_sarif(rep))
         res = doc["runs"][0]["results"]
         self.assertEqual(len(res), 1)
@@ -204,11 +259,11 @@ class TestSarif(unittest.TestCase):
     def test_non_gating_failures_omitted_from_sarif(self):
         rep = Report(project_path=".", schema_version="1", engine_version="0.3.0",
                      registry_version="0.3.0", detector_version="0.3.0")
-        rep.results = [CriterionResult(
+        rep.results = _traced([CriterionResult(
             id="loop.loop_runs_dir", title="Loop Run Log README", pillar="Documentation", level=2,
             scope="repository", gating=False, status=Status.FAIL, rationale="missing",
             evidence=[Evidence(summary="loop", source="loop-runs/README.md")],
-        )]
+        )])
         doc = json.loads(report_mod.render_sarif(rep))
         self.assertEqual(doc["runs"][0]["results"], [])
 
@@ -255,6 +310,12 @@ class TestRenderDispatch(unittest.TestCase):
         self.addCleanup(rmtree, root)
         with self.assertRaisesRegex(ValueError, "unsupported report format 'htlm'"):
             report_mod.render(rep, "htlm")
+
+    def test_render_rejects_unknown_detail_mode(self):
+        root, rep = _report(BARE)
+        self.addCleanup(rmtree, root)
+        with self.assertRaisesRegex(ValueError, "unsupported detail mode"):
+            report_mod.render(rep, "markdown", detail="everything")
 
 
 class TestFormatNormalization(unittest.TestCase):
@@ -321,15 +382,15 @@ class TestRecommendationsAndDisplay(unittest.TestCase):
         md = report_mod.render_markdown(rep)
         self.assertIn("## Criteria Results", md)
         self.assertIn("/1):", md)  # repository-scope criteria render N/1
-        self.assertIn("## Action Items", md)
-        self.assertIn("highest-impact", md)
+        self.assertIn("## Clear the next gate", md)
+        self.assertIn("first unachieved defined Level", md)
 
 
 class TestRenderCoverage(unittest.TestCase):
     def _rep(self, results, advisory=None, score=None):
         rep = Report(project_path=".", schema_version="2", engine_version="0.3.0",
                      registry_version="0.3.0", detector_version="0.3.0")
-        rep.results = results
+        rep.results = _traced(results)
         if advisory:
             rep.advisory = advisory
         rep.score = score
@@ -339,7 +400,7 @@ class TestRenderCoverage(unittest.TestCase):
         rep = self._rep([CriterionResult(id="docs.readme", title="README", pillar="Docs", level=1,
                          scope="repository", gating=True, status=Status.PASS,
                          passed_apps=1, evaluated_apps=1)])
-        self.assertNotIn("## Action Items", report_mod.render_markdown(rep))
+        self.assertNotIn("## Clear the next gate", report_mod.render_markdown(rep))
 
     def test_agent_advisory_rendered(self):
         md = report_mod.render_markdown(self._rep([], advisory=["Consider tightening X."]))
@@ -461,6 +522,8 @@ class TestHtmlReport(unittest.TestCase):
         kw.setdefault("engine_version", "0.6.0")
         kw.setdefault("registry_version", "0.6.0")
         kw.setdefault("detector_version", "0.5.0")
+        if "results" in kw:
+            kw["results"] = _traced(kw["results"])
         return Report(**kw)
 
     def test_document_shell(self):
@@ -477,25 +540,38 @@ class TestHtmlReport(unittest.TestCase):
     def test_header_and_footer_metadata(self):
         rep = self._rep(branch="main", commit="0123456789abcdef",
                         generated_at="2026-08-04T00:00:00+00:00",
-                        repository={"identity_kind": "origin", "owner": "acme", "name": "widget"})
+                        repository={"identity_kind": "origin", "host": "github.com",
+                                    "owner": "acme", "name": "widget",
+                                    "identity_hash": "aaaabbbbccccdddd"})
         text = _parse(report_mod.render_html(rep)).body_text
         self.assertIn("0.6.0 · acme/widget · branch main · commit 01234567", text)
         self.assertIn("generated 2026-08-04T00:00:00+00:00 · registry 0.6.0 · detector 0.5.0", text)
         self.assertNotIn("0123456789abcdef", text)
 
     def test_footer_omits_empty_timestamp_and_optional_metadata(self):
-        text = _parse(report_mod.render_html(self._rep())).body_text
+        out = report_mod.render_html(self._rep())
+        text = _parse(out).body_text
         self.assertIn("registry 0.6.0 · detector 0.5.0", text)
-        self.assertNotIn("generated", text)
-        self.assertNotIn("branch", text)
-        self.assertNotIn("commit", text)
-        self.assertIn("0.6.0 · proj", text)  # redacted location, never the absolute path
+        # No repository identity: a fixed label, never the process-local absolute path.
+        self.assertIn("0.6.0 · local repository", text)
+        # The header/footer chrome omits absent metadata (the boundary/limitations prose
+        # elsewhere in the document legitimately uses words like "commit").
+        chrome = (out.split("<header", 1)[1].split("</header>", 1)[0]
+                  + out.split("<footer", 1)[1].split("</footer>", 1)[0])
+        self.assertNotIn("generated", chrome)
+        self.assertNotIn("branch", chrome)
+        self.assertNotIn("commit", chrome)
 
     def test_score_present_renders_status_gate_track_and_actions(self):
         score = ScoreSummary(
             level=1, level_name="Functional", pass_rate=0.5, gating_passed=4, gating_total=8,
-            levels=[LevelScore(level=1, name="Functional", passed=3, total=4, achieved=True),
-                    LevelScore(level=2, name="Structured", passed=1, total=4, achieved=False)])
+            levels=[LevelScore(level=1, name="Functional", passed=3, total=4, achieved=True,
+                               defined=True, defined_total=4),
+                    LevelScore(level=2, name="Structured", passed=1, total=4, achieved=False,
+                               defined=True, defined_total=4)],
+            next_gate_actions=[{"id": "docs.readme", "title": "README", "pillar": "Docs",
+                                "level": 2, "status": "fail", "fix_kind": "scaffold",
+                                "rationale": "No README found"}])
         results = [CriterionResult(id="docs.readme", title="README", pillar="Docs", level=2,
                                    scope="repository", gating=True, status=Status.FAIL,
                                    rationale="No README found", fix_kind="scaffold",
@@ -507,8 +583,8 @@ class TestHtmlReport(unittest.TestCase):
         self.assertIn("50% pass rate · 4/8 gating criteria", text)
         self.assertIn("Functional 3/4 cleared", text)
         self.assertIn("Structured 1/4 blocked", text)
-        self.assertIn("Action Items", text)
-        self.assertIn("Top 1 highest-impact gating next steps", text)
+        self.assertIn("Clear the Next Gate", text)
+        self.assertIn("Every gating blocker at the first unachieved defined Level", text)
         self.assertIn("docs.readme", text)
         self.assertIn("L2 · Docs · Quick wins (auto-scaffold via ra1-fix)", text)
         self.assertIn("No README found", text)
@@ -516,21 +592,28 @@ class TestHtmlReport(unittest.TestCase):
     def test_gate_track_marks_only_the_first_remaining_gate_as_blocked(self):
         score = ScoreSummary(
             level=1, level_name="Functional", pass_rate=0.5, gating_passed=2, gating_total=4,
-            levels=[LevelScore(level=1, name="Functional", passed=2, total=2, achieved=True),
-                    LevelScore(level=2, name="Structured", passed=0, total=1, achieved=False),
-                    LevelScore(level=3, name="Governed", passed=0, total=1, achieved=False),
-                    LevelScore(level=4, name="Optimized", passed=0, total=0, achieved=True),
-                    LevelScore(level=5, name="Autonomous", passed=0, total=0, achieved=False)])
+            levels=[LevelScore(level=1, name="Functional", passed=2, total=2, achieved=True,
+                               defined=True, defined_total=2),
+                    LevelScore(level=2, name="Structured", passed=0, total=1, achieved=False,
+                               defined=True, defined_total=1),
+                    LevelScore(level=3, name="Governed", passed=0, total=1, achieved=False,
+                               defined=True, defined_total=1),
+                    LevelScore(level=4, name="Optimized", passed=0, total=0, achieved=False,
+                               defined=True, defined_total=2),
+                    LevelScore(level=5, name="Autonomous", passed=0, total=0, achieved=False,
+                               defined=False, defined_total=0)])
         doc = _parse(report_mod.render_html(self._rep(score=score)))
         gates = [a["class"] for _, a in doc.elements
                  if a.get("class", "").startswith("gate gate-")]
         self.assertEqual(gates, ["gate gate-cleared", "gate gate-blocked", "gate gate-locked",
                                  "gate gate-empty", "gate gate-empty"])
         text = doc.body_text
-        for word in ("cleared", "blocked", "locked", "no criteria"):
+        for word in ("cleared", "blocked", "locked", "not scored"):
             self.assertIn(word, text)
-        # The misleading "0/0 (100%)" is gone: the track counts, it never rates.
-        self.assertIn("Optimized 0/0 no criteria", text)
+        # The track counts, it never rates: a defined-but-all-excluded level says how many
+        # were excluded, and an undefined level says it is not scored — never "0/0 (100%)".
+        self.assertIn("Optimized — all 2 excluded", text)
+        self.assertIn("Autonomous — not scored", text)
         self.assertNotIn("100%", text)
 
     def test_score_absent_omits_gate_track_and_action_items(self):
@@ -555,16 +638,22 @@ class TestHtmlReport(unittest.TestCase):
 
     def test_applications_table(self):
         detection = Detection(project_type="service", apps=[
-            App(path=".", languages=["python", "go"], runtime="python3.11",
+            App(path=".", languages=["python", "go"], runtime="cli",
                 deploy_surface="service"),
             App(path="web", languages=[], runtime="unknown", deploy_surface="frontend")])
-        doc = _parse(report_mod.render_html(self._rep(detection=detection)))
+        out = report_mod.render_html(self._rep(detection=detection))
+        doc = _parse(out)
         self.assertEqual(doc.tags.count("table"), 1)
         self.assertEqual(doc.find("caption"), [{"class": "visually-hidden"}])
         text = doc.body_text
-        self.assertIn("python, go", text)
+        # The canonical projection sorts languages and confines runtime to known enums.
+        self.assertIn("go, python", text)
         self.assertIn("n/a", text)  # app with no languages
-        self.assertIn("python3.11", text)
+        self.assertIn("cli", text)
+        # The root app keeps its canonical "." marker — it is never redacted.
+        self.assertIn("<code>.</code>", out)
+        self.assertIn("<code>web</code>", out)
+        self.assertNotIn("[redacted repository source]", out)
         self.assertNotIn("Project type is", text)
 
     def test_no_applications_and_unknown_project_type_warning(self):
@@ -691,7 +780,7 @@ class TestHtmlReport(unittest.TestCase):
         self.assertIn("Agent Judgments (advisory, never scored)", text)
         self.assertIn("To assess: Naming Consistency", text)
         self.assertIn("Ignored judgments (1): PII Handling", text)
-        self.assertIn(".agents/readiness/config.json", text)
+        self.assertIn(".ra1/config.json", text)
 
     def test_judgment_disclosure_assess_only(self):
         r = CriterionResult(id="judgment.x", title="X", pillar="P", level=2, scope="repository",
@@ -749,7 +838,7 @@ class TestHtmlSafety(unittest.TestCase):
         evidence = [Evidence(summary=_HOSTILE, tier="T0", source=_HOSTILE, detail=_HOSTILE),
                     Evidence(summary="upstream advisory", tier="T2",
                              source="https://example.com/advisories/1")]
-        results = [
+        results = _traced([
             # AC/DC-mapped on purpose: the disclosure (and its one authored anchor) must
             # render even under maximal repository hostility.
             CriterionResult(id="x.y", title=_HOSTILE, pillar=_HOSTILE, level=1,
@@ -761,7 +850,7 @@ class TestHtmlSafety(unittest.TestCase):
                             scope="repository", gating=False, status=Status.WAIVED),
             CriterionResult(id="adv.a", title=_HOSTILE, pillar="P", level=2, scope="repository",
                             gating=False, status=Status.FAIL, rationale=_HOSTILE),
-        ]
+        ])
         return Report(
             project_path=_SENTINEL_PATH, schema_version="2", engine_version=_HOSTILE,
             registry_version=_HOSTILE, detector_version=_HOSTILE, commit=_HOSTILE,
@@ -781,10 +870,11 @@ class TestHtmlSafety(unittest.TestCase):
         self.assertTrue(out.startswith("<!doctype html>\n"))
         self.assertTrue(out.endswith("</html>\n"))
         text = _parse(out).body_text
-        for heading in ("Readiness Status", "Applications Discovered", "Action Items",
+        for heading in ("Readiness Status", "Applications Discovered",
                         "Criteria Results", "Advisory Improvements",
                         "Agent Judgments (advisory, never scored)",
-                        "Advisory (non-gating, agent-authored)"):
+                        "Advisory (non-gating, agent-authored)",
+                        "Assessment Boundary"):
             self.assertIn(heading, text)
 
     def test_hostile_strings_survive_as_text(self):
@@ -899,6 +989,8 @@ class TestPillarCoverage(unittest.TestCase):
     def _rep(self, pillars, **kw):
         score = ScoreSummary(level=1, level_name="Functional", pass_rate=0.5, gating_passed=1,
                              gating_total=2, levels=[], pillars=pillars)
+        if "results" in kw:
+            kw["results"] = _traced(kw["results"])
         return Report(project_path="/p", schema_version="2", engine_version="0.6.0",
                       registry_version="0.6.0", detector_version="0.5.0", score=score, **kw)
 
@@ -957,7 +1049,8 @@ class TestFacets(unittest.TestCase):
 
     def _rep(self, results):
         return Report(project_path="/p", schema_version="2", engine_version="0.6.0",
-                      registry_version="0.6.0", detector_version="0.5.0", results=results)
+                      registry_version="0.6.0", detector_version="0.5.0",
+                      results=_traced(results))
 
     def _results(self):
         return [CriterionResult(id=f"x.{i}", title=f"C{i}", pillar=p, level=1,
@@ -1098,7 +1191,8 @@ class TestLoopFacets(unittest.TestCase):
 
     def _rep(self, results):
         return Report(project_path="/p", schema_version="2", engine_version="0.8.0",
-                      registry_version="0.7.0", detector_version="0.5.0", results=results)
+                      registry_version="0.7.0", detector_version="0.5.0",
+                      results=_traced(results))
 
     def _results(self):
         # One pillar on purpose: the loop hole only shows when status and loop disagree
@@ -1210,6 +1304,8 @@ class TestHtmlEducation(unittest.TestCase):
         kw.setdefault("engine_version", "0.9.0")
         kw.setdefault("registry_version", "0.7.0")
         kw.setdefault("detector_version", "0.5.0")
+        if "results" in kw:
+            kw["results"] = _traced(kw["results"])
         return Report(**kw)
 
     def _score(self, levels, pillars=None):
@@ -1320,14 +1416,15 @@ class TestRowAnatomy(unittest.TestCase):
 
     def _rep(self, results):
         return Report(project_path="/p", schema_version="2", engine_version="0.9.1",
-                      registry_version="0.7.0", detector_version="0.5.0", results=results)
+                      registry_version="0.7.0", detector_version="0.5.0",
+                      results=_traced(results))
 
     def _crit(self, **kw):
         base = dict(id="x.y", title="X", pillar="P", level=2, scope="repository",
                     gating=True, status=Status.FAIL, rationale="r",
                     passed_apps=0, evaluated_apps=1)
         base.update(kw)
-        return CriterionResult(**base)
+        return _trace(CriterionResult(**base))
 
     def test_badge_is_the_rail_column_ahead_of_the_head(self):
         elements = _parse(report_mod.render_html(self._rep([self._crit()]))).elements
@@ -1381,12 +1478,13 @@ class TestActionLayer(unittest.TestCase):
 
     def _rep(self, results):
         return Report(project_path="/p", schema_version="2", engine_version="0.6.0",
-                      registry_version="0.6.0", detector_version="0.5.0", results=results)
+                      registry_version="0.6.0", detector_version="0.5.0",
+                      results=_traced(results))
 
     def _crit(self, **kw):
         base = dict(id="x.y", title="X", pillar="Documentation", level=2, scope="repository",
                     gating=True, status=Status.FAIL, rationale="why")
-        return CriterionResult(**{**base, **kw})
+        return _trace(CriterionResult(**{**base, **kw}))
 
     def test_action_copy_matches_what_ra1_fix_actually_does(self):
         # recipes.apply_plan writes only plan["auto"], so nothing but the scaffold branch
@@ -1628,12 +1726,11 @@ class TestCliFormats(unittest.TestCase):
     def test_multi_format_out(self):
         root = make_repo(GOODISH)
         self.addCleanup(rmtree, root)
-        out = root / "_out"
-        code, printed = self._run(["report", "--project", str(root), "--no-github", "--format",
+        out = root.parent / (root.name + "_out")
+        code, printed = self._run(["report", "--project", str(root), "--format",
                                    "markdown,junit,sarif,github,html", "--out", str(out)])
         self.assertEqual(code, 0)
-        for name in ("report.md", "report.xml", "report.sarif", "report.txt", "report.html",
-                     "latest.json"):
+        for name in ("report.md", "report.xml", "report.sarif", "report.txt", "report.html"):
             self.assertTrue((out / name).exists(), f"missing {name}")
         self.assertIn("# Agent Readiness Report", printed)  # markdown printed first
         self.assertTrue((out / "report.html").read_text().startswith("<!doctype html>"))
@@ -1642,34 +1739,34 @@ class TestCliFormats(unittest.TestCase):
         """One file is the whole artifact: no stylesheet, no font, no assets directory."""
         root = make_repo(GOODISH)
         self.addCleanup(rmtree, root)
-        out = root / "_out"
-        code, _ = self._run(["report", "--project", str(root), "--no-github",
+        out = root.parent / (root.name + "_out")
+        code, _ = self._run(["report", "--project", str(root),
                              "--format", "html", "--out", str(out)])
         self.assertEqual(code, 0)
         self.assertEqual(sorted(p.name for p in out.iterdir()),
-                         ["latest.json", "report.html"])
+                         [".commit.json", "report.html"])
 
     def test_html_primary_format_is_printed_verbatim(self):
         root = make_repo(GOODISH)
         self.addCleanup(rmtree, root)
-        out = root / "_out"
-        code, printed = self._run(["report", "--project", str(root), "--no-github",
+        out = root.parent / (root.name + "_out")
+        code, printed = self._run(["report", "--project", str(root),
                                    "--format", "html,json", "--out", str(out)])
         self.assertEqual(code, 0)
         self.assertEqual(printed, (out / "report.html").read_text())
         json.loads((out / "report.json").read_text())
 
     def test_parse_report_formats_normalizes_without_collapsing_repeats(self):
-        self.assertEqual(cli._parse_report_formats(" , "), ["json"])
-        self.assertEqual(cli._parse_report_formats(""), ["json"])
+        self.assertEqual(cli._parse_report_formats(" , "), ["markdown"])
+        self.assertEqual(cli._parse_report_formats(""), ["markdown"])
         self.assertEqual(cli._parse_report_formats("JSON,json"), ["json", "json"])
         self.assertEqual(cli._parse_report_formats(" MD , Checks "), ["md", "checks"])
 
     def test_whitespace_case_and_alias_keep_legacy_artifact_names(self):
         root = make_repo(GOODISH)
         self.addCleanup(rmtree, root)
-        out = root / "_out"
-        code, _ = self._run(["report", "--project", str(root), "--no-github", "--format",
+        out = root.parent / (root.name + "_out")
+        code, _ = self._run(["report", "--project", str(root), "--format",
                              " MD , Checks ,ANNOTATIONS", "--out", str(out)])
         self.assertEqual(code, 0)
         for name in ("report.md", "report.txt", "report.annotations"):
@@ -1680,12 +1777,12 @@ class TestCliFormats(unittest.TestCase):
     def test_unsupported_format_fails_before_scanning_or_writing(self):
         root = make_repo(GOODISH)
         self.addCleanup(rmtree, root)
-        out = root / "_out"
+        out = root.parent / (root.name + "_out")
         err = io.StringIO()
         with mock.patch.object(cli, "analyze") as analyze_mock, \
                 mock.patch("readiness.history.repo_identity") as identity_mock, \
                 redirect_stderr(err):
-            code, printed = self._run(["report", "--project", str(root), "--no-github",
+            code, printed = self._run(["report", "--project", str(root),
                                        "--format", "json,htlm", "--out", str(out)])
         self.assertEqual(code, 2)
         self.assertEqual(printed, "")
@@ -1699,14 +1796,14 @@ class TestCliFormats(unittest.TestCase):
     def test_fail_on_hits_real_failure(self):
         root = make_repo(BARE)
         self.addCleanup(rmtree, root)
-        code, _ = self._run(["report", "--project", str(root), "--no-github"
+        code, _ = self._run(["report", "--project", str(root)
             , "--fail-on", "docs.readme"])
         self.assertEqual(code, 1)
 
     def test_min_level_on_real_score(self):
         root = make_repo(BARE)
         self.addCleanup(rmtree, root)
-        code, _ = self._run(["report", "--project", str(root), "--no-github", "--min-level", "1"])
+        code, _ = self._run(["report", "--project", str(root), "--min-level", "1"])
         self.assertEqual(code, 1)  # bare repo is level 0
 
 class TestLocationRedaction(unittest.TestCase):
@@ -1737,14 +1834,156 @@ class TestLocationRedaction(unittest.TestCase):
 
     def test_location_no_repository_uses_basename_not_abspath(self):
         rep = self._rep(repository=None, project_path="/home/user/secret-proj")
-        self.assertEqual(report_mod._location(rep), "secret-proj")
+        self.assertEqual(report_mod._location(rep), "local repository")
 
     def test_markdown_subtitle_redacts_abspath(self):
         rep = self._rep(repository={"identity_kind": "local_path", "name": "proj",
                                     "project_path_hash": "h"}, project_path="/home/user/proj")
         md = report_mod.render_markdown(rep)
         self.assertNotIn("/home/user", md)
-        self.assertIn("· proj", md)
+        self.assertIn("· local repository_", md)
+
+
+class TestRendererBranchGaps(unittest.TestCase):
+    def _traced_unknown_bp(self):
+        r = CriterionResult(id="security.branch_protection", title="Branch protection",
+                            pillar="Security & Governance", level=2, scope="repository",
+                            gating=True, status=Status.UNKNOWN,
+                            rationale="could not be read", passed_apps=0, evaluated_apps=1)
+        code = "security.branch_protection.github_unavailable"
+        r.decision_trace = DecisionTrace(
+            reason_code=code, rule_ref="checks.security.branch_protection",
+            steps=[DecisionStep(kind="rule", code="rule.applied", message="rule"),
+                   DecisionStep(kind="evaluation", code=code, message="eval"),
+                   DecisionStep(kind="conclusion", code="conclusion.unknown",
+                                message="Result: unknown.")])
+        return r
+
+    def _report(self, **kw):
+        kw.setdefault("project_path", ".")
+        kw.setdefault("schema_version", "2")
+        kw.setdefault("engine_version", "0.11.0")
+        kw.setdefault("registry_version", "0.8.0")
+        kw.setdefault("detector_version", "0.6.0")
+        return Report(**kw)
+
+    def test_markdown_partial_t2_notice(self):
+        # Requested-but-unreadable branch protection is "not verified", never "not
+        # protected" — the partial-T2 notice says exactly that.
+        rep = self._report(github_available=True)
+        rep.results = [self._traced_unknown_bp()]
+        md = report_mod.render_markdown(rep)
+        self.assertIn("Partial T2 evidence", md)
+        self.assertIn("not verified", md)
+
+    def test_markdown_requested_t2_without_partial_has_no_notice(self):
+        rep = self._report(github_available=True)
+        rep.results = []
+        md = report_mod.render_markdown(rep)
+        self.assertNotIn("Partial T2 evidence", md)
+        self.assertNotIn("were not requested", md)
+
+    def test_markdown_defined_level_with_everything_excluded(self):
+        rep = self._report()
+        rep.score = ScoreSummary(
+            level=0, level_name="None", pass_rate=0.0, gating_passed=0, gating_total=0,
+            levels=[LevelScore(level=2, name="Documented", passed=0, total=0,
+                               achieved=False, defined=True, defined_total=3)])
+        md = report_mod.render_markdown(rep)
+        self.assertIn("all 3 defined criteria were skipped/waived", md)
+
+    def test_markdown_result_row_tolerates_out_of_range_ref_and_unknown_step(self):
+        r = {"id": "x.y", "title": "T", "pillar": "P", "level": 1, "gating": True,
+             "status": "fail", "rationale": "r", "fix_kind": "", "acdc_stage": "",
+             "acdc_loop": "", "passed_apps": 0, "evaluated_apps": 1, "evidence": [],
+             "decision_trace": {
+                 "reason_code": "check.fail", "rule_ref": "checks.x.y",
+                 "steps": [
+                     {"kind": "rule", "code": "rule.applied", "message": "m",
+                      "evidence_refs": []},
+                     {"kind": "observation", "code": "evidence.observed", "message": "m",
+                      "evidence_refs": [7]},          # out of range: skipped, never crashes
+                     {"kind": "mystery", "code": "z", "message": "m",
+                      "evidence_refs": []}],           # unknown kind: no row emitted
+                 "limitations": []}}
+        rows = report_mod._markdown_result_row(r, expand=True)
+        self.assertTrue(any("Why this result" in row for row in rows))
+        self.assertFalse(any("mystery" in row for row in rows))
+
+    def test_markdown_boundary_absent(self):
+        self.assertEqual(report_mod._markdown_boundary({}), [])
+
+    def test_location_dict_origin_owner(self):
+        d = {"repository": {"identity_kind": "origin", "owner": "acme", "name": "widget"}}
+        self.assertEqual(report_mod._location_dict(d), "acme/widget")
+
+    def test_canonical_view_result_without_trace(self):
+        data = {"schema_version": "3", "engine_version": "0.11.0",
+                "registry_version": "0.8.0", "detector_version": "0.6.0", "commit": "",
+                "branch": "", "github_available": False,
+                "generated_at": "2026-01-01T00:00:00+00:00",
+                "results": [{"id": "x.y", "title": "t", "pillar": "P", "level": 1,
+                             "scope": "repository", "gating": True, "status": "pass",
+                             "rationale": "ok", "evidence": [], "app_path": ".",
+                             "fixable": False, "fix_kind": "", "acdc_stage": "",
+                             "acdc_loop": "", "passed_apps": 1, "evaluated_apps": 1}]}
+        view = report_mod._canonical_view(data)
+        self.assertIsNone(view.results[0].decision_trace)
+
+    def test_html_partial_t2_callout(self):
+        rep = self._report(github_available=True)
+        rep.results = [self._traced_unknown_bp()]
+        html = report_mod.render_html(rep)
+        self.assertIn("Partial T2 evidence", html)
+        self.assertIn("not verified", html)
+
+    def test_html_requested_t2_without_partial_has_no_callout(self):
+        rep = self._report(github_available=True)
+        rep.results = []
+        html = report_mod.render_html(rep)
+        self.assertNotIn("Partial T2 evidence", html)
+        self.assertNotIn("were not requested", html)
+
+    def test_trace_disclosure_empty_without_trace(self):
+        r = CriterionResult(id="x.y", title="t", pillar="P", level=1, scope="repository",
+                            gating=True, status=Status.PASS)
+        self.assertEqual(report_mod._trace_disclosure(r, 0), "")
+
+    def test_trace_disclosure_ignores_unknown_step_kind(self):
+        r = CriterionResult(id="x.y", title="t", pillar="P", level=1, scope="repository",
+                            gating=True, status=Status.PASS)
+        r.decision_trace = DecisionTrace(
+            reason_code="check.pass", rule_ref="x.y",
+            steps=[DecisionStep(kind="rule", code="rule.applied", message="m"),
+                   DecisionStep(kind="mystery", code="z", message="m")])
+        out = report_mod._trace_disclosure(r, 0)
+        self.assertIn("<details", out)
+        self.assertNotIn("mystery", out)
+
+    def test_html_criterion_without_trace_renders_row(self):
+        r = CriterionResult(id="x.y", title="t", pillar="P", level=1, scope="repository",
+                            gating=True, status=Status.PASS, rationale="ok",
+                            passed_apps=1, evaluated_apps=1)
+        out = []
+        report_mod._html_criterion(out, r, 0)
+        self.assertTrue(out)
+
+    def test_html_boundary_absent_is_a_noop(self):
+        import types
+        out = []
+        report_mod._html_boundary(out, types.SimpleNamespace())
+        self.assertEqual(out, [])
+
+    def test_history_list_empty_entries(self):
+        text = report_mod.render_history_list({"repository": {}, "entries": []})
+        self.assertIn("_(none)_", text)
+
+    def test_history_diff_detector_changed_note(self):
+        text = report_mod.render_history_diff(
+            {"from": "a", "to": "b", "comparable": True,
+             "score_delta": {"level": {"from": 1, "to": 2}},
+             "detector_changed": True})
+        self.assertIn("detector version changed", text)
 
 
 

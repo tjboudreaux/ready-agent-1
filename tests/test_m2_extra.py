@@ -23,19 +23,22 @@ class TestScoreInternals(unittest.TestCase):
         self.assertEqual(score._type_match(["service"], "library"), "skip")
 
     def test_load_waivers_from_file(self):
-        root = make_repo({".agents/readiness/waivers.json": '[{"id":"docs.readme","reason":"r",'
-                                                            '"owner":"t"}]'})
+        root = make_repo({".ra1/waivers.json": '[{"id":"docs.readme","reason":"r",'
+                                               '"owner":"t"}]'})
         self.addCleanup(rmtree, root)
-        waivers = score.load_waivers(root, {})
+        waivers, invalid = score.load_waivers(root, {})
+        self.assertFalse(invalid)
         self.assertIn("docs.readme", waivers)
 
     def test_load_waivers_missing_and_malformed(self):
         root = make_repo({})
         self.addCleanup(rmtree, root)
-        self.assertEqual(score.load_waivers(root, {}), {})
-        bad = make_repo({".agents/readiness/waivers.json": "{not json"})
+        self.assertEqual(score.load_waivers(root, {}), ({}, False))
+        # A malformed policy file is flagged invalid so the caller can mark the global
+        # repository-indeterminate state; it never degrades to a partial waiver set.
+        bad = make_repo({".ra1/waivers.json": "{not json"})
         self.addCleanup(rmtree, bad)
-        self.assertEqual(score.load_waivers(bad, {}), {})
+        self.assertEqual(score.load_waivers(bad, {}), ({}, True))
 
 
 class TestAggregationPaths(unittest.TestCase):
