@@ -20,20 +20,24 @@ def ev(summary, source="", tier="T0", detail=""):
     return Evidence(summary=summary, source=source, tier=tier, detail=detail)
 
 
-def passed(rationale, evidence=None):
-    return Verdict(Status.PASS, rationale, evidence or [])
+def passed(rationale, evidence=None, *, limitations=None, reason_code=None):
+    return Verdict(Status.PASS, rationale, evidence or [], limitations or [],
+                   reason_code=reason_code or "")
 
 
-def failed(rationale, evidence=None):
-    return Verdict(Status.FAIL, rationale, evidence or [])
+def failed(rationale, evidence=None, *, limitations=None, reason_code=None):
+    return Verdict(Status.FAIL, rationale, evidence or [], limitations or [],
+                   reason_code=reason_code or "")
 
 
-def unknown(rationale, evidence=None):
-    return Verdict(Status.UNKNOWN, rationale, evidence or [])
+def unknown(rationale, evidence=None, *, limitations=None, reason_code=None):
+    return Verdict(Status.UNKNOWN, rationale, evidence or [], limitations or [],
+                   reason_code=reason_code or "")
 
 
-def skipped(rationale, evidence=None):
-    return Verdict(Status.SKIPPED, rationale, evidence or [])
+def skipped(rationale, evidence=None, *, limitations=None, reason_code=None):
+    return Verdict(Status.SKIPPED, rationale, evidence or [], limitations or [],
+                   reason_code=reason_code or "")
 
 
 def _filled(ctx, path, label, min_chars=40) -> tuple[bool, str]:
@@ -112,7 +116,7 @@ def acdc_config(ctx):
     """Return the optional vendor-agnostic AC/DC readiness config block."""
     from ..detect import load_readiness_config
 
-    value = load_readiness_config(ctx.root, ctx.options).get("acdc")
+    value = load_readiness_config(ctx.static, ctx.options).get("acdc")
     return value if isinstance(value, dict) else {}
 
 

@@ -7,12 +7,10 @@ from __future__ import annotations
 import html
 import json
 import math
-import os
 from xml.etree import ElementTree as ET
 
 from . import theme
 from .model import LEVEL_NAMES, Status
-from .score import _recommendations
 
 _SYMBOL = {
     "pass": "✓", "fail": "✗", "skipped": "–",
@@ -178,14 +176,16 @@ def format_extension(fmt: str | None) -> str:
     return _FORMAT_EXTENSIONS[(fmt or "").strip().lower() or "json"]
 
 
-def render(report, fmt: str | None) -> str:
+def render(report, fmt: str | None, *, detail: str = "actionable") -> str:
+    if detail not in ("actionable", "all"):
+        raise ValueError(f"unsupported detail mode: {detail!r}")
     canonical = normalize_format(fmt)
     if canonical == "json":
         return json.dumps(report.to_dict(), indent=2)
     if canonical == "markdown":
-        return render_markdown(report)
+        return render_markdown(report, detail=detail)
     if canonical == "html":
-        return render_html(report)
+        return render_html(report, detail=detail)
     if canonical == "github":
         return render_github(report)
     if canonical == "junit":
@@ -194,82 +194,143 @@ def render(report, fmt: str | None) -> str:
 
 
 def _location(d) -> str:
-    """Redacted scan location for the human subtitle — never the raw absolute path.
+    """The display location for the human subtitle — only canonical repository fields.
 
-    A relative scan root (`ra1 report` with no --project) has no useful basename: "." would
-    print as a bare separator in the meta line. Resolve it to the directory's own name,
-    which is still just a name and never a path.
+    A repository without a display name renders a fixed label; the renderer's own process
+    state (cwd, project path) never enters the artifact.
     """
     repo = d.repository or {}
     if repo.get("identity_kind") == "origin" and repo.get("owner"):
         return f"{repo['owner']}/{repo.get('name', '')}"
-    return repo.get("name") or os.path.basename(os.path.abspath(d.project_path))
+    return repo.get("name") or "local repository"
 
 
 # ---------------------------------------------------------------------------- markdown
-def render_markdown(report) -> str:
-    d = report
+def render_markdown(report, *, detail: str = "actionable") -> str:
+    """The actionable-detail Markdown report, rendered only from the canonical dict."""
+    d = report.to_dict() if hasattr(report, "to_dict") else report
+    score = d.get("score") or {}
+    results = d.get("results") or []
     lines = ["# Agent Readiness Report", ""]
-    score = d.score
     if score:
-        pct = round(score.pass_rate * 100)
-        lines.append(f"**Level {score.level} — {score.level_name}**  ·  "
-                     f"{score.gating_passed}/{score.gating_total} gating criteria  ·  {pct}%")
+        pct = round((score.get("pass_rate") or 0) * 100)
+        lines.append(f"**Level {score.get('level', 0)} — {score.get('level_name', 'None')}**"
+                     f"  \u00b7  {score.get('gating_passed', 0)}/{score.get('gating_total', 0)}"
+                     f" gating criteria  \u00b7  {pct}%")
+        lines.append("")
+        max_level = score.get("max_available_level", 0)
+        if max_level:
+            ceiling = _LEVEL_NAMES.get(max_level, "")
+            lines.append(f"_Current deterministic ceiling: L{max_level} {ceiling}._")
     lines.append("")
-    lines.append(f"_{d.engine_version} · {_location(d)}"
-                 + (f" · commit {d.commit[:8]}" if d.commit else "") + "_")
+    lines.append(f"_{d.get('engine_version', '')} \u00b7 {_location_dict(d)}"
+                 + (f" \u00b7 commit {d['commit'][:8]}" if d.get("commit") else "") + "_")
     lines.append("")
 
-    if d.detection:
-        lines.append("## Applications Discovered")
-        for i, app in enumerate(d.detection.apps, 1):
-            langs = ", ".join(app.languages) or "n/a"
-            lines.append(f"{i}. `{app.path}` — {app.deploy_surface}; languages: {langs}")
-        if d.detection.project_type == "unknown":
+    if not d.get("github_available"):
+        lines.append("> **T2 GitHub checks were not requested** (offline default): remote "
+                     "controls such as branch protection are skipped/excluded and were not "
+                     "verified. Re-run with `--github` to assess them.")
+        lines.append("")
+    else:
+        partial = [r for r in results
+                   if r["id"] in ("security.branch_protection",
+                                  "security.branch_protection_depth")
+                   and r["status"] == "unknown"]
+        if partial:
+            lines.append("> **Partial T2 evidence:** branch-protection controls could not "
+                         "be read and are **not verified** (this never means \u201cnot "
+                         "protected\u201d).")
             lines.append("")
-            lines.append("> ⚠️ Project type is **unknown** (low detection confidence); "
-                         "type-dependent criteria are reported as `unknown`, not silently skipped.")
+
+    detection = d.get("detection")
+    if detection:
+        lines.append("## Applications Discovered")
+        for i, app in enumerate(detection.get("apps") or [], 1):
+            langs = ", ".join(app.get("languages") or []) or "n/a"
+            lines.append(f"{i}. `{app.get('path', '.')}` — {app.get('deploy_surface', '')}; "
+                         f"languages: {langs}")
+        if detection.get("project_type") == "unknown":
+            lines.append("")
+            lines.append("> \u26a0\ufe0f Project type is **unknown** (low detection "
+                         "confidence); type-dependent criteria are reported as `unknown`, "
+                         "not silently skipped.")
         lines.append("")
 
-    if score and score.levels:
+    if score.get("levels"):
         lines.append("## Levels")
-        for lv in score.levels:
-            mark = "achieved" if lv.achieved else "not yet"
-            lines.append(
-                f"- **L{lv.level} {lv.name}**: {lv.passed}/{lv.total} "
-                f"({round(lv.ratio*100)}%) — {mark}")
+        for lv in score["levels"]:
+            if not lv.get("defined"):
+                lines.append(f"- **L{lv['level']} {lv['name']}**: not currently scored — "
+                             "no gating criteria defined")
+            elif lv.get("total", 0) == 0:
+                lines.append(
+                    f"- **L{lv['level']} {lv['name']}**: not achieved — all "
+                    f"{lv.get('defined_total', 0)} defined criteria were skipped/waived")
+            else:
+                mark = "achieved" if lv.get("achieved") else "not yet"
+                lines.append(f"- **L{lv['level']} {lv['name']}**: {lv['passed']}/{lv['total']} "
+                             f"({round(lv.get('ratio', 0) * 100)}%) — {mark}")
+        lines.append("")
+
+    coverage = score.get("evidence_coverage")
+    if coverage:
+        counts = coverage.get("status_counts", {})
+        lines.append("## Evidence coverage")
+        lines.append("")
+        lines.append(
+            f"- Results by status: {counts.get('pass', 0)} pass \u00b7 {counts.get('fail', 0)} "
+            f"fail \u00b7 {counts.get('unknown', 0)} unknown \u00b7 "
+            f"{counts.get('skipped', 0)} skipped \u00b7 {counts.get('waived', 0)} waived")
+        lines.append(
+            f"- Results with evidence: {coverage.get('results_with_evidence', 0)}/"
+            f"{len(results)}; evidence items: {coverage.get('evidence_items', 0)} "
+            + "(" + ", ".join(f"{tier}: {n}" for tier, n in
+                              (coverage.get("evidence_items_by_tier") or {}).items()) + ")")
+        lines.append(
+            f"- Decision traces: {coverage.get('results_with_decision_trace', 0)}/"
+            f"{len(results)} results; rule-step coverage: "
+            f"{coverage.get('results_with_rule_step', 0)}; with limitations: "
+            f"{coverage.get('results_with_limitations', 0)}")
+        referenced = coverage.get("evidence_items_referenced", 0)
+        unreferenced = coverage.get("evidence_items_unreferenced", 0)
+        defect = "" if unreferenced == 0 and \
+            coverage.get("results_with_decision_trace", 0) == len(results) \
+            else " \u2014 **contract defect**"
+        lines.append(f"- Evidence referenced by traces: {referenced}; unreferenced: "
+                     f"{unreferenced}{defect}")
         lines.append("")
 
     lines.append("## Criteria Results")
-    for pillar in _pillars_in_order(d.results):
+    expanded = {r["id"] for r in results
+                if detail == "all" or r["status"] in ("fail", "unknown")}
+    for pillar in _pillars_in_order(results):
         lines.append("")
         lines.append(f"### {pillar}")
-        for r in [x for x in d.results if x.pillar == pillar]:
-            sym = _SYMBOL.get(r.status.value, "?")
-            gate_label = "gating" if r.gating else "**advisory**"
-            acdc = f", {_acdc_label(r)}" if _acdc_label(r) else ""
-            lines.append(
-                f"- {sym} **{r.title}** ({gate_label}, L{r.level}{acdc}, {_display_score(r)}): "
-                f"{r.rationale}")
-
-    recs = _recommendations(d.results, score.level if score else 0)
-    if recs:
+        eli5 = _PILLAR_ELI5.get(pillar)
+        if eli5:
+            lines.append(f"_{eli5}_")
         lines.append("")
-        lines.append("## Action Items")
-        lines.append("")
-        lines.append(
-            f"_Top {len(recs)} highest-impact gating next steps "
-            f"(clear the next level first)._")
-        for rec in recs:
-            effort = _EFFORT.get(rec.get("fix_kind", ""), _EFFORT[""])
-            lines.append(f"- **{rec['title']}** ({rec['id']}, L{rec['level']}, {rec['pillar']}) "
-                         f"— {effort} — {rec['rationale']}")
+        for r in [x for x in results if x["pillar"] == pillar]:
+            lines.extend(_markdown_result_row(r, expand=r["id"] in expanded))
 
-    if d.gaps:
+    next_actions = score.get("next_gate_actions") or []
+    if next_actions:
         lines.append("")
-        lines.extend(_gap_lines(d.gaps))
+        lines.append("## Clear the next gate")
+        lines.append("")
+        lines.append("_Every gating blocker at the first unachieved defined Level, in "
+                     "deterministic order._")
+        for action in next_actions:
+            effort = _EFFORT.get(action.get("fix_kind", ""), _EFFORT[""])
+            lines.append(f"- **{action['title']}** ({action['id']}, L{action['level']}, "
+                         f"{action['pillar']}) — {effort} — {action['rationale']}")
 
-    advisory_actions = _advisory_items(d.results)
+    if d.get("gaps"):
+        lines.append("")
+        lines.extend(_gap_lines(d["gaps"]))
+
+    advisory_actions = _advisory_items(results)
     if advisory_actions:
         lines.append("")
         lines.append("## Advisory Improvements")
@@ -278,38 +339,163 @@ def render_markdown(report) -> str:
             lines.append(f"**{group}**")
             for r in items:
                 acdc = f", {_acdc_label(r)}" if _acdc_label(r) else ""
-                lines.append(f"- {r.title} (L{r.level}, {r.pillar}{acdc}) — {r.rationale}")
+                lines.append(f"- {r['title']} (L{r['level']}, {r['pillar']}{acdc}) — "
+                             f"{r['rationale']}")
 
-    judgments = [r for r in d.results if r.id.startswith("judgment.")]
+    judgments = [r for r in results if r["id"].startswith("judgment.")]
     if judgments:
-        assess = [r for r in judgments if r.status == Status.UNKNOWN]
-        ignored = [r for r in judgments if r.status == Status.WAIVED]
+        assess = [r for r in judgments if r["status"] == "unknown"]
+        ignored = [r for r in judgments if r["status"] == "waived"]
         lines.append("")
         lines.append("## Agent Judgments (advisory, never scored)")
         if assess:
             lines.append("")
-            lines.append("To assess: " + ", ".join(r.title for r in assess) + ".")
+            lines.append("To assess: " + ", ".join(r["title"] for r in assess) + ".")
         if ignored:
             lines.append("")
             lines.append(
                 f"Ignored judgments ({len(ignored)}): "
-                + ", ".join(r.title for r in ignored)
-                + " — silenced via .agents/readiness/config.json `judgments`.")
+                + ", ".join(r["title"] for r in ignored)
+                + " — silenced via .ra1/config.json `judgments`.")
 
-    if d.advisory:
+    if d.get("advisory"):
         lines.append("")
         lines.append("## Advisory (non-gating, agent-authored)")
-        for note in d.advisory:
+        for note in d["advisory"]:
             lines.append(f"- {note}")
     else:
         lines.append("")
-        lines.append("_Advisory commentary, soft-criteria judgement, and Δ-vs-last-run are added "
-                     "by the ra1-report skill; the score above is deterministic._")
+        lines.append("_Advisory commentary, soft-criteria judgement, and Δ-vs-last-run are "
+                     "added by the ra1-report skill; the score above is deterministic._")
 
+    lines.extend(_markdown_provenance(d))
+    lines.extend(_markdown_boundary(d))
+
+    lines.append("")
+    lines.append("---")
+    lines.append("_The engine owns the score, evidence traces, assessment provenance, "
+                 "history/delta, and the verified remediation rescan. Agent commentary is "
+                 "advisory and never changes the score._")
     return "\n".join(lines) + "\n"
 
 
-_WAIVERS_FILE = ".agents/readiness/waivers.json"
+def _markdown_result_row(r, *, expand: bool) -> list:
+    sym = _SYMBOL.get(r["status"], "?")
+    gate_label = "gating" if r["gating"] else "**advisory**"
+    acdc = f", {_acdc_label(r)}" if _acdc_label(r) else ""
+    trace = r.get("decision_trace") or {}
+    code = trace.get("reason_code", "")
+    rows = [
+        f"- {sym} **{r['title']}** ({gate_label}, L{r['level']}{acdc}, "
+        f"{_display_score(r)}): {r['rationale']}" + (f"  `{code}`" if code else "")
+    ]
+    if not expand or not trace:
+        return rows
+    rows.append("")
+    rows.append("  **Why this result**")
+    evidence = r.get("evidence") or []
+    for step in trace.get("steps", []):
+        if step["kind"] == "rule":
+            rows.append(f"  1. **Rule:** {step['message']} (`{trace.get('rule_ref', '')}`)")
+        elif step["kind"] == "observation":
+            rows.append(f"  2. **Observed:** {step['message']}")
+            for ref in step.get("evidence_refs", []):
+                if 0 <= ref < len(evidence):
+                    item = evidence[ref]
+                    src = f" — `{item['source']}`" if item.get("source") else ""
+                    rows.append(f"     - [{item['tier']}] {item['summary']}{src}")
+        elif step["kind"] == "evaluation":
+            rows.append(f"  3. **Evaluation:** {step['message']} (`{step['code']}`)")
+        elif step["kind"] == "conclusion":
+            rows.append(f"  4. **Conclusion:** {step['message']}")
+    for limitation in trace.get("limitations", []):
+        rows.append(f"  - ⚠ {limitation}")
+    action = _action({"id": r["id"], "fix_kind": r["fix_kind"], "title": r["title"],
+                      "status": r["status"], "gating": r["gating"]})
+    if action:
+        rows.append(f"  - → {action}")
+    rows.append("")
+    return rows
+
+
+def _markdown_provenance(d) -> list:
+    provenance = d.get("assessment_provenance")
+    if not provenance:
+        return []
+    inv = provenance["invocation"]
+    subject = provenance["subject"]
+    lines = ["", "## Assessment provenance", ""]
+    lines.append("_Engine-recorded unsigned metadata — **not authenticated provenance or "
+                 "an attestation**; it cannot establish report integrity._")
+    lines.append("")
+    builder = provenance["builder"]
+    lines.append(f"- **Builder:** {builder['id']} {builder['engine_version']} "
+                 f"({builder['platform']})")
+    lines.append(f"- **Subject:** {subject['repository_identity_kind'] or 'unknown'}"
+                 + (f" at commit `{subject['commit'][:12]}`" if subject.get("commit") else "")
+                 + (f" on branch `{subject['branch']}`" if subject.get("branch") else ""))
+    git = inv["git"]
+    lines.append(f"- **Git:** profile `{git['resource_profile']}`, metadata "
+                 f"`{git['metadata_profile']}`, collection complete: "
+                 f"{_yes(git['collection_complete'])}")
+    gh = inv["github"]
+    lines.append(f"- **GitHub (T2):** requested: {_yes(gh['requested'])}, host proxy "
+                 f"requested: {_yes(gh['host_proxy'])}, available: {_yes(gh['available'])}, "
+                 f"collection complete: {_yes(gh['collection_complete'])}")
+    ex = inv["execution"]
+    lines.append(f"- **Execution (T3):** requested: {_yes(ex['requested'])}, timeout "
+                 f"{ex['timeout_seconds']}s, completed: {_yes(ex['completed'])}, "
+                 f"successful: {_yes(ex['successful'])}")
+    lines.append(f"- **Waivers:** source {inv['waivers']['source']}; static collection "
+                 f"complete: {_yes(inv['static']['collection_complete'])}")
+    lines.append(f"- **Generated at:** {provenance['generated_at']}")
+    lines.append("")
+    lines.append("_Scope limits: linked-worktree support covers primary checkouts and "
+                 "standard reciprocal current-user linked worktrees only; on macOS "
+                 "(darwin) automatic Git has CPU/core/wall/output/command/snapshot caps "
+                 "but **no hard memory cap** (deferred)._")
+    return lines
+
+
+def _markdown_boundary(d) -> list:
+    boundary = d.get("assessment_boundary")
+    if not boundary:
+        return []
+    lines = ["", "## Assessment boundary", ""]
+    lines.append("### Evidence layers")
+    for layer in boundary["evidence_layers"]:
+        lines.append("")
+        lines.append(f"- **{layer['id']}** ({'/'.join(layer['tiers'])}): "
+                     f"{layer['assesses']}.")
+        for item in layer["does_not_prove"]:
+            lines.append(f"  - does not prove: {item}")
+    lines.append("")
+    lines.append("### Not assessed by this repository scan")
+    for item in boundary["not_assessed"]:
+        lines.append(f"- {item['label']}")
+    lines.append("")
+    lines.append("### Known limitations")
+    for item in boundary["known_limitations"]:
+        lines.append(f"- **{item['id']}:** {item['detail']}")
+    return lines
+
+
+def _yes(value) -> str:
+    return "yes" if value else "no"
+
+
+_LEVEL_NAMES = {1: "Functional", 2: "Documented", 3: "Standardized", 4: "Optimized",
+                5: "Autonomous"}
+
+
+def _location_dict(d) -> str:
+    repo = d.get("repository") or {}
+    if repo.get("identity_kind") == "origin" and repo.get("owner"):
+        return f"{repo['owner']}/{repo.get('name', '')}"
+    return repo.get("name") or "local repository"
+
+
+_WAIVERS_FILE = ".ra1/waivers.json"
 
 _GAP_KINDS = {
     "detection": "the scan could not classify this",
@@ -321,53 +507,62 @@ _GAP_KINDS = {
 def _gap_lines(gaps) -> list:
     """The unanswered-questions section, shared by the report and `ra1 gaps`.
 
+    Accepts Gap objects (engine) or the non-executable public projection (imported data).
     Advisory framing is deliberate and load-bearing: answering a gap supplies an input the
     engine re-evaluates, so the section never presents an answer as credit.
     """
-    blocked = sum(g.blocked_gating for g in gaps)
+
+    def field(g, key, default=""):
+        if isinstance(g, dict):
+            return g.get(key, default)
+        return getattr(g, {"gap_id": "id", "blocked_ids": "blocks"}.get(key, key), default)
+
+    blocked = sum(field(g, "blocked_gating", 0) for g in gaps)
     lines = [f"## Unanswered Questions ({len(gaps)})", ""]
     lines.append(
         f"_{len(gaps)} input(s) the scan could not determine for itself"
         + (f", holding back {blocked} gating criteria" if blocked else "")
-        + ". Answering one lets the engine judge the affected criteria; it never marks them "
-          "passing. Run the `ra1-interview` skill to work through them._")
+        + ". Answering one lets the engine judge the affected criteria; it never marks "
+          "them passing. Run the `ra1-interview` skill to work through them._")
     for g in gaps:
+        levels = field(g, "levels", [])
+        blocked_ids = field(g, "blocked_ids", [])
+        blocked_gating = field(g, "blocked_gating", 0)
         lines.append("")
-        stake = (f"{g.blocked_gating} gating"
-                 + (f" at L{'/L'.join(str(x) for x in g.levels)}" if g.levels else "")
-                 if g.blocked_gating else f"{len(g.blocks)} advisory")
-        lines.append(f"### {g.question}")
+        stake = (f"{blocked_gating} gating"
+                 + (f" at L{'/L'.join(str(x) for x in levels)}" if levels else "")
+                 if blocked_gating else f"{len(blocked_ids)} advisory")
+        lines.append(f"### {field(g, 'question')}")
         lines.append("")
-        lines.append(f"- **Gap:** `{g.id}` — {_GAP_KINDS.get(g.kind, g.kind)} ({stake})")
-        lines.append(f"- **Why it matters:** {g.why}")
-        if g.options:
-            lines.append("- **Accepted answers:** "
-                         + ", ".join(f"`{o}`" for o in g.options))
-        if g.answer.get("path"):
-            lines.append(f"- **Recorded at:** `{g.answer['file']}` → `{g.answer['path']}`")
-        elif g.answer.get("action"):
-            lines.append(f"- **Resolved by:** {g.answer['action']}")
-        if g.evidence:
-            lines.append("- **What the scan saw:** " + "; ".join(g.evidence))
-        if g.waivable:
-            lines.append("- **If it lives outside this repo:** record a disclosed waiver in "
-                         f"`{_WAIVERS_FILE}`; waived criteria leave the gate denominator "
-                         "and are never counted as passing.")
+        lines.append(f"- **Gap:** `{field(g, 'gap_id')}` — "
+                     f"{_GAP_KINDS.get(field(g, 'kind'), field(g, 'kind'))} ({stake})")
+        lines.append(f"- **Why it matters:** {field(g, 'why')}")
+        if field(g, "recordable"):
+            lines.append("- **Recordable:** yes — the interview records one typed answer "
+                         "and the engine re-scores from it.")
+        else:
+            lines.append("- **Recordable:** no — this needs action outside the interview "
+                         "(see the question).")
+        evidence = field(g, "evidence", [])
+        if evidence:
+            lines.append("- **What the scan saw:** " + "; ".join(evidence))
     return lines
-
 
 
 def _pillars_in_order(results):
     seen = []
     for r in results:
-        if r.pillar not in seen:
-            seen.append(r.pillar)
+        pillar = r["pillar"] if isinstance(r, dict) else r.pillar
+        if pillar not in seen:
+            seen.append(pillar)
     return seen
 
 
 def _display_score(r):
     """N/M shown next to each criterion: passed vs evaluated apps (repository scope is 1 unit)."""
-    return f"{r.passed_apps}/{r.evaluated_apps}"
+    passed = r.get("passed_apps", 0) if isinstance(r, dict) else r.passed_apps
+    evaluated = r.get("evaluated_apps", 0) if isinstance(r, dict) else r.evaluated_apps
+    return f"{passed}/{evaluated}"
 
 
 _ACDC_LOOPS = {"inner": "inner loop", "outer": "outer loop", "both": "both loops"}
@@ -378,24 +573,34 @@ def _acdc_label(r):
 
     Returns "" for unmapped criteria so callers can drop it into any meta join unchanged.
     """
-    if not r.acdc_stage:
+    stage = r["acdc_stage"] if isinstance(r, dict) else r.acdc_stage
+    loop = r["acdc_loop"] if isinstance(r, dict) else r.acdc_loop
+    if not stage:
         return ""
-    return f"{_ACDC_LOOPS.get(r.acdc_loop, r.acdc_loop)} · {r.acdc_stage}"
+    return f"{_ACDC_LOOPS.get(loop, loop)} · {stage}"
 
 
 def _group_by_effort(items):
     groups = {}
     for r in items:
-        groups.setdefault(_EFFORT.get(r.fix_kind, _EFFORT[""]), []).append(r)
+        kind = r["fix_kind"] if isinstance(r, dict) else r.fix_kind
+        groups.setdefault(_EFFORT.get(kind, _EFFORT[""]), []).append(r)
     ordered = []
     for label in _EFFORT.values():
         if label in groups:
-            ordered.append((label, sorted(groups[label], key=lambda r: r.level)))
+            ordered.append((label, sorted(
+                groups[label],
+                key=lambda r: r["level"] if isinstance(r, dict) else r.level)))
     return ordered
 
 
 def _advisory_items(results):
-    return _group_by_effort([r for r in results if not r.gating and r.status == Status.FAIL])
+    return _group_by_effort([
+        r for r in results
+        if not (r["gating"] if isinstance(r, dict) else r.gating)
+        and (r["status"] if isinstance(r, dict) else r.status) in
+        ("fail", Status.FAIL)
+    ])
 
 
 # ------------------------------------------------------------------------------ html
@@ -1018,8 +1223,92 @@ def _distribution(counts) -> str:
             'aria-hidden="true">' + "".join(parts) + "</svg>")
 
 
-def render_html(report) -> str:
-    d = report
+def _canonical_view(data):
+    """Rebuild the typed report view strictly from the canonical schema-v3 dict.
+
+    Renderers consume only this projection — never raw model internals. Malformed payloads
+    fail here (imported dicts must already be validated), matching the no-repair contract.
+    """
+    from types import SimpleNamespace
+
+    from .model import (
+        App,
+        CriterionResult,
+        DecisionStep,
+        DecisionTrace,
+        Detection,
+        Evidence,
+        LevelScore,
+        Report,
+        ScoreSummary,
+        Status,
+    )
+    results = []
+    for r in data.get("results") or []:
+        evidence = [Evidence(summary=e["summary"], tier=e["tier"], source=e["source"],
+                             detail=e["detail"]) for e in r.get("evidence") or []]
+        trace = None
+        t = r.get("decision_trace")
+        if t:
+            trace = DecisionTrace(
+                version=t["version"], reason_code=t["reason_code"], rule_ref=t["rule_ref"],
+                steps=[DecisionStep(kind=s["kind"], code=s["code"], message=s["message"],
+                                    evidence_refs=list(s["evidence_refs"]))
+                       for s in t["steps"]],
+                limitations=list(t["limitations"]))
+        results.append(CriterionResult(
+            id=r["id"], title=r["title"], pillar=r["pillar"], level=r["level"],
+            scope=r["scope"], gating=r["gating"], status=Status(r["status"]),
+            rationale=r["rationale"], evidence=evidence, app_path=r["app_path"],
+            fixable=r["fixable"], fix_kind=r["fix_kind"], acdc_stage=r["acdc_stage"],
+            acdc_loop=r["acdc_loop"], passed_apps=r["passed_apps"],
+            evaluated_apps=r["evaluated_apps"], decision_trace=trace))
+    score = None
+    s = data.get("score")
+    if s:
+        score = ScoreSummary(
+            level=s["level"], level_name=s["level_name"], pass_rate=s["pass_rate"],
+            gating_passed=s["gating_passed"], gating_total=s["gating_total"],
+            levels=[LevelScore(level=lv["level"], name=lv["name"], passed=lv["passed"],
+                               total=lv["total"], achieved=lv["achieved"],
+                               defined=lv["defined"], defined_total=lv["defined_total"])
+                    for lv in s["levels"]],
+            pillars=s["pillars"], recommendations=s["recommendations"],
+            max_available_level=s["max_available_level"],
+            next_gate_actions=s["next_gate_actions"],
+            evidence_coverage=s["evidence_coverage"])
+    detection = None
+    det = data.get("detection")
+    if det:
+        detection = Detection(
+            project_type=det["project_type"], confidence=det["confidence"],
+            signals=list(det["signals"]), languages=list(det["languages"]),
+            apps=[App(path=a["path"], languages=a["languages"], runtime=a["runtime"],
+                      deploy_surface=a["deploy_surface"], prod_facing=a["prod_facing"],
+                      test_cmd=a["test_cmd"], type_confidence=a["type_confidence"],
+                      type_candidates=a["type_candidates"], surfaces=a["surfaces"])
+                  for a in det["apps"]],
+            is_monorepo=det["is_monorepo"], opt_in=det["opt_in"],
+            candidates=det["candidates"], surfaces=det["surfaces"],
+            repository_indeterminate=det["repository_indeterminate"],
+            indeterminate_reason=det["indeterminate_reason"])
+    view = Report(
+        project_path="", schema_version=data["schema_version"],
+        engine_version=data["engine_version"], registry_version=data["registry_version"],
+        detector_version=data["detector_version"], commit=data["commit"],
+        branch=data["branch"], github_available=data["github_available"],
+        generated_at=data["generated_at"], repository=data.get("repository"),
+        detection=detection, results=results, score=score,
+        advisory=list(data.get("advisory") or []),
+        gaps=[SimpleNamespace(**g) for g in (data.get("gaps") or [])],
+        assessment_provenance=data.get("assessment_provenance"))
+    # The boundary is a canonical constant; the view carries it verbatim.
+    view.assessment_boundary = data.get("assessment_boundary")
+    return view
+
+
+def render_html(report, *, detail: str = "actionable") -> str:
+    d = _canonical_view(report.to_dict() if hasattr(report, "to_dict") else report)
     out = [
         "<!doctype html>",
         '<html lang="en">',
@@ -1038,11 +1327,13 @@ def render_html(report) -> str:
     _html_status(out, d)
     _html_pillars(out, d)
     _html_actions(out, d)
-    _html_criteria(out, d)
+    _html_criteria(out, d, detail=detail)
     _html_advisory_improvements(out, d)
     _html_applications(out, d)
     _html_judgments(out, d)
     _html_advisory(out, d)
+    _html_provenance(out, d)
+    _html_boundary(out, d)
     _html_footer(out, d)
     out += ["</main>", "</body>", "</html>"]
     return "\n".join(out) + "\n"
@@ -1074,10 +1365,42 @@ def _html_status(out, d) -> None:
                      f"{s.gating_passed}/{s.gating_total} gating criteria"])
             + "</p>",
         ]
+        if s.max_available_level:
+            out.append(f'<p class="meta">Current deterministic ceiling: '
+                       f'L{_html(s.max_available_level)} '
+                       f'{_html(_LEVEL_NAMES.get(s.max_available_level, ""))}.</p>')
         _gate_track(out, s.levels)
         _html_level_education(out, s.levels)
+        coverage = s.evidence_coverage or {}
+        counts = coverage.get("status_counts", {})
+        defects = coverage.get("evidence_items_unreferenced", 0)
+        out.append('<p class="meta">Evidence coverage: '
+                   + _meta([f"{counts.get('pass', 0)} pass",
+                            f"{counts.get('fail', 0)} fail",
+                            f"{counts.get('unknown', 0)} unknown",
+                            f"{counts.get('skipped', 0)} skipped",
+                            f"{counts.get('waived', 0)} waived",
+                            f"{coverage.get('results_with_decision_trace', 0)}/"
+                            f"{len(d.results)} traced",
+                            f"{defects} unreferenced evidence"])
+                   + "</p>")
     else:
         _empty(out, "Score unavailable")
+    if not d.github_available:
+        _callout(out, "note",
+                 "<strong>T2 GitHub checks were not requested</strong> (offline default): "
+                 "remote controls such as branch protection are skipped/excluded and were "
+                 "not verified. Re-run with <code>--github</code> to assess them.")
+    else:
+        partial = [r for r in d.results
+                   if r.id in ("security.branch_protection",
+                               "security.branch_protection_depth")
+                   and r.status == Status.UNKNOWN]
+        if partial:
+            _callout(out, "warn",
+                     "<strong>Partial T2 evidence:</strong> branch-protection controls "
+                     "could not be read and are <strong>not verified</strong> (never "
+                     "&ldquo;not protected&rdquo;).")
     # Advisory pointer, not a finding: the artifact is read away from a terminal, so it has
     # to say that some results are stuck on an input rather than on the repository.
     if d.gaps:
@@ -1124,19 +1447,23 @@ def _gate_track(out, levels) -> None:
     out.append('<ol class="gates">')
     blocked_marked = False
     for lv in levels:
-        if not lv.total:
-            cls, state = "gate-empty", "no criteria"
+        if not lv.defined:
+            cls, state = "gate-empty", "not scored"
+        elif not lv.total:
+            cls, state = "gate-empty", f"all {lv.defined_total} excluded"
         elif lv.achieved:
             cls, state = "gate-cleared", "cleared"
         elif blocked_marked:
             cls, state = "gate-locked", "locked"
         else:
             cls, state, blocked_marked = "gate-blocked", "blocked", True
+        count = (f"{_html(lv.passed)}/{_html(lv.total)}" if lv.defined and lv.total
+                 else "—")
         out += [
             f'<li class="gate {cls}">',
             f'<span class="gate-num">{_html(lv.level)}</span>',
             f'<span class="gate-name">{_html(lv.name)}</span>',
-            f'<span class="gate-count">{_html(lv.passed)}/{_html(lv.total)}</span>',
+            f'<span class="gate-count">{count}</span>',
             f'<span class="gate-state">{state}</span>',
             "</li>",
         ]
@@ -1217,18 +1544,18 @@ def _html_applications(out, d) -> None:
 
 
 def _html_actions(out, d) -> None:
-    recs = _recommendations(d.results, d.score.level) if d.score else []
-    if not recs:
+    actions = d.score.next_gate_actions if d.score else []
+    if not actions:
         return
-    _section(out, "actions", "Action Items")
-    out += [f'<p class="note">Top {_html(len(recs))} highest-impact gating next steps '
-            "(clear the next level first).</p>",
+    _section(out, "actions", "Clear the Next Gate")
+    out += ['<p class="note">Every gating blocker at the first unachieved defined Level, '
+            "in deterministic order.</p>",
             '<ol class="actions">']
-    for rec in recs:
-        effort = _EFFORT.get(rec.get("fix_kind", ""), _EFFORT[""])
-        _row(out, cls="action", title=rec["title"], ident=_ident(rec["id"]),
-             meta=_meta([f"L{rec['level']}", rec["pillar"], effort]),
-             rationale=rec["rationale"])
+    for action in actions:
+        effort = _EFFORT.get(action.get("fix_kind", ""), _EFFORT[""])
+        _row(out, cls="action", title=action["title"], ident=_ident(action["id"]),
+             meta=_meta([f"L{action['level']}", action["pillar"], effort]),
+             rationale=action["rationale"])
     out += ["</ol>", "</section>"]
 
 
@@ -1381,7 +1708,7 @@ def _html_acdc_education(out) -> None:
     _education(out, "acdc", "How AC/DC loops map to this report", content)
 
 
-def _html_criteria(out, d) -> None:
+def _html_criteria(out, d, *, detail: str = "actionable") -> None:
     _section(out, "criteria", "Criteria Results")
     pillars = _pillars_in_order(d.results)
     if not pillars:
@@ -1412,7 +1739,7 @@ def _html_criteria(out, d) -> None:
         out.append('<ol class="criteria">')
         for r in rows:
             index += 1
-            _html_criterion(out, r, index)
+            _html_criterion(out, r, index, detail=detail)
         out += ["</ol>", "</section>"]
     out += ["</div>", "</section>"]
 
@@ -1445,7 +1772,8 @@ def _pillar_header(out, index, pillar, rows) -> None:
 
 def _is_judgment(r) -> bool:
     """Agent-graded criteria: genuinely outside the score, so genuinely not your problem."""
-    return r.id.startswith("judgment.")
+    rid = r["id"] if isinstance(r, dict) else r.id
+    return rid.startswith("judgment.")
 
 
 def _blocking(r) -> bool:
@@ -1455,8 +1783,10 @@ def _blocking(r) -> bool:
     failure. An advisory failure is worth doing but blocks nothing, so shouting about it in
     the same voice as a blocked gate teaches the reader to distrust the loud voice.
     """
-    return r.gating and (r.status == Status.FAIL
-                         or (r.status == Status.UNKNOWN and not _is_judgment(r)))
+    gating = r["gating"] if isinstance(r, dict) else r.gating
+    status = r["status"] if isinstance(r, dict) else r.status
+    return gating and (status in ("fail", Status.FAIL)
+                       or (status in ("unknown", Status.UNKNOWN) and not _is_judgment(r)))
 
 
 def _suggested(r) -> bool:
@@ -1477,8 +1807,10 @@ def _action(r) -> str:
       telling its reader it cost them something is simply false.
     * Judgments and unregistered fix kinds stay silent: the rationale already says it.
     """
-    if r.status == Status.FAIL:
-        return _ACTIONS.get(r.fix_kind or "", "")
+    status = r["status"] if isinstance(r, dict) else r.status
+    kind = r["fix_kind"] if isinstance(r, dict) else r.fix_kind
+    if status in ("fail", Status.FAIL):
+        return _ACTIONS.get(kind or "", "")
     if _blocking(r):  # a gating, non-judgment unknown: the only unknown that costs a level
         return _ASSESS_UNKNOWN
     return ""
@@ -1501,13 +1833,54 @@ def _sort_key(r):
     return (tier, _DIST_ORDER.index(r.status.value), r.level)
 
 
-def _html_criterion(out, r, index) -> None:
+def _trace_disclosure(r, index, *, open_: bool = False) -> str:
+    """The accessible "Why this result" disclosure: the deterministic decision trace in
+    order, with evidence references resolved to the escaped evidence cards."""
+    trace = r.decision_trace
+    if trace is None or not trace.steps:
+        return ""
+    rows = []
+    for _position, step in enumerate(trace.steps, 1):
+        if step.kind == "rule":
+            rows.append(f"<li><strong>Rule</strong> <code>{_html(trace.rule_ref)}</code>: "
+                        f"{_html(step.message)}</li>")
+        elif step.kind == "observation":
+            rows.append(f"<li><strong>Observed</strong> {_html(step.message)}"
+                        "<ol class=\"trace-evidence\">"
+                        + "".join(
+                            f"<li>[{_html(r.evidence[ref].tier)}] "
+                            f"{_html(r.evidence[ref].summary)}"
+                            + (f" <code>{_html(r.evidence[ref].source)}</code>"
+                               if r.evidence[ref].source else "")
+                            + "</li>"
+                            for ref in step.evidence_refs if 0 <= ref < len(r.evidence))
+                        + "</ol></li>")
+        elif step.kind == "evaluation":
+            rows.append(f"<li><strong>Evaluation</strong> <code>{_html(step.code)}</code>: "
+                        f"{_html(step.message)}</li>")
+        elif step.kind == "conclusion":
+            rows.append(f"<li><strong>Conclusion</strong> {_html(step.message)}</li>")
+    limitations = "".join(f'<li class="trace-limitation">⚠ {_html(item)}</li>'
+                          for item in trace.limitations)
+    if limitations:
+        rows.append(limitations)
+    open_attr = " open" if open_ else ""
+    return (f'<details class="trace"{open_attr}><summary>Why this result '
+            f"<code>{_html(trace.reason_code)}</code></summary>"
+            f'<ol class="trace-steps">{"".join(rows)}</ol></details>')
+
+
+def _html_criterion(out, r, index, detail: str = "actionable") -> None:
     status = r.status.value
     action = _action(r)
     tier = " needs-action" if _blocking(r) else (" suggested" if _suggested(r) else "")
     extra = [_evidence(r.evidence, f"tip-{index}")]
     if action:
         extra.insert(0, f'<p class="next-step">{action}</p>')
+    trace_html = _trace_disclosure(
+        r, index, open_=(detail == "all" or status in ("fail", "unknown")))
+    if trace_html:
+        extra.append(trace_html)
     # N/M earns its place when it is not tautological: a repository-scope pass is always
     # 1/1, and printing it on every green row is three tokens saying nothing.
     partial = r.passed_apps != r.evaluated_apps
@@ -1555,7 +1928,7 @@ def _html_judgments(out, d) -> None:
     if ignored:
         out.append(f'<p class="judgment-ignored">Ignored judgments ({_html(len(ignored))}): '
                    + _html(", ".join(r.title for r in ignored))
-                   + " — silenced via <code>.agents/readiness/config.json</code> "
+                   + " — silenced via <code>.ra1/config.json</code> "
                      "<code>judgments</code>.</p>")
     out.append("</section>")
 
@@ -1573,6 +1946,80 @@ def _html_advisory(out, d) -> None:
     out += ["</ul>", "</section>"]
 
 
+
+def _html_provenance(out, d) -> None:
+    provenance = d.assessment_provenance
+    if not provenance:
+        return
+    _section(out, "provenance", "Assessment Provenance")
+    inv = provenance["invocation"]
+    subject = provenance["subject"]
+    builder = provenance["builder"]
+    out.append('<p class="note">Engine-recorded unsigned metadata — <strong>not '
+               "authenticated provenance or an attestation</strong>; it cannot establish "
+               "report integrity.</p>")
+    out.append('<dl class="education-list">')
+    rows = [
+        ("builder", f"{builder['id']} {builder['engine_version']} ({builder['platform']})"),
+        ("subject", (subject.get("repository_identity_kind") or "unknown")
+         + (f" at commit {subject['commit'][:12]}" if subject.get("commit") else "")
+         + (f" on branch {subject['branch']}" if subject.get("branch") else "")),
+        ("git", f"profile {inv['git']['resource_profile']}; metadata "
+                f"{inv['git']['metadata_profile']}; collection complete: "
+                f"{_yes(inv['git']['collection_complete'])}"),
+        ("github (T2)", f"requested: {_yes(inv['github']['requested'])}; host proxy "
+                        f"requested: {_yes(inv['github']['host_proxy'])}; available: "
+                        f"{_yes(inv['github']['available'])}; collection complete: "
+                        f"{_yes(inv['github']['collection_complete'])}"),
+        ("execution (T3)", f"requested: {_yes(inv['execution']['requested'])}; timeout "
+                           f"{inv['execution']['timeout_seconds']}s; completed: "
+                           f"{_yes(inv['execution']['completed'])}; successful: "
+                           f"{_yes(inv['execution']['successful'])}"),
+        ("waivers / static", f"waivers source {inv['waivers']['source']}; static "
+                             f"collection complete: "
+                             f"{_yes(inv['static']['collection_complete'])}"),
+        ("generated at", provenance["generated_at"]),
+    ]
+    for term, definition in rows:
+        out.append('<div class="education-row">'
+                   f'<dt class="education-term">{_html(term)}</dt>'
+                   f'<dd class="education-def">{_html(definition)}</dd></div>')
+    out.append("</dl>")
+    out.append('<p class="note">Scope limits: linked-worktree support covers primary '
+               "checkouts and standard reciprocal current-user linked worktrees only; on "
+               "macOS (darwin) automatic Git has CPU/core/wall/output/command/snapshot "
+               "caps but <strong>no hard memory cap</strong> (deferred).</p>")
+    out.append("</section>")
+
+
+def _html_boundary(out, d) -> None:
+    boundary = getattr(d, "assessment_boundary", None)
+    if not boundary:
+        return
+    _section(out, "boundary", "Assessment Boundary")
+    out.append("<h3>Evidence layers</h3>")
+    out.append('<dl class="education-list">')
+    for layer in boundary["evidence_layers"]:
+        out.append('<div class="education-row">'
+                   f'<dt class="education-term">{_html(layer["id"])} '
+                   f'({"/".join(layer["tiers"])})</dt>'
+                   f'<dd class="education-def">{_html(layer["assesses"])}</dd></div>')
+    out.append("</dl>")
+    out.append("<h3>Not assessed by this repository scan</h3>")
+    out.append("<ul>")
+    for item in boundary["not_assessed"]:
+        out.append(f"<li>{_html(item['label'])}</li>")
+    out.append("</ul>")
+    out.append("<h3>Known limitations</h3>")
+    out.append('<dl class="education-list">')
+    for item in boundary["known_limitations"]:
+        out.append('<div class="education-row">'
+                   f'<dt class="education-term">{_html(item["id"])}</dt>'
+                   f'<dd class="education-def">{_html(item["detail"])}</dd></div>')
+    out.append("</dl>")
+    out.append("</section>")
+
+
 def _html_footer(out, d) -> None:
     parts = []
     if d.generated_at:
@@ -1584,81 +2031,122 @@ def _html_footer(out, d) -> None:
 
 
 # ---------------------------------------------------------------------------- github
+def _gha_escape_data(value) -> str:
+    """Escape %, CR, LF — applied exactly once to message data."""
+    return str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
 def _gha_escape_property(value) -> str:
-    return (str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-            .replace(":", "%3A").replace(",", "%2C"))
+    """Data escaping plus ``:``/``,`` — only for title/file properties, never message bodies."""
+    return _gha_escape_data(value).replace(":", "%3A").replace(",", "%2C")
 
 
 def render_github(report) -> str:
+    """One escaped workflow command per result, plus ceiling/boundary/provenance notices.
+
+    Narrow gate adapter, not a complete assessment report: it never duplicates the full
+    trace/boundary payload.
+    """
+    d = report.to_dict() if hasattr(report, "to_dict") else report
     out = []
-    for r in report.results:
-        if r.gating and r.status == Status.FAIL:
+    for r in d.get("results") or []:
+        if r["gating"] and r["status"] == "fail":
+            trace = r.get("decision_trace") or {}
+            code = trace.get("reason_code", "")
             src = _first_source(r)
-            title = _gha_escape_property(f"Readiness: {r.title}")
+            title = _gha_escape_property(f"Readiness: {r['title']}")
             props = [f"title={title}"]
             if src:
                 props.append(f"file={_gha_escape_property(src)}")
-            out.append(f"::warning {','.join(props)}::{r.rationale}")
-    if report.score:
-        out.append(f"::notice::Agent Readiness Level {report.score.level} "
-                   f"({report.score.gating_passed}/{report.score.gating_total} gating criteria)")
+            body = r["rationale"] + (f" [{code}]" if code else "")
+            out.append(f"::warning {','.join(props)}::{_gha_escape_data(body)}")
+    score = d.get("score")
+    if score:
+        out.append(f"::notice::Agent Readiness Level {score['level']} "
+                   f"({_gha_escape_data(str(score['gating_passed']))}/"
+                   f"{_gha_escape_data(str(score['gating_total']))} gating criteria) — "
+                   f"current deterministic ceiling L{score.get('max_available_level', 0)}")
+    provenance = d.get("assessment_provenance")
+    if provenance:
+        inv = provenance["invocation"]
+        builder = provenance["builder"]
+        subject = provenance["subject"]
+        commit = subject.get("commit") or "unknown"
+        out.append(
+            "::notice::Assessment provenance (unsigned/unverified — not an attestation): "
+            f"{_gha_escape_data(builder['id'])} "
+            f"{_gha_escape_data(builder['engine_version'])} "
+            f"on {_gha_escape_data(builder['platform'])}; subject commit "
+            f"{_gha_escape_data(commit[:12])}; T2 requested="
+            f"{_gha_escape_data(str(inv['github']['requested']))}, T3 requested="
+            f"{_gha_escape_data(str(inv['execution']['requested']))}")
     return "\n".join(out) + ("\n" if out else "")
 
 
 def _first_source(r):
-    for e in r.evidence:
-        if e.source and "/" in e.source and not e.source.startswith("repos/"):
-            return e.source
+    """A validated repository-relative source for the file property, or "" (never sentinel)."""
+    for e in r.get("evidence") or []:
+        src = e.get("source") or ""
+        if src and "/" in src and not src.startswith(("repos/", "/")) \
+                and ".." not in src.split("/") and "\\" not in src \
+                and not src.startswith("[redacted"):
+            return src
     return ""
 
 
 # ---------------------------------------------------------------------------- junit
 def render_junit(report) -> str:
-    results = [r for r in report.results if r.gating]
-    failures = sum(1 for r in results if r.status == Status.FAIL)
-    skipped = sum(1 for r in results if r.status in (Status.SKIPPED, Status.WAIVED, Status.UNKNOWN))
+    """Narrow gating adapter over the canonical dict — not a complete assessment report."""
+    d = report.to_dict() if hasattr(report, "to_dict") else report
+    results = [r for r in d.get("results") or [] if r["gating"]]
+    failures = sum(1 for r in results if r["status"] == "fail")
+    skipped = sum(1 for r in results if r["status"] in ("skipped", "waived", "unknown"))
     suites = ET.Element("testsuites", name="agent-readiness",
                         tests=str(len(results)), failures=str(failures), skipped=str(skipped))
     by_pillar = {}
     for r in results:
-        by_pillar.setdefault(r.pillar, []).append(r)
+        by_pillar.setdefault(r["pillar"], []).append(r)
     for pillar, items in by_pillar.items():
         suite = ET.SubElement(suites, "testsuite", name=pillar, tests=str(len(items)),
-                              failures=str(sum(1 for r in items if r.status == Status.FAIL)))
+                              failures=str(sum(1 for r in items if r["status"] == "fail")))
         for r in items:
-            case = ET.SubElement(suite, "testcase", classname=f"{pillar}", name=f"{r.id} {r.title}")
-            if r.status == Status.FAIL:
-                ET.SubElement(case, "failure", message=r.rationale).text = r.rationale
-            elif r.status in (Status.SKIPPED, Status.WAIVED, Status.UNKNOWN):
-                ET.SubElement(case, "skipped", message=r.status.value)
+            case = ET.SubElement(suite, "testcase", classname=f"{pillar}",
+                                 name=f"{r['id']} {r['title']}")
+            if r["status"] == "fail":
+                ET.SubElement(case, "failure", message=r["rationale"]).text = r["rationale"]
+            elif r["status"] in ("skipped", "waived", "unknown"):
+                ET.SubElement(case, "skipped", message=r["status"])
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(suites, encoding="unicode")
 
 
 # ---------------------------------------------------------------------------- sarif
 def render_sarif(report) -> str:
+    """Narrow gating adapter over the canonical dict — not a complete assessment report."""
+    d = report.to_dict() if hasattr(report, "to_dict") else report
     rules, results = [], []
     seen_rules = set()
-    for r in report.results:
-        if not (r.gating and r.status == Status.FAIL):
+    for r in d.get("results") or []:
+        if not (r["gating"] and r["status"] == "fail"):
             continue
         src = _first_source(r)
         if not src:
             continue  # SARIF only for criteria with a real source location
-        if r.id not in seen_rules:
-            rules.append({"id": r.id, "name": r.title,
-                          "shortDescription": {"text": r.title},
-                          "properties": {"pillar": r.pillar, "level": r.level}})
-            seen_rules.add(r.id)
+        if r["id"] not in seen_rules:
+            rules.append({"id": r["id"], "name": r["title"],
+                          "shortDescription": {"text": r["title"]},
+                          "properties": {"pillar": r["pillar"], "level": r["level"]}})
+            seen_rules.add(r["id"])
         results.append({
-            "ruleId": r.id, "level": "warning",
-            "message": {"text": r.rationale},
+            "ruleId": r["id"], "level": "warning",
+            "message": {"text": r["rationale"]},
             "locations": [{"physicalLocation": {"artifactLocation": {"uri": src}}}],
         })
     doc = {
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "version": "2.1.0",
         "runs": [{
-            "tool": {"driver": {"name": "agent-readiness", "version": report.engine_version,
+            "tool": {"driver": {"name": "agent-readiness",
+                                "version": d["engine_version"],
                                 "informationUri": "https://github.com/tjboudreaux/agent-readiness",
                                 "rules": rules}},
             "results": results,
