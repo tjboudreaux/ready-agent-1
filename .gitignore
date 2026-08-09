@@ -10,7 +10,7 @@ __pycache__/
 
 # Coverage / test artifacts
 .coverage
-.coverage.*
+.coverage*
 htmlcov/
 coverage.xml
 
