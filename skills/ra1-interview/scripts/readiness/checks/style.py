@@ -13,29 +13,37 @@ def linter_config(ctx):
                         ".golangci.yml", ".golangci.yaml"])
     if files:
         return passed(f"Linter config present: {files[0]}",
-                      [ev(f"linter config {files[0]}", source=files[0])])
+                      [ev(f"linter config {files[0]}", source=files[0])],
+                      reason_code="style.linter_config.configured")
     if atool(ctx, "ruff") or atool(ctx, "flake8") or atool(ctx, "pylint"):
         return passed("Linter configured via pyproject [tool.*].",
-                      [ev("pyproject linter tool config")])
+                      [ev("pyproject linter tool config")],
+                      reason_code="style.linter_config.configured")
     dep = adep(ctx, ["eslint", "ruff", "flake8", "pylint", "biome", "golangci-lint"])
     if dep:
-        return passed(f"Linter dependency declared: {dep}", [ev(f"dependency {dep}")])
-    return failed("No linter config (eslint/ruff/flake8/pylint/biome).")
+        return passed(f"Linter dependency declared: {dep}", [ev(f"dependency {dep}")],
+                      reason_code="style.linter_config.configured")
+    return failed("No linter config (eslint/ruff/flake8/pylint/biome).",
+                  reason_code="style.linter_config.missing")
 
 
 def formatter(ctx):
     files = aglob(ctx, [".prettierrc*", "prettier.config.*", ".clang-format", "rustfmt.toml",
-                        ".rustfmt.toml"])
+                        ".rustfmt.toml", "ruff.toml", ".ruff.toml"])
     if files:
-        return passed(f"Formatter config: {files[0]}", [ev("formatter config", source=files[0])])
+        return passed(f"Formatter config: {files[0]}", [ev("formatter config", source=files[0])],
+                      reason_code="style.formatter.configured")
     if atool(ctx, "black") or atool(ctx, "ruff"):
-        return passed("Formatter via pyproject [tool.black]/[tool.ruff].")
+        return passed("Formatter via pyproject [tool.black]/[tool.ruff].",
+                      reason_code="style.formatter.configured")
     dep = adep(ctx, ["prettier", "black"])
     if dep:
-        return passed(f"Formatter dependency: {dep}")
+        return passed(f"Formatter dependency: {dep}", reason_code="style.formatter.configured")
     if any(lang in ctx.app.languages for lang in ("go", "rust")):
-        return passed("Standard formatter (gofmt/rustfmt) available for language.")
-    return failed("No formatter (prettier/black/ruff-format).")
+        return passed("Standard formatter (gofmt/rustfmt) available for language.",
+                      reason_code="style.formatter.configured")
+    return failed("No formatter (prettier/black/ruff-format).",
+                  reason_code="style.formatter.missing")
 
 
 def type_check(ctx):

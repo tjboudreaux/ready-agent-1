@@ -4,26 +4,42 @@ from __future__ import annotations
 import json
 import re
 
-from ..parsers import load_jsonc, strip_jsonc
-from ._helpers import adep, agrep, atool, ev, failed, passed, skipped
+from .. import parsers
+from ..parsers import strip_jsonc
+from ._helpers import adep, agrep, atool, ev, failed, passed, skipped, unknown
 
 
 def branch_protection(ctx):
     if not ctx.github.available:
-        return skipped("No GitHub API; cannot read branch protection.")
-    if ctx.github.branch_protected():
-        return passed("Default branch is protected.", [ev("branch protection enabled", tier="T2")])
-    return failed("Default branch is not protected.")
+        return skipped("No GitHub API; cannot read branch protection.",
+                       reason_code="security.branch_protection.github_unavailable")
+    obs = ctx.github.branch_protected()
+    if obs.state == "unreadable":
+        return unknown("Branch protection could not be read; not verified.",
+                       reason_code="security.branch_protection.observation_unreadable",
+                       limitations=["The selected GitHub control was not verified."])
+    if obs.state == "present" and obs.value:
+        return passed("Default branch is protected.", [ev("branch protection enabled", tier="T2")],
+                      reason_code="security.branch_protection.protected")
+    return failed("Default branch is not protected.",
+                  reason_code="security.branch_protection.not_protected")
 
 
 def secret_scanning(ctx):
     if not ctx.github.available:
-        return skipped("No GitHub API; cannot read secret scanning.")
-    enabled = ctx.github.secret_scanning_enabled()
-    if enabled:
+        return skipped("No GitHub API; cannot read secret scanning.",
+                       reason_code="security.secret_scanning.github_unavailable")
+    obs = ctx.github.secret_scanning_enabled()
+    if obs.state == "unreadable":
+        return unknown("Secret scanning state could not be read; not verified.",
+                       reason_code="security.secret_scanning.observation_unreadable",
+                       limitations=["The selected GitHub control was not verified."])
+    if obs.state == "present" and obs.value:
         return passed("Secret scanning / push protection enabled.",
-                       [ev("secret scanning enabled", tier="T2")])
-    return failed("Secret scanning not enabled.")
+                       [ev("secret scanning enabled", tier="T2")],
+                       reason_code="security.secret_scanning.enabled")
+    return failed("Secret scanning not enabled.",
+                  reason_code="security.secret_scanning.disabled")
 
 
 def codeowners(ctx):
@@ -57,22 +73,64 @@ def automated_security_review(ctx):
 
 
 def gitignore_comprehensive(ctx):
-    patterns = ctx.static.gitignore_patterns()
+    """Git ignore coverage plus the exact generated-output/policy boundary (§5.1.3).
+
+    ``/.ra1/reports/`` must be ignored by a final positive rule from the root safe regular
+    ``.gitignore``, while ``.ra1/config.json`` and ``.ra1/waivers.json`` stay unignored.
+    Ignore configuration reduces accidental commits; it is not commit-policy enforcement.
+    """
+    limitation = ("Ignore configuration reduces accidental commits but does not prove "
+                  "commit-policy enforcement.")
+    gitignore_text = ctx.static.read(".gitignore")
+    patterns = [ln.strip() for ln in (gitignore_text or "").splitlines()
+                if ln.strip() and not ln.strip().startswith("#")]
     if not patterns:
-        return failed("No .gitignore.")
+        return failed("No .gitignore.",
+                      reason_code="security.gitignore_comprehensive.missing",
+                      limitations=[limitation])
     blob = "\n".join(patterns).lower()
     has_secret = any(k in blob for k in [".env", "secret", ".pem", "credential", "*.key"])
     has_artifact = any(k in blob for k in ["node_modules", "__pycache__", "dist", "build",
                                            "target", "*.pyc", ".venv", "venv", ".coverage"])
-    if has_secret and has_artifact:
-        return passed("Gitignore covers secrets and build/cache artifacts.",
-                       [ev(".gitignore", source=".gitignore")])
-    missing = []
-    if not has_secret:
-        missing.append("secrets (e.g. .env)")
-    if not has_artifact:
-        missing.append("build/cache artifacts")
-    return failed("Gitignore missing patterns for: " + ", ".join(missing))
+    if not (has_secret and has_artifact):
+        missing = []
+        code = "security.gitignore_comprehensive.secrets_incomplete"
+        if not has_secret:
+            missing.append("secrets (e.g. .env)")
+        if not has_artifact:
+            if not missing:
+                code = "security.gitignore_comprehensive.artifacts_incomplete"
+            missing.append("build/cache artifacts")
+        return failed("Gitignore missing patterns for: " + ", ".join(missing),
+                      reason_code=code, limitations=[limitation])
+    obs = ctx.git.check_ignore((".ra1/reports/.ra1-ignore-probe", ".ra1/config.json",
+                                ".ra1/waivers.json"))
+    if obs.state != "present":
+        return unknown(
+            "Git ignore results could not be read; the generated-output boundary is "
+            "unverified.",
+            reason_code="security.gitignore_comprehensive.observation_indeterminate",
+            limitations=[limitation])
+    matched = {path: (source, pattern) for source, _lineno, pattern, path in obs.value}
+    for policy in (".ra1/config.json", ".ra1/waivers.json"):
+        if policy in matched:
+            return failed(
+                "Team-owned policy files must not be ignored: " + policy + ".",
+                [ev(".gitignore", source=".gitignore")],
+                reason_code="security.gitignore_comprehensive.policy_inputs_ignored",
+                limitations=[limitation])
+    probe = matched.get(".ra1/reports/.ra1-ignore-probe")
+    if not probe or probe[0] != ".gitignore" or probe[1].startswith("!"):
+        return failed(
+            "Generated reports are not isolated: ignore exactly `/.ra1/reports/` from the "
+            "root .gitignore.",
+            [ev(".gitignore", source=".gitignore")],
+            reason_code="security.gitignore_comprehensive.report_output_unprotected",
+            limitations=[limitation])
+    return passed("Gitignore covers secrets, artifacts, and the generated-output boundary.",
+                  [ev(".gitignore", source=".gitignore")],
+                  reason_code="security.gitignore_comprehensive.complete",
+                  limitations=[limitation])
 
 
 def security_md(ctx):
@@ -148,30 +206,6 @@ def dast(ctx):
 # --- Agent least-privilege config (advisory) -----------------------------------------
 
 
-def _is_unbounded_perm(entry) -> bool:
-    if not isinstance(entry, str):
-        return False
-    return entry == "*" or entry.endswith("(*)") or entry.endswith(":*")
-
-
-def _permissions_policy_ok(data) -> bool:
-    if not isinstance(data, dict):
-        return False
-    if isinstance(data.get("permissions"), dict):
-        perms = data["permissions"]
-    elif "allow" in data or "deny" in data:
-        perms = data
-    else:
-        return False
-    deny = perms.get("deny") if isinstance(perms.get("deny"), list) else []
-    allow = perms.get("allow") if isinstance(perms.get("allow"), list) else []
-    if deny:
-        return True
-    if allow and not any(_is_unbounded_perm(e) for e in allow):
-        return True
-    return False
-
-
 def _parse_permissions_markdown(text):
     """Extract a JSON/JSONC object from a fenced code block in a permissions markdown file."""
     if not text:
@@ -186,44 +220,236 @@ def _parse_permissions_markdown(text):
 
 
 def agent_permissions(ctx):
-    """Pass when shared agent permissions define a deny list or a non-unbounded allow list.
+    """Every recognized shared permission file must be parseable and safe (§5.3).
 
-    Accepts ``.claude/settings.json`` (never ``settings.local.json``) or
-    ``.agents/**/permissions*.{json,md}``.
+    Accepts ``.claude/settings.json`` (never ``settings.local.json``) and generic
+    ``.agents/**/permissions*.{json,md}``. A safe file can never mask an unsafe,
+    malformed, or unreadable one. This is static repository policy shape — not effective
+    runtime enforcement, identity, or sandbox proof.
     """
-    candidates = []
-    if ctx.static.glob([".claude/settings.json"]):
-        candidates.append(".claude/settings.json")
-    candidates.extend(ctx.static.glob([".agents/**/permissions*.json"]))
-    candidates.extend(ctx.static.glob([".agents/**/permissions*.md"]))
-    candidates = [
-        c for c in candidates
-        if not c.endswith("settings.local.json") and c != ".claude/settings.local.json"
-    ]
+    from ._agent_policy import (
+        evaluate_claude_settings,
+        evaluate_generic_policy,
+        shared_permission_paths,
+    )
+    limitation = ("Repository permission policy does not prove effective runtime "
+                  "enforcement, identity, or sandbox containment.")
+    candidates = shared_permission_paths(ctx)
     if not candidates:
         return failed(
-            "Missing agent permissions config "
-            "(.claude/settings.json or .agents/**/permissions*)."
-        )
-    saw_parse_failure = False
+            "Missing shared agent permissions config "
+            "(.claude/settings.json or .agents/**/permissions*).",
+            reason_code="security.agent_permissions.missing",
+            limitations=[limitation])
+    reports = []
     for path in candidates:
-        if path.endswith(".md"):
-            data = _parse_permissions_markdown(ctx.static.read(path) or "")
-            if data is None:
-                saw_parse_failure = True
-                continue
+        text = ctx.static.read(path)
+        if text is None:
+            return unknown(
+                "A shared permission file could not be read safely.",
+                reason_code="security.agent_permissions.observation_indeterminate",
+                limitations=[limitation])
+        if path == ".claude/settings.json":
+            data = parsers.loads_jsonc(text)
+            reports.append(evaluate_claude_settings(path, data) if data is not None
+                           else evaluate_claude_settings(path, None))
+        elif path.endswith(".md"):
+            reports.append(evaluate_generic_policy(
+                path, _parse_permissions_markdown(text), text))
         else:
-            data = load_jsonc(ctx.root / path)
+            data = parsers.loads_jsonc(text)
             if data is None:
-                saw_parse_failure = True
-                continue
-        if _permissions_policy_ok(data):
-            return passed(
-                f"Agent permissions policy present: {path}.",
-                [ev("agent permissions", source=path, tier="T0")],
-            )
-    if saw_parse_failure:
-        return failed("Agent permissions file(s) present but could not be parsed.")
-    return failed(
-        "Agent permissions present but missing non-empty deny or non-unbounded allow list."
+                reports.append(evaluate_generic_policy(path, None, ""))
+            else:
+                reports.append(evaluate_generic_policy(path, data, ""))
+    for state in ("dangerous_allow", "malformed", "unsupported_mode"):
+        hits = [r for r in reports if r.state == state]
+        if hits:
+            categories = sorted({c for r in hits for c in r.categories})
+            return failed(
+                f"Shared permission policy is {state.replace('_', ' ')}"
+                + (f": {', '.join(categories)}." if categories else "."),
+                [ev("agent permissions", source=r.path, tier="T0") for r in hits],
+                reason_code=f"security.agent_permissions.{state}",
+                limitations=[limitation])
+    for state in ("secret_denies_incomplete", "consequence_guards_incomplete"):
+        hits = [r for r in reports if r.state == state]
+        if hits:
+            categories = sorted({c for r in hits for c in r.categories})
+            return failed(
+                f"Shared permission policy is missing coverage: {', '.join(categories)}.",
+                [ev("agent permissions", source=r.path, tier="T0") for r in hits],
+                reason_code=f"security.agent_permissions.{state}",
+                limitations=[limitation])
+    return passed(
+        f"Shared agent permission policy is restrictive across {len(reports)} file(s).",
+        [ev("agent permissions", source=r.path, tier="T0") for r in reports],
+        reason_code="security.agent_permissions.safe",
+        limitations=[limitation])
+
+
+# --- Deepened platform/ownership/provenance controls (advisory) -------------------------
+
+
+def branch_protection_depth(ctx):
+    """Lossless T2 confirmation of the five branch-protection control families."""
+    if not ctx.github.available:
+        return skipped(
+            "No GitHub API; branch-protection depth cannot be read.",
+            reason_code="security.branch_protection_depth.github_unavailable",
+            limitations=["The selected GitHub control was not verified."])
+    obs = ctx.github.branch_protection_details()
+    if obs.state == "unreadable":
+        return unknown(
+            "Branch protection could not be read; not verified.",
+            reason_code="security.branch_protection_depth.observation_unreadable",
+            limitations=["The selected GitHub control was not verified."])
+    if obs.state == "absent":
+        return failed(
+            "Default branch is not protected.",
+            reason_code="security.branch_protection_depth.not_protected",
+            limitations=["The selected GitHub control was not verified beyond this "
+                         "endpoint's documented 404 meaning."])
+    record = obs.value
+    missing = []
+    if record.required_approving_review_count < 1:
+        missing.append("≥1 approving review")
+    if not record.require_code_owner_reviews:
+        missing.append("code-owner review")
+    if not record.status_contexts and not record.status_checks:
+        missing.append("≥1 required status context/check")
+    if record.allow_force_pushes:
+        missing.append("force pushes enabled (must be disabled)")
+    if record.allow_deletions:
+        missing.append("branch deletions enabled (must be disabled)")
+    if missing:
+        return failed(
+            "Branch protection is missing control(s): " + ", ".join(missing) + ".",
+            [ev("branch protection details", tier="T2")],
+            reason_code="security.branch_protection_depth.controls_incomplete",
+            limitations=["The selected GitHub control was not verified beyond the "
+                         "observed snapshot."])
+    return passed(
+        "Branch protection requires reviews, code-owner review, status checks, and "
+        "disables force pushes and deletions.",
+        [ev("branch protection details", tier="T2")],
+        reason_code="security.branch_protection_depth.complete",
+        limitations=["The selected GitHub control was not verified beyond the observed "
+                     "snapshot."])
+
+
+def agent_config_ownership(ctx):
+    """Every recognized agent-control file must resolve to a definitive CODEOWNERS owner."""
+    from ._agent_policy import (
+        agent_control_paths,
+        ownership_for_targets,
+        parse_codeowners,
+        select_codeowners,
     )
+    selected = select_codeowners(ctx)
+    if selected is None:
+        return failed(
+            "No CODEOWNERS file to establish agent-config ownership.",
+            reason_code="security.agent_config_ownership.targets_unowned",
+            limitations=["Recognized ownership syntax does not prove identity, access, or "
+                         "required review."])
+    text = ctx.static.read(selected)
+    if text is None:
+        return unknown(
+            "The selected CODEOWNERS file could not be read safely.",
+            reason_code="security.agent_config_ownership.discovery_indeterminate",
+            limitations=["Files beyond documented bounds or safety rules are reported "
+                         "unavailable rather than inspected."])
+    rules = parse_codeowners(text)
+    targets = sorted({selected, *agent_control_paths(ctx)})
+    if len(targets) > 256:
+        return unknown(
+            "Agent-control target discovery exceeded the candidate cap.",
+            reason_code="security.agent_config_ownership.discovery_indeterminate",
+            limitations=["Files or candidate sets beyond documented bounds are reported "
+                         "unavailable rather than inspected."])
+    outcomes = ownership_for_targets(rules, targets)
+    uncertain = sorted(t for t, o in outcomes.items() if o == "uncertain")
+    unowned = sorted(t for t, o in outcomes.items() if o in ("unowned", "uncovered"))
+    if uncertain:
+        return unknown(
+            f"{len(uncertain)} agent-control target(s) have uncertain ownership under "
+            "the supported CODEOWNERS subset.",
+            [ev("CODEOWNERS subset uncertainty", source=selected, tier="T0")],
+            reason_code="security.agent_config_ownership.targets_uncertain",
+            limitations=["Recognized ownership syntax does not prove identity, access, or "
+                         "required review."])
+    if unowned:
+        return failed(
+            f"{len(unowned)} agent-control target(s) have no definitive owner rule: "
+            + ", ".join(unowned[:4]) + ".",
+            [ev("CODEOWNERS coverage", source=selected, tier="T0")],
+            reason_code="security.agent_config_ownership.targets_unowned",
+            limitations=["Recognized ownership syntax does not prove identity, access, or "
+                         "required review."])
+    return passed(
+        f"All {len(targets)} agent-control target(s) resolve to a definitive owner rule "
+        "under the RA1 CODEOWNERS subset.",
+        [ev("CODEOWNERS coverage", source=selected, tier="T0")],
+        reason_code="security.agent_config_ownership.complete",
+        limitations=["Recognized ownership syntax under the RA1 subset does not prove "
+                     "identity, access, or required review."])
+
+
+def supply_chain_provenance(ctx):
+    """Scope-valid build provenance wiring when publication intent is present."""
+    from ._workflow_policy import artifact_publication_intent, provenance_candidates
+    intent = artifact_publication_intent(ctx)
+    if intent == "absent":
+        return skipped(
+            "No explicit artifact-publication path detected.",
+            reason_code="security.supply_chain_provenance.not_applicable",
+            limitations=["Static absence of a publication path is not proof that nothing "
+                         "is published."])
+    if intent == "indeterminate":
+        return unknown(
+            "Artifact-publication applicability could not be determined safely.",
+            reason_code="security.supply_chain_provenance.syntax_indeterminate",
+            limitations=["The static parser could not establish effective workflow "
+                         "semantics."])
+    state, candidates = provenance_candidates(ctx)
+    if state == "overflow":
+        return unknown(
+            "Provenance candidate discovery exceeded the 256-candidate cap.",
+            reason_code="security.supply_chain_provenance.syntax_indeterminate",
+            limitations=["Files or candidate sets beyond documented bounds are reported "
+                         "unavailable rather than inspected."])
+    if state == "indeterminate" or any(c.state == "indeterminate" for c in candidates):
+        return unknown(
+            "Provenance wiring could not be fully established from static workflow "
+            "syntax.",
+            reason_code="security.supply_chain_provenance.syntax_indeterminate",
+            limitations=["The static parser could not establish effective workflow "
+                         "semantics."])
+    complete = [c for c in candidates if c.state == "complete"]
+    if complete:
+        winner = complete[0]
+        locator = (f"{winner.workflow_path} job#{winner.job_ordinal}"
+                   + (f" step#{winner.step_ordinal}" if winner.step_ordinal >= 0 else ""))
+        return passed(
+            f"Build provenance is wired via a recognized attestation path ({locator}).",
+            [ev("provenance wiring", source=winner.workflow_path, tier="T0")],
+            reason_code="security.supply_chain_provenance.complete",
+            limitations=["Recognized workflow wiring does not prove successful runs or "
+                         "released-artifact coverage; static shape does not prove YAML "
+                         "acceptance, reachability, execution, distribution, "
+                         "verification, or released-artifact coverage."])
+    if candidates:
+        winner = candidates[0]
+        missing = ", ".join(winner.missing) or "incomplete wiring"
+        return failed(
+            f"Publication path exists but provenance wiring is incomplete ({missing}).",
+            [ev("provenance candidate", source=winner.workflow_path, tier="T0")],
+            reason_code="security.supply_chain_provenance.wiring_incomplete",
+            limitations=["Recognized workflow wiring does not prove successful runs or "
+                         "released-artifact coverage."])
+    return failed(
+        "An artifact-publication path exists with no recognized provenance wiring.",
+        reason_code="security.supply_chain_provenance.wiring_incomplete",
+        limitations=["Recognized workflow wiring does not prove successful runs or "
+                     "released-artifact coverage."])

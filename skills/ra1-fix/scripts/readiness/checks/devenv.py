@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from ._helpers import acdc_config, aglob, check_needles, ev, failed, passed, skipped
+from ._helpers import acdc_config, aglob, check_needles, ev, failed, passed, skipped, unknown
 
 
 def devcontainer(ctx):
@@ -60,6 +60,10 @@ def devcontainer_runnable(ctx):
                             ".devcontainer/*/devcontainer.json"]):
         return skipped("No devcontainer configuration to build.")
     res = ex.run_build_cmd("devcontainer build", ctx.app.path)  # allowlisted by construction
+    if res.get("unavailable"):
+        return unknown("T3 devcontainer build evidence unavailable (copy or spawn refused).",
+                       limitations=["Opt-in T3 uses an isolated copy and scrubbed "
+                                    "environment, not a kernel-enforced sandbox."])
     if res["timed_out"]:
         return failed(f"devcontainer build timed out after {ex.timeout}s on an isolated copy.")
     if res["returncode"] == 0:
@@ -92,11 +96,12 @@ def agent_hooks(ctx):
         low = text.lower()
         if check_needles(text) or "sonar" in low or "ra1" in low:
             return passed(
-                f"Maintainer-declared post-edit hook: {path} (acdc.hook_files).",
+                "Maintainer-declared post-edit hook (acdc.hook_files).",
                 [
                     ev("agent hook (config-declared)", source=path),
-                    ev("acdc.hook_files", source=".agents/readiness/config.json"),
+                    ev("acdc.hook_files", source=".ra1/config.json"),
                 ],
+                reason_code="devenv.agent_hooks.wired",
             )
 
     raw = ctx.static.read(".claude/settings.json")
@@ -113,11 +118,13 @@ def agent_hooks(ctx):
                         f"Post-edit verification hook runs a check command: "
                         f".claude/settings.json ({hook_key}).",
                         [ev("agent hook", source=".claude/settings.json")],
+                        reason_code="devenv.agent_hooks.wired",
                     )
 
     return failed(
         "No machine-enforced post-edit verification hook (e.g. Claude Code "
         "PostToolUse/Stop hook running a check command, or files declared in "
         "acdc.hook_files); instruction files are advisory to the agent — hooks make "
-        "inner-loop verification mechanical (AC/DC Verify stage)."
+        "inner-loop verification mechanical (AC/DC Verify stage).",
+        reason_code="devenv.agent_hooks.missing",
     )

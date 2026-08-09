@@ -1,0 +1,17 @@
+# Secrets and credentials — never commit these.
+.env
+.env.*
+*.pem
+*.key
+
+# Build and cache artifacts.
+__pycache__/
+node_modules/
+dist/
+build/
+.venv/
+.coverage
+
+# Generated readiness reports are local artifacts — keep them out of version control.
+# Team-owned policy inputs (.ra1/config.json, .ra1/waivers.json) stay reviewable.
+/.ra1/reports/

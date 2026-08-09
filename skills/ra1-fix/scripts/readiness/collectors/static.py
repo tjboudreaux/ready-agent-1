@@ -1,16 +1,23 @@
-"""T0 static evidence: file existence, globs, and semantic config/manifest parsing."""
+"""T0 static evidence: the canonical repository read/discovery/cache boundary.
+
+Every repository-controlled byte enters the engine through this collector, which maps the
+safe-I/O primitives' typed observations and caches them. It never opens, globs, resolves,
+or descends paths itself. Legacy helper semantics:
+
+- ``read``/``glob``/``exists_any``/``manifests`` keep their shapes for existing checks;
+  a repository-derived unsafe/unreadable/oversize/overflow state raises
+  :class:`safe_io.RepositoryInputError`, which scoring maps to a blocking ``unknown``
+  (never a partial pass). Programmer misuse (bad engine pattern, bad limit) raises the
+  same typed error.
+- New checks should consume the observation APIs (``read_repo_file``,
+  ``glob_repo_files``, ``exists_observation``) and map states explicitly.
+"""
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-from .. import parsers
-
-# Directories never worth walking.
-_IGNORE_DIRS = {
-    ".git", "node_modules", ".venv", "venv", "dist", "build",
-    "__pycache__", ".mypy_cache", ".tox",
-}
+from .. import parsers, safe_io
 
 _MANIFEST_FILES = {
     "package.json": "npm",
@@ -45,30 +52,111 @@ _LOCKFILES = [
 
 
 class StaticCollector:
-    def __init__(self, root):
+    def __init__(self, root, *, _authority: safe_io.RootAuthority | None = None):
         self.root = Path(root)
+        self._authority = _authority
         self._cache: dict = {}
+        # Stays True only while every T0 observation resolved as validated present|absent.
+        self.collection_complete = True
 
-    # ----- generic file helpers ---------------------------------------------------------
-    def glob(self, patterns) -> list:
-        """Return sorted relative posix paths matching any glob pattern (supports ``**``)."""
+    # ----- authority --------------------------------------------------------------------
+    @property
+    def authority(self) -> safe_io.RootAuthority:
+        if self._authority is None:
+            self._authority = safe_io.acquire_root(self.root)
+        return self._authority
+
+    def close(self) -> None:
+        if self._authority is not None:
+            self._authority.close()
+            self._authority = None
+
+    # ----- observation APIs --------------------------------------------------------------
+    def read_repo_file(self, relpath, *,
+                       max_bytes: int = safe_io.MAX_REPO_TEXT_BYTES
+                       ) -> safe_io.RepoFileObservation:
+        """One bounded repository text read, UTF-8 mapped exactly once."""
+        key = ("read", str(relpath), max_bytes)
+        if key not in self._cache:
+            obs = safe_io.read_rooted_regular(self.authority, str(relpath),
+                                              max_bytes=max_bytes)
+            self._cache[key] = self._map_text(obs)
+        obs = self._cache[key]
+        if obs.state not in (safe_io.RepoReadState.OK, safe_io.RepoReadState.MISSING):
+            self.collection_complete = False
+        return obs
+
+    @staticmethod
+    def _map_text(obs: safe_io.RootedBytesObservation) -> safe_io.RepoFileObservation:
+        if obs.state is not safe_io.RepoReadState.OK:
+            return safe_io.RepoFileObservation(obs.state, reason_code=obs.reason_code)
+        try:
+            return safe_io.RepoFileObservation(safe_io.RepoReadState.OK,
+                                               text=obs.data.decode("utf-8"))
+        except UnicodeDecodeError:
+            return safe_io.RepoFileObservation(safe_io.RepoReadState.UNREADABLE,
+                                               reason_code="decode_error")
+
+    def glob_repo_files(self, patterns, *,
+                        max_matches: int = safe_io.MAX_CANDIDATES_PER_CRITERION
+                        ) -> safe_io.RepoDiscoveryObservation:
+        """Bounded no-follow discovery beneath the root for engine-constant patterns."""
         if isinstance(patterns, str):
             patterns = [patterns]
-        found = set()
-        for pat in patterns:
-            for p in self.root.glob(pat):
-                rel = p.relative_to(self.root)
-                if any(part in _IGNORE_DIRS for part in rel.parts):
-                    continue
-                found.add(rel.as_posix())
-        return sorted(found)
+        patterns = [str(p) for p in patterns]
+        key = ("glob", tuple(sorted(patterns)), max_matches)
+        if key not in self._cache:
+            self._cache[key] = safe_io.discover_rooted_regular(
+                self.authority, patterns, max_matches=max_matches)
+        obs = self._cache[key]
+        if obs.state is not safe_io.RepoDiscoveryState.OK:
+            self.collection_complete = False
+        return obs
+
+    def exists_observation(self, patterns) -> safe_io.PresenceObservation:
+        """Three-state existence: never degrade unsafe state to ``absent``."""
+        if isinstance(patterns, str):
+            patterns = [patterns]
+        patterns = [str(p) for p in patterns]
+        key = ("exists", tuple(sorted(patterns)))
+        if key not in self._cache:
+            self._cache[key] = safe_io.exists_rooted(self.authority, patterns)
+        obs = self._cache[key]
+        if obs.state is safe_io.PresenceState.INDETERMINATE:
+            self.collection_complete = False
+        return obs
+
+    # ----- legacy delegates (raise RepositoryInputError on degraded repository state) ----
+    @staticmethod
+    def _require_ok(obs, what: str):
+        if obs.state is safe_io.RepoReadState.OK or obs.state is safe_io.RepoDiscoveryState.OK:
+            return obs
+        raise safe_io.RepositoryInputError(
+            f"{what} unavailable ({obs.state.value}:{obs.reason_code})")
+
+    def glob(self, patterns) -> list:
+        """Sorted relative posix paths matching any engine-constant glob pattern."""
+        obs = self.glob_repo_files(patterns,
+                                   max_matches=safe_io.MAX_DISCOVERY_MATCHES)
+        return list(self._require_ok(obs, "discovery").paths)
 
     def exists_any(self, patterns) -> str | None:
-        hits = self.glob(patterns)
-        return hits[0] if hits else None
+        obs = self.exists_observation(patterns)
+        if obs.state is safe_io.PresenceState.PRESENT:
+            return obs.path
+        if obs.state is safe_io.PresenceState.ABSENT:
+            return None
+        raise safe_io.RepositoryInputError(
+            f"existence indeterminate ({obs.reason_code})")
 
     def read(self, relpath) -> str | None:
-        return parsers.read_text(self.root / relpath)
+        obs = self.read_repo_file(relpath)
+        if obs.state is safe_io.RepoReadState.OK:
+            return obs.text
+        if obs.state is safe_io.RepoReadState.MISSING:
+            return None
+        raise safe_io.RepositoryInputError(
+            f"read unavailable ({obs.state.value}:{obs.reason_code})")
 
     # ----- manifests & dependencies -----------------------------------------------------
     def manifests(self) -> dict:
@@ -77,17 +165,25 @@ class StaticCollector:
             return self._cache["manifests"]
         out = {}
         for fname, kind in _MANIFEST_FILES.items():
-            path = self.root / fname
-            if not path.exists():
+            obs = self.read_repo_file(fname)
+            if obs.state is safe_io.RepoReadState.MISSING:
                 continue
+            if obs.state is not safe_io.RepoReadState.OK:
+                raise safe_io.RepositoryInputError(
+                    f"manifest unreadable ({obs.state.value}:{obs.reason_code})")
+            text = obs.text
             if fname.endswith(".json"):
-                parsed = parsers.load_json(path)
+                parsed = parsers.loads_json(text)
             elif fname.endswith(".toml"):
-                parsed = parsers.load_toml(path)
+                parsed = parsers.loads_toml(text)
             elif fname == "setup.cfg":
-                parsed = parsers.load_ini(path)
+                parsed = parsers.loads_ini(text)
             else:
-                parsed = parsers.read_text(path)
+                parsed = text
+            if parsed is None:
+                # A malformed manifest can change detection and applicability: the global
+                # repository-indeterminate state, never a partial read.
+                raise safe_io.RepositoryInputError(f"manifest malformed: {fname}")
             out[fname] = (kind, parsed)
         self._cache["manifests"] = out
         return out
@@ -149,7 +245,7 @@ class StaticCollector:
         """
         out: set = set()
         for rel in self.glob(_REQUIREMENT_GLOBS):
-            for raw in (parsers.read_text(self.root / rel) or "").splitlines():
+            for raw in (self.read(rel) or "").splitlines():
                 name = _requirement_name(raw)
                 if name:
                     out.add(name)
@@ -169,7 +265,15 @@ class StaticCollector:
         return ("tool:" + name).lower() in self.declared_deps()
 
     def lockfiles(self) -> list:
-        return [f for f in _LOCKFILES if (self.root / f).exists()]
+        out = []
+        for name in _LOCKFILES:
+            obs = self.exists_observation([name])
+            if obs.state is safe_io.PresenceState.PRESENT:
+                out.append(name)
+            elif obs.state is safe_io.PresenceState.INDETERMINATE:
+                raise safe_io.RepositoryInputError(
+                    f"lockfile indeterminate ({obs.reason_code})")
+        return out
 
     def gitignore_patterns(self) -> list:
         text = self.read(".gitignore") or ""
@@ -177,10 +281,17 @@ class StaticCollector:
                 if ln.strip() and not ln.strip().startswith("#")]
 
     def within(self, subpath) -> StaticCollector:
-        """A collector scoped to an application subdirectory ('.' returns self)."""
+        """A collector scoped to an application subdirectory ('.' returns self).
+
+        The subdirectory is opened fd-relative beneath this collector's admitted root —
+        repository-derived app paths can never escape the scan root, become absolute, or
+        ride a symlink into a new authorized root.
+        """
         if subpath in (".", "", None):
             return self
-        return StaticCollector(self.root / subpath)
+        return StaticCollector(self.root / subpath,
+                               _authority=safe_io.open_subroot(self.authority,
+                                                               str(subpath)))
 
 
 def _pkg_name(requirement: str) -> str:
@@ -191,7 +302,6 @@ def _pkg_name(requirement: str) -> str:
         if idx > 0:
             token = token[:idx]
     return token.strip().lower()
-
 
 
 def _requirement_name(line: str) -> str:

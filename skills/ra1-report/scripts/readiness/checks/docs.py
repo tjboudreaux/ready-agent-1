@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from ..parsers import load_jsonc
+from .. import parsers, safe_io
 from ._helpers import (
     PLACEHOLDER_RE,
     acdc_config,
@@ -61,21 +61,28 @@ def skills(ctx):
     if not artifacts:
         return failed("No agent skill artifacts (skills/*/SKILL.md or root SKILL.md).")
     evidence = [ev(f"skill artifact {artifacts[0]}", source=artifacts[0])]
-    if ctx.github.available and "agent-skills" in ctx.github.topics():
-        evidence.append(ev("repo topic 'agent-skills' (published)", tier="T2"))
+    if ctx.github.available:
+        topics = ctx.github.topics()
+        if topics.state == "present" and "agent-skills" in topics.value:
+            evidence.append(ev("repo topic 'agent-skills' (published)", tier="T2"))
     return passed(f"Provides reusable agent skills ({len(artifacts)} artifact(s)).", evidence)
 
 
 def doc_freshness(ctx):
-    ref = ctx.git.most_recent_commit_iso()
-    if not ref:
+    ref_obs = ctx.git.most_recent_commit_iso()
+    if ref_obs.state != "present":
+        if ref_obs.state == "unreadable":
+            return unknown("Git history could not be read safely.")
         return unknown("No git history to assess documentation freshness.")
+    ref = ref_obs.value
     checked = []
     for d in ("README.md", "AGENTS.md", "docs/README.md"):
         if ctx.static.glob([d]):
-            dt = ctx.git.file_last_commit_iso(d)
-            if dt:
-                checked.append((d, dt))
+            dt_obs = ctx.git.file_last_commit_iso(d)
+            if dt_obs.state == "present":
+                checked.append((d, dt_obs.value))
+            elif dt_obs.state == "unreadable":
+                return unknown("Git history could not be read safely.")
     if not checked:
         return unknown("No tracked key docs to assess.")
     try:
@@ -206,7 +213,7 @@ def agent_verify_contract(ctx):
             evidence = [ev("verification contract", source=path)]
             if path in configured_files:
                 evidence.append(ev("acdc.instruction_files",
-                                   source=".agents/readiness/config.json"))
+                                   source=".ra1/config.json"))
             return passed(f"{path} instructs agents to verify with a runnable command.", evidence)
     return failed(
         "Agent instruction files never direct the agent to verify its changes "
@@ -325,27 +332,294 @@ def _llms_has_ref(text) -> bool:
     return False
 
 
-def machine_context(ctx):
-    """Pass on MCP config with a real server entry, or a filled root llms.txt with URLs/paths.
+_MCP_CONFIG_PATHS = (".mcp.json", ".cursor/mcp.json", ".vscode/mcp.json",
+                     ".gemini/settings.json")
+_SHELL_LAUNCH_RE = re.compile(
+    r"(?i)^\s*(?:sh|bash|zsh|cmd|powershell|pwsh)\b.*\s(-c|/c|-command)\b")
+_SECRET_LITERAL_RE = re.compile(
+    r"(?i)(api[_-]?key|token|secret|password|passwd|pwd|bearer|authorization|auth)")
+_PLACEHOLDER_VALUE_RE = re.compile(
+    r"(?i)^\$\{[A-Za-z_][A-Za-z0-9_]*\}$|^\$\{env:[A-Za-z_][A-Za-z0-9_]*\}$|"
+    r"^bearer\s+<[A-Za-z_][A-Za-z0-9_-]*>$")
+_URL_RE = re.compile(r"^(https?)://([^\s/?#]+)([^\s]*)$", re.IGNORECASE)
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+_SECRET_FLAG_RE = re.compile(
+    r"(?i)^(--?[A-Za-z-]*(?:api[-_]?key|token|secret|password|auth)[A-Za-z-]*)$")
 
-    AGENTS.md alone does not pass.
-    """
-    mcp_paths = [".mcp.json", ".cursor/mcp.json", ".vscode/mcp.json", ".gemini/settings.json"]
-    for path in mcp_paths:
-        if not ctx.static.glob([path]):
+
+def _mcp_entry_issues(name: str, cfg) -> list[str]:
+    """Bounded issues for one MCP server entry; empty means structurally acceptable."""
+    if not isinstance(cfg, dict):
+        return ["entry not an object"]
+    command = cfg.get("command")
+    url = cfg.get("url") or cfg.get("serverUrl")
+    has_command = isinstance(command, str) and bool(command.strip())
+    has_url = isinstance(url, str) and bool(url.strip())
+    issues = []
+    if has_command == has_url:
+        issues.append("exactly one local-command or remote-URL transport is required")
+    if has_command:
+        if _SHELL_LAUNCH_RE.match(command) or any(
+                op in command for op in ("&&", "||", ";", "|", "`", "$(")):
+            issues.append("command uses a shell launcher or operators")
+        if len(command) > 512 or "\n" in command:
+            issues.append("command is not a nonempty one-line string")
+        argv = cfg.get("args")
+        if argv is not None:
+            if not isinstance(argv, list) or any(
+                    not isinstance(a, str) or "\n" in a or len(a) > 512 for a in argv):
+                issues.append("argv entries must be bounded one-line strings")
+            else:
+                for index, arg in enumerate(argv):
+                    if _SECRET_LITERAL_RE.search(arg) and not _PLACEHOLDER_VALUE_RE.match(arg):
+                        # A secret-looking *value* must be a placeholder, never a literal.
+                        if index > 0 and _SECRET_FLAG_RE.match(argv[index - 1]):
+                            issues.append("literal secret value after a secret flag")
+                        elif arg.startswith(("ghp_", "sk-", "AKIA", "eyJ")):
+                            issues.append("literal credential token in argv")
+    # Sensitive env values are checked for every entry, whatever its transport shape.
+    env = cfg.get("env")
+    if env is not None:
+        if not isinstance(env, dict):
+            issues.append("env must be an object")
+        else:
+            for ekey, evalue in env.items():
+                if not isinstance(evalue, str):
+                    issues.append("env values must be strings")
+                elif _SECRET_LITERAL_RE.search(str(ekey)) and \
+                        not _PLACEHOLDER_VALUE_RE.match(evalue):
+                    issues.append("literal secret in env value")
+    if has_url:
+        match = _URL_RE.match(url.strip())
+        if not match:
+            issues.append("remote URL is malformed")
+        else:
+            scheme, host, rest = match.groups()
+            if scheme.lower() != "https" and host.split(":")[0] not in _LOOPBACK_HOSTS:
+                issues.append("remote URL requires HTTPS (HTTP loopback excepted)")
+            if "@" in host or "?" in rest or "#" in rest:
+                issues.append("remote URL must not carry userinfo/query/fragment")
+        headers = cfg.get("headers")
+        if headers is not None:
+            if not isinstance(headers, dict):
+                issues.append("headers must be an object")
+            else:
+                for _hkey, hvalue in headers.items():
+                    if not isinstance(hvalue, str):
+                        issues.append("header values must be strings")
+                    elif not _PLACEHOLDER_VALUE_RE.match(hvalue):
+                        issues.append("header values must be placeholders")
+    return issues
+
+
+def _mcp_config_kind(path: str, data) -> tuple[str, list[str]]:
+    """Evaluate one MCP config: (state, issue-categories)."""
+    if not isinstance(data, dict):
+        return "config_invalid", []
+    servers = data.get("mcpServers")
+    if not isinstance(servers, dict):
+        servers = data.get("servers")  # VS Code `servers` form
+    if not isinstance(servers, dict) or not servers:
+        return "no_servers", []
+    issues = []
+    has_secret = False
+    has_transport = False
+    for name, cfg in servers.items():
+        entry_issues = _mcp_entry_issues(str(name), cfg)
+        for issue in entry_issues:
+            if "literal secret" in issue or "literal credential" in issue:
+                has_secret = True
+            elif "HTTPS" in issue or "userinfo" in issue:
+                has_transport = True
+        issues.extend(entry_issues)
+    if has_secret:
+        return "literal_secret", sorted(set(issues))
+    if has_transport:
+        return "transport_unsafe", sorted(set(issues))
+    if issues:
+        return "config_invalid", sorted(set(issues))
+    return "ok", []
+
+
+_HTTPS_REF_RE = re.compile(r"https://[^\s)>\"'\]]+")
+
+
+def _llms_reference_ok(ctx, text: str) -> str:
+    """llms.txt fallback: needs ≥1 HTTPS reference or safe existing relative Markdown ref."""
+    for line in (text or "").splitlines():
+        s = line.strip()
+        if not s:
             continue
-        data = load_jsonc(ctx.root / path)
-        if _mcp_servers_ok(data):
-            return passed(
-                f"MCP machine context configured: {path}.",
-                [ev("MCP config", source=path, tier="T0")],
-            )
-    if ctx.static.glob(["llms.txt"]):
-        ok, rationale = filled(ctx, "llms.txt", "llms.txt")
-        text = ctx.static.read("llms.txt") or ""
-        if ok and _llms_has_ref(text):
-            return passed(rationale, [ev("llms.txt", source="llms.txt", tier="T0")])
+        if _HTTPS_REF_RE.search(s):
+            return "https"
+        if s.endswith(".md") and not s.startswith("/") and "\\" not in s \
+                and ".." not in s.split("/"):
+            obs = ctx.static.read_repo_file(s)
+            if obs.state is safe_io.RepoReadState.OK:
+                return "markdown"
+    return ""
+
+
+def machine_context(ctx):
+    """Structural machine-context configuration: MCP configs, else the llms.txt fallback.
+
+    Pass claims only structural configuration shape; it does not prove server
+    availability, package/version authenticity, tool semantics, effective permissions,
+    or instruction safety.
+    """
+    limitation = ("Recognized MCP/llms structure does not prove server availability, "
+                  "package/version authenticity, tool semantics, permissions, or "
+                  "instruction safety.")
+    configs = [p for p in _MCP_CONFIG_PATHS if ctx.static.exists_any([p])]
+    if not configs:
+        if ctx.static.glob(["llms.txt"]):
+            ok, rationale = filled(ctx, "llms.txt", "llms.txt")
+            text = ctx.static.read("llms.txt") or ""
+            if not ok:
+                return failed(
+                    "llms.txt fallback is thin or placeholder.",
+                    reason_code="docs.machine_context.fallback_incomplete",
+                    limitations=[limitation])
+            if _llms_reference_ok(ctx, text):
+                return passed(
+                    "Machine context via a filled llms.txt with an HTTPS or safe local "
+                    "Markdown reference.",
+                    [ev("llms.txt", source="llms.txt", tier="T0")],
+                    reason_code="docs.machine_context.fallback_configured",
+                    limitations=[limitation])
+            return failed(
+                "llms.txt carries no HTTPS reference or safe local Markdown reference.",
+                reason_code="docs.machine_context.fallback_incomplete",
+                limitations=[limitation])
+        return failed(
+            "No machine-readable context (MCP config or filled llms.txt with an HTTPS "
+            "or safe local reference).",
+            reason_code="docs.machine_context.missing",
+            limitations=[limitation])
+    kinds = []
+    for path in configs:
+        data = parsers.loads_jsonc(ctx.static.read(path) or "")
+        kind, _issues = _mcp_config_kind(path, data)
+        kinds.append((path, kind))
+    # One malformed/unsafe config can never be masked by a safe one.
+    for _rank, kind in enumerate(("literal_secret", "transport_unsafe", "config_invalid")):
+        for path, candidate in kinds:
+            if candidate == kind:
+                return failed(
+                    f"MCP configuration has a {kind.replace('_', ' ')} problem.",
+                    [ev("MCP config", source=path, tier="T0")],
+                    reason_code=f"docs.machine_context.{kind}",
+                    limitations=[limitation])
+    if any(candidate == "ok" for _path, candidate in kinds):
+        return passed(
+            f"MCP machine context configured ({len(configs)} config file(s)).",
+            [ev("MCP config", source=p, tier="T0") for p, k in kinds if k == "ok"],
+            reason_code="docs.machine_context.configured",
+            limitations=[limitation])
     return failed(
-        "No machine-readable context (MCP config with command/url server, or filled llms.txt "
-        "with URL/path lines). AGENTS.md alone does not pass."
-    )
+        "MCP config files carry no structurally valid server entry.",
+        [ev("MCP config", source=kinds[0][0], tier="T0")],
+        reason_code="docs.machine_context.config_invalid",
+        limitations=[limitation])
+
+
+# --- Progressive-disclosure context map (advisory) --------------------------------------
+
+_MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)[^)]*\)")
+_BACKTICK_RE = re.compile(r"`([^`\n]+)`")
+
+
+def _context_map_references(text: str) -> tuple[list[str], list[str]]:
+    """(references, invalid) from root AGENTS.md: local .md links and backticked paths.
+
+    Ignores http(s)/mailto targets, bare anchors, and non-Markdown targets; strips
+    query/fragment; rejects absolute paths and ``..`` traversal as invalid references.
+    """
+    references, invalid = [], []
+    candidates = list(_MD_LINK_RE.finditer(text))
+    candidates += list(_BACKTICK_RE.finditer(text))
+    for match in candidates:
+        raw = match.group(1).strip()
+        if raw.startswith(("http://", "https://", "mailto:")):
+            continue
+        target = raw.split("#", 1)[0].split("?", 1)[0].strip()
+        if not target:
+            continue
+        if not target.lower().endswith(".md"):
+            continue
+        if target.lower() == "agents.md":
+            continue
+        if target.startswith("/") or target.startswith("~") or "\\" in target \
+                or re.match(r"^[A-Za-z]:", target) or ".." in target.split("/"):
+            invalid.append("traversal/absolute reference")
+            continue
+        references.append(target)
+    return sorted(set(references)), invalid
+
+
+def agent_context_map(ctx):
+    """Root AGENTS.md must reference present, filled, local Markdown documentation."""
+    text = ctx.static.read("AGENTS.md")
+    if text is None:
+        return failed(
+            "No root AGENTS.md to carry a documentation context map.",
+            reason_code="docs.agent_context_map.no_reference",
+            limitations=["Referenced documentation presence/filledness does not prove "
+                         "correctness or freshness."])
+    references, invalid = _context_map_references(text)
+    if not references and not invalid:
+        return failed(
+            "AGENTS.md references no local Markdown documentation (progressive "
+            "disclosure).",
+            reason_code="docs.agent_context_map.no_reference",
+            limitations=["Referenced documentation presence/filledness does not prove "
+                         "correctness or freshness."])
+    if invalid:
+        return failed(
+            f"AGENTS.md contains {len(invalid)} invalid documentation reference(s) "
+            "(absolute or escaping).",
+            reason_code="docs.agent_context_map.invalid_reference",
+            limitations=["Referenced documentation presence/filledness does not prove "
+                         "correctness or freshness."])
+    missing, thin, indeterminate = [], [], []
+    resolved = []
+    for ref in references:
+        obs = ctx.static.read_repo_file(ref)
+        if obs.state is safe_io.RepoReadState.OK:
+            stripped = obs.text.strip()
+            if len(stripped) < 40 or PLACEHOLDER_RE.search(obs.text):
+                thin.append(ref)
+            else:
+                resolved.append(ref)
+        elif obs.state is safe_io.RepoReadState.MISSING:
+            missing.append(ref)
+        else:
+            indeterminate.append(ref)
+    if missing:
+        return failed(
+            f"AGENTS.md references {len(missing)} missing documentation target(s): "
+            + ", ".join(missing[:3]) + ".",
+            reason_code="docs.agent_context_map.missing_target",
+            limitations=["Referenced documentation presence/filledness does not prove "
+                         "correctness or freshness."])
+    if thin:
+        return failed(
+            f"AGENTS.md references {len(thin)} thin or placeholder documentation "
+            "target(s).",
+            reason_code="docs.agent_context_map.thin_target",
+            limitations=["Referenced documentation presence/filledness does not prove "
+                         "correctness or freshness."])
+    if indeterminate:
+        return unknown(
+            f"{len(indeterminate)} documentation target(s) could not be read safely.",
+            reason_code="docs.agent_context_map.indeterminate",
+            limitations=["Files or candidate sets beyond documented byte, depth, entry, or "
+                         "match caps are reported unavailable/unknown rather than "
+                         "inspected."])
+    return passed(
+        f"AGENTS.md maps to {len(resolved)} present, filled local documentation file(s).",
+        [ev("context map target", source=ref, tier="T0") for ref in resolved[:6]],
+        reason_code="docs.agent_context_map.complete",
+        limitations=["Referenced documentation presence/filledness does not prove "
+                     "correctness or freshness; this proves reachability/progressive "
+                     "disclosure, not instruction correctness or runtime retrieval."])

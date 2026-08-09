@@ -16,3 +16,9 @@ Briefing for AI agents working in this repo. Keep it high-signal (≤150 lines).
 
 ## Git Workflow
 <!-- Branch naming, PR expectations, review requirements. -->
+
+## Concurrent Work
+- Use a separate worktree or task branch for each concurrent agent task, and own your files.
+- Coordinate with other agents before touching the same or overlapping files.
+- Re-read files before editing and preserve unexpected user or concurrent changes; never overwrite them silently.
+- After merging or integrating, run the full test suite to verify the combined state.

@@ -9,7 +9,7 @@ inputs:
     required: false
     default: "."
   min-level:
-    description: "Fail the job if the readiness level is below this (1-5)"
+    description: "Fail the job if the readiness level is below this (1-4; Level 5 is reserved)"
     required: false
     default: "3"
   formats:
@@ -20,53 +20,107 @@ inputs:
     description: "Upload SARIF to GitHub code scanning"
     required: false
     default: "true"
+  github:
+    description: "Opt in to T2 GitHub.com API checks (offline by default)"
+    required: false
+    default: "false"
+outputs:
+  report-directory:
+    description: "Private RUNNER_TEMP directory containing the generated report artifacts"
+    value: ${{ steps.report.outputs.out-dir }}
+  has-markdown:
+    description: "Whether report.md was generated"
+    value: ${{ steps.report.outputs.has-markdown }}
+  markdown-file:
+    description: "Path to the generated report.md"
+    value: ${{ steps.report.outputs.markdown-file }}
+  has-sarif:
+    description: "Whether report.sarif was generated"
+    value: ${{ steps.report.outputs.has-sarif }}
+  sarif-file:
+    description: "Path to the generated report.sarif"
+    value: ${{ steps.report.outputs.sarif-file }}
 runs:
   using: "composite"
   # Inputs are NEVER interpolated directly into `run:` blocks. This action is consumed by
   # other repositories, and callers routinely wire inputs from untrusted sources (PR
   # titles, branch names, issue bodies). Direct ${{ }} expansion would substitute that
   # text into the shell before any quoting could contain it -- injection in the caller's
-  # pipeline. Everything crosses the boundary through env instead.
+  # pipeline. Everything crosses the boundary through env instead, and argv is built
+  # without eval in Python.
   steps:
     - name: Run readiness engine (deterministic)
+      id: report
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
         PROJECT: ${{ inputs.project }}
         FORMATS: ${{ inputs.formats }}
+        MIN_LEVEL: ${{ inputs.min-level }}
+        UPLOAD_SARIF: ${{ inputs.upload-sarif }}
+        GITHUB_ENABLED: ${{ inputs.github }}
+        RUNNER_TEMP: ${{ runner.temp }}
       run: |
-        python3 "$ACTION_PATH/../engine/readiness/cli.py" report \
-          --project "$PROJECT" \
-          --format "$FORMATS" \
-          --out "$PROJECT/.agents/readiness"
-        echo "report written"
+        # zizmor: ignore[github-env] — the only env-file writes are step-scoped
+        # GITHUB_OUTPUT with mktemp-generated or fixed-literal values; no
+        # consumer-controlled content.
+        # One mode-private unique directory under RUNNER_TEMP; the action never writes
+        # into the consumer repository.
+        out_dir="$(mktemp -d "$RUNNER_TEMP"/ready-agent-1-XXXXXX)"
+        chmod 700 "$out_dir"
+        export out_dir
+        case "$MIN_LEVEL" in
+          [1-4]) ;;
+          *) echo "min-level must be 1-4, got '$MIN_LEVEL'" >&2; exit 1 ;;
+        esac
+        case "$GITHUB_ENABLED" in
+          true|True|TRUE|yes|1|on) github_flag="--github" ;;
+          *) github_flag="" ;;
+        esac
+        case "$UPLOAD_SARIF" in
+          true|True|TRUE|yes|1|on) upload_sarif="true" ;;
+          *) upload_sarif="false" ;;
+        esac
+        # Bounded argv built by the committed launcher (env-only inputs, no eval).
+        python3 "$ACTION_PATH/../ci/run_engine.py"
+        # Step outputs via GITHUB_OUTPUT (never stdout): bounded, newline-free values.
+        markdown_file="$out_dir/report.md"
+        sarif_file="$out_dir/report.sarif"
+        has_markdown="false"; [ -f "$markdown_file" ] && has_markdown="true"
+        has_sarif="false"; [ "$upload_sarif" = "true" ] && [ -f "$sarif_file" ] && has_sarif="true"
+        {
+          echo "out-dir=$out_dir"
+          echo "has-markdown=$has_markdown"
+          echo "markdown-file=$markdown_file"
+          echo "has-sarif=$has_sarif"
+          echo "sarif-file=$sarif_file"
+        } >> "$GITHUB_OUTPUT"
     - name: Publish job summary
       shell: bash
       env:
-        PROJECT: ${{ inputs.project }}
+        SUMMARY_FILE: ${{ steps.report.outputs.markdown-file }}
       run: |
-        if [ -f "$PROJECT/.agents/readiness/report.md" ]; then
-          cat "$PROJECT/.agents/readiness/report.md" >> "$GITHUB_STEP_SUMMARY"
+        if [ -n "$SUMMARY_FILE" ] && [ -f "$SUMMARY_FILE" ]; then
+          cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
         fi
     - name: Upload SARIF
-      if: ${{ inputs.upload-sarif == 'true' && hashFiles(format('{0}/.agents/readiness/report.sarif', inputs.project)) != '' }}
-      # Best-effort: code scanning is unavailable on private repos without GHAS;
-      # the readiness gate is the report + min-level step, not this upload.
+      if: ${{ inputs.upload-sarif == 'true' && steps.report.outputs.has-sarif == 'true' }}
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
       with:
-        sarif_file: "${{ inputs.project }}/.agents/readiness/report.sarif"
+        sarif_file: ${{ steps.report.outputs.sarif-file }}
     - name: Gate on minimum level
       shell: bash
       env:
+        ACTION_MODE: gate
         ACTION_PATH: ${{ github.action_path }}
         PROJECT: ${{ inputs.project }}
         MIN_LEVEL: ${{ inputs.min-level }}
+        GITHUB_ENABLED: ${{ inputs.github }}
       run: |
         case "$MIN_LEVEL" in
-          [1-5]) ;;
-          *) echo "min-level must be 1-5, got '$MIN_LEVEL'" >&2; exit 1 ;;
+          [1-4]) ;;
+          *) echo "min-level must be 1-4, got '$MIN_LEVEL'" >&2; exit 1 ;;
         esac
-        python3 "$ACTION_PATH/../engine/readiness/cli.py" report \
-          --project "$PROJECT" --format json \
-          --min-level "$MIN_LEVEL" > /dev/null
+        # Same evidence options as the report scan: identical T2 scope on both invocations.
+        python3 "$ACTION_PATH/../ci/run_engine.py"

@@ -1,71 +1,180 @@
-"""T3 execution evidence: runs the repo's own test command — OFF by default.
+"""T3 execution evidence: runs the repo's own allowlisted command — OFF by default.
 
-The sandbox contract is enforced by construction, not by OS primitives (pure stdlib has no
-kernel sandbox; that residual risk is why this collector is opt-in and advisory-only):
+Opt-in only (constructed disabled unless ``options.exec`` is true; CLI-only), allowlisted
+commands mapped to fixed :class:`process.ToolId` argv, a bounded copy-only isolated
+worktree (``.git``, ``.agents``, and ``.ra1/reports`` excluded; links/special files/cap
+overflow refuse the run), a scrubbed minimal environment, and the bounded process
+launcher. T3 remains advisory: refusal yields unavailable evidence plus a limitation —
+never absence or failure credit — and provenance records requested/completed/successful
+exactly (``successful ⇒ completed ⇒ requested``).
 
-- **opt-in only** — constructed disabled unless ``options["exec"]`` is truthy; when disabled
-  every method returns ``None`` and no subprocess is ever spawned.
-- **command allowlist** — only the exact test commands the detector emits (pytest / npm test /
-  go test / cargo test) map to fixed argv lists; nothing is passed through a shell.
-- **scrubbed env** — a minimal environment (PATH + neutral HOME/LANG); no tokens or secrets.
-- **isolated copy** — the worktree is copied to a temp dir (``.git``/``.agents`` excluded)
-  and the command runs there, never in the user's tree.
-- **hard timeout** — ``subprocess.run(..., timeout=...)``, default 120s.
-
-True network isolation is the runner's responsibility (e.g. a jailed CI job); we do not
-claim it. T3-derived criteria stay ``gating: false`` until they graduate through the
-labeled-fixture evals (see references/pillars.md).
+This is an isolated copy and scrubbed environment, not a kernel-enforced filesystem or
+network sandbox; a descendant that deliberately daemonizes is outside the stdlib
+guarantee. True isolation is the runner's responsibility.
 """
 from __future__ import annotations
 
 import os
-import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
+from .. import process, safe_io
+
+DEFAULT_EXEC_TIMEOUT_SECONDS = 120
+MAX_EXEC_TIMEOUT_SECONDS = 3_600
+
 ALLOWED_TEST_CMDS = {
-    "pytest": ["pytest", "-q"],
-    "npm test": ["npm", "test", "--silent"],
-    "go test ./...": ["go", "test", "./..."],
-    "cargo test": ["cargo", "test", "--quiet"],
+    "pytest": (process.ToolId.PYTEST, ("-q",)),
+    "npm test": (process.ToolId.NPM, ("test", "--silent")),
+    "go test ./...": (process.ToolId.GO, ("test", "./...")),
+    "cargo test": (process.ToolId.CARGO, ("test", "--quiet")),
 }
 
 ALLOWED_SMOKE_CMDS = {
-    "npm run smoke": ["npm", "run", "smoke", "--silent"],
-    "npm run healthcheck": ["npm", "run", "healthcheck", "--silent"],
-    "make smoke": ["make", "smoke"],
+    "npm run smoke": (process.ToolId.NPM, ("run", "smoke", "--silent")),
+    "npm run healthcheck": (process.ToolId.NPM, ("run", "healthcheck", "--silent")),
+    "make smoke": (process.ToolId.MAKE, ("smoke",)),
 }
 
 ALLOWED_BUILD_CMDS = {
-    "devcontainer build": ["devcontainer", "build", "--workspace-folder", "."],
+    "devcontainer build": (process.ToolId.DEVCONTAINER,
+                           ("build", "--workspace-folder", ".")),
 }
 
 
+def normalize_exec_timeout(value) -> int:
+    """The one timeout normalizer: omitted/None → 120; exact int in 1..3600 else ValueError."""
+    if value is None:
+        return DEFAULT_EXEC_TIMEOUT_SECONDS
+    if type(value) is not int or not 1 <= value <= MAX_EXEC_TIMEOUT_SECONDS:
+        raise ValueError(f"exec timeout must be an int in 1..{MAX_EXEC_TIMEOUT_SECONDS}")
+    return value
+
+
 class ExecCollector:
-    def __init__(self, root, options=None, runner=None):
+    def __init__(self, root, options=None, *, toolchain=None, runner=None, static=None):
         options = options or {}
         self.root = Path(root)
         self.enabled = bool(options.get("exec"))
-        self.timeout = int(options.get("exec_timeout") or 120)
-        # ``runner`` is injectable so tests never spawn a real subprocess.
-        self._runner = runner or options.get("exec_runner") or self._default_runner
+        self.timeout = normalize_exec_timeout(options.get("exec_timeout"))
+        self._toolchain = toolchain
+        self._runner = runner  # test injection: fn(tool_id, argv, cwd_handle, env, timeout)
+        self._static = static
         self._cache: dict = {}
+        self._copy_dir = None
+        self._copy_auth = None
+        self._copy_failed = False
+        # Provenance counters (§4.6): successful ⇒ completed ⇒ requested.
+        self.requested = self.enabled
+        self.completed = True   # stays True only while every spawned run reached an exit
+        self.successful = True  # stays True only while every spawned run exited 0
+        self._spawned = 0
 
+    def close(self) -> None:
+        if self._copy_auth is not None:
+            self._copy_auth.close()
+            self._copy_auth = None
+        if self._copy_dir is not None:
+            import shutil
+            shutil.rmtree(self._copy_dir, ignore_errors=True)
+            self._copy_dir = None
+
+    # ----- provenance ---------------------------------------------------------------------
+    @property
+    def provenance(self) -> dict:
+        completed = bool(self._spawned) and self.completed
+        successful = completed and self.successful
+        return {"requested": self.requested, "timeout_seconds": self.timeout,
+                "completed": completed, "successful": successful}
+
+    # ----- isolated copy --------------------------------------------------------------------
+    def _copy(self):
+        """The bounded isolated worktree copy, built once. ``None`` on refusal."""
+        if self._copy_failed:
+            return None
+        if self._copy_auth is not None:
+            return self._copy_auth
+        try:
+            src = safe_io.acquire_root(self.root)
+            self._copy_dir = tempfile.mkdtemp(prefix="ra1-exec-")
+            os.chmod(self._copy_dir, 0o700)
+            worktree = os.path.join(self._copy_dir, "worktree")
+            os.mkdir(worktree, 0o700)
+            dst = safe_io.acquire_root(worktree)
+            try:
+                safe_io.safe_copy_tree(src, dst)
+            finally:
+                src.close()
+            self._copy_auth = dst
+            return self._copy_auth
+        except (OSError, safe_io.RepositoryInputError, safe_io.SafeIoUnsupportedError):
+            self._copy_failed = True
+            self.completed = False
+            self.successful = False
+            self.close()
+            return None
+
+    # ----- execution ------------------------------------------------------------------------
     def run_allowed(self, allowlist, cmd, app_path: str = ".") -> dict | None:
         """Run an allowlisted ``cmd`` under the contract.
 
-        ``None`` when disabled; ``{"allowed": False, ...}`` when ``cmd`` is not on ``allowlist``
-        (and therefore NOT executed); otherwise the runner result with ``allowed: True``."""
+        ``None`` when disabled; ``{"allowed": False, ...}`` when ``cmd`` is not on the
+        allowlist (and therefore NOT executed); otherwise the mapped runner result."""
         if not self.enabled:
             return None
-        argv = allowlist.get(cmd)
-        if argv is None:
+        resolved = allowlist.get(cmd)
+        if resolved is None:
             return {"cmd": cmd, "allowed": False, "returncode": None, "timed_out": False}
+        tool_id, argv = resolved
         key = (cmd, app_path)
         if key not in self._cache:
-            self._cache[key] = self._runner(argv, app_path)
-        return {"cmd": cmd, "allowed": True, "argv": argv, **self._cache[key]}
+            self._cache[key] = self._execute(tool_id, argv, app_path)
+        return {"cmd": cmd, "allowed": True, "argv": [tool_id.value, *argv],
+                **self._cache[key]}
+
+    def _execute(self, tool_id, argv, app_path: str) -> dict:
+        copy = self._copy()
+        if copy is None:
+            return {"returncode": None, "timed_out": False, "unavailable": True,
+                    "state": "unavailable"}
+        try:
+            if app_path not in (".", "", None):
+                run_root = safe_io.open_subroot(copy, str(app_path))
+            else:
+                run_root = copy
+        except (OSError, safe_io.RepositoryInputError):
+            self.completed = False
+            self.successful = False
+            return {"returncode": None, "timed_out": False, "unavailable": True,
+                    "state": "unavailable"}
+        env = {"PATH": "/usr/bin:/bin", "HOME": self._copy_dir, "LANG": "C.UTF-8",
+               "CI": "1", "NO_COLOR": "1"}
+        try:
+            if self._runner is not None:
+                result = self._runner(tool_id, argv, run_root.fd, env, self.timeout)
+                if not isinstance(result, process.BoundedProcessResult):
+                    raise TypeError("injected exec runners must return BoundedProcessResult")
+            else:
+                if self._toolchain is None:
+                    self._toolchain = process.resolve_toolchain(self.root)
+                result = process.run_bounded_process(
+                    tool_id, argv, toolchain=self._toolchain, cwd_handle=run_root.fd,
+                    env=env, timeout_seconds=self.timeout)
+        finally:
+            if run_root is not copy:
+                run_root.close()
+        self._spawned += 1
+        if result.state is process.ProcessState.OK:
+            return {"returncode": 0, "timed_out": False, "state": "ok"}
+        self.successful = False
+        if result.state is process.ProcessState.NONZERO:
+            return {"returncode": result.returncode, "timed_out": False,
+                    "state": "nonzero"}
+        self.completed = False
+        if result.state is process.ProcessState.TIMEOUT:
+            return {"returncode": None, "timed_out": True, "state": "timeout"}
+        return {"returncode": None, "timed_out": False, "unavailable": True,
+                "state": "unavailable"}
 
     def run_test_cmd(self, test_cmd: str, app_path: str = ".") -> dict | None:
         """Execute the detected test command under the contract (see ``run_allowed``)."""
@@ -78,20 +187,3 @@ class ExecCollector:
     def run_build_cmd(self, build_cmd: str, app_path: str = ".") -> dict | None:
         """Execute an environment build command (e.g. devcontainer build) under the contract."""
         return self.run_allowed(ALLOWED_BUILD_CMDS, build_cmd, app_path)
-
-    def _default_runner(self, argv, app_path) -> dict:  # pragma: no cover - subprocess boundary
-        with tempfile.TemporaryDirectory(prefix="ra1-exec-") as tmp:
-            copy = Path(tmp) / "worktree"
-            shutil.copytree(self.root, copy,
-                            ignore=shutil.ignore_patterns(".git", ".agents"), symlinks=True)
-            env = {"PATH": os.environ.get("PATH", ""), "HOME": tmp,
-                   "LANG": "C.UTF-8", "CI": "1", "NO_COLOR": "1"}
-            cwd = copy / app_path if app_path != "." else copy
-            try:
-                proc = subprocess.run(argv, cwd=cwd, env=env, capture_output=True,
-                                      text=True, timeout=self.timeout)
-                return {"returncode": proc.returncode, "timed_out": False}
-            except subprocess.TimeoutExpired:
-                return {"returncode": None, "timed_out": True}
-            except (OSError, subprocess.SubprocessError):
-                return {"returncode": None, "timed_out": False}

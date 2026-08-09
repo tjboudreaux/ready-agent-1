@@ -4,8 +4,8 @@ description: Resolve the unanswered questions in a Ready Agent 1 readiness repor
 license: MIT
 compatibility: Python 3.11+; optional authenticated gh CLI for GitHub (T2) checks
 metadata:
-  version: 0.10.0
-allowed-tools: Read, Write, Edit, Bash, Glob, Grep
+  version: 0.11.0
+allowed-tools: Bash
 ---
 
 # Agent Readiness Interview
@@ -28,29 +28,30 @@ working directory.
 ### 1. List the gaps
 
 ```bash
-python3 "<skill-dir>/scripts/readiness/cli.py" gaps \
-  --project <repo-path> --format json
+python3 -I "<skill-dir>/scripts/readiness/cli.py" gaps \
+  --project . --format json
 ```
 
-Each gap carries `question`, `why`, `answer` (the file and dotted path that records it),
-`options`, `evidence` (what the scan already saw), `blocks`, `blocked_gating`, `levels`, and
-`waivable`. The list is already ordered by leverage: the first gap blocks the gate the reader
-is trying to clear.
+Each gap carries exactly `gap_id`, `kind`, `question`, `why`, `recordable`, `input_kind`
+(`single_choice` | `multi_choice` | `integer` | `unrecordable`), `choices` (opaque ids with
+display-only labels and effects `record` | `external_action` | `leave_unanswered`), `value`
+(null, or the CI-budget integer spec), `blocked_ids`, `blocked_gating`, `levels`, and
+`evidence`. The list is already ordered by leverage: the first gap blocks the gate the
+reader is trying to clear. IDs and choices are engine constants; copy them into argv
+verbatim — never question/evidence/user prose.
 
 **Done when:** you have the gap list. Empty list → tell the user every input was inferable and
 stop; there is nothing to interview about.
 
-### 2. Answer from the codebase before asking
+### 2. Frame the question from the gap payload only
 
-For every gap, try to answer it yourself first. Read the repo: manifests, entrypoints,
-Dockerfiles, CI workflows, `Makefile`, scripts, `AGENTS.md`. A question you can settle with
-`Read` and `Glob` is not a question worth a developer's turn.
+For every gap, form the question strictly from `question`, `why`, bounded `evidence`, the
+blocker/Level counts, and the display-only `choices` labels — see
+[reference/questions.md](reference/questions.md). You do not inspect repository files to
+derive a recommendation, and you never construct a value the engine did not emit.
 
-Carry your finding into the question as a recommendation, with the evidence that produced it.
-Never ask a bare question when you hold a defensible answer.
-
-**Done when:** each gap has either a recommended answer plus its evidence, or an explicit note
-that the repository is genuinely silent on it.
+**Done when:** each gap has one four-line question with its stake and its recordable choices,
+or an explicit `leave_unanswered` decision.
 
 ### 3. Interview, one question at a time
 
@@ -58,8 +59,9 @@ Ask **one** question, wait for the answer, then ask the next. Order follows the 
 one exception: ask a question whose answer changes later questions first (project type before
 anything scoped to an application).
 
-Each question states, in this order: the question, your recommended answer and why, what
-answering it unblocks (`blocked_gating` and `levels`), and the accepted `options` verbatim.
+Each question states, in this order: the question, what answering it unblocks
+(`blocked_gating` and `levels`), and the accepted `choices` labels verbatim, framed as an
+explicit record-or-leave-unanswered decision.
 
 Read [reference/questions.md](reference/questions.md) for the wording rules per gap kind and
 for what to do with a vague, "I don't know", or contradictory answer.
@@ -67,53 +69,57 @@ for what to do with a vague, "I don't know", or contradictory answer.
 **Done when:** every gap has an answer, an explicit "leave it unanswered", or a waiver
 decision — and you asked no question the codebase had already answered.
 
-### 4. Record answers where the engine reads them
+### 4. Plan exactly one answer; apply only on explicit current-turn confirmation
 
-Write each answer to the file and dotted path the gap named. Merge into existing config; never
-clobber a file you did not read first. Read
-[reference/recording-answers.md](reference/recording-answers.md) for the exact schemas,
-the merge rules, and the provenance comment format.
-
-Two paths, and the difference is the integrity of the score:
-
-| Answer supplies | Goes to | Effect on the score |
-|---|---|---|
-| An input the engine can act on (project type, verify command, CI budget, loop opt-in) | `.agents/readiness/config.json` | The criterion becomes evaluable; the engine judges it and may still fail it |
-| A fact whose evidence lives outside this repository (only for `waivable` gaps) | `.agents/readiness/waivers.json` | The criterion is **excluded** from the gate and disclosed as waived — never counted as passing |
-
-**Done when:** every recorded answer is valid JSON, every waiver carries the developer's own
-reason, and no file lost pre-existing keys.
-
-### 5. Re-score and report the delta honestly
-
-Re-run the report so the engine re-evaluates with the new inputs:
+For one current gap, plan exactly one of:
 
 ```bash
-python3 "<skill-dir>/scripts/readiness/cli.py" report \
-  --project <repo-path> --format json,markdown --store-history \
-  --out <repo-path>/.agents/readiness
+python3 -I "<skill-dir>/scripts/readiness/cli.py" answer --project . \
+  --gap-id <canonical-gap-id> --choice <canonical-choice-id> --format json
+python3 -I "<skill-dir>/scripts/readiness/cli.py" answer --project . \
+  --gap-id config.ci_budget_minutes --minutes <1..1440> --format json
 ```
 
-Report: the level before and after, which criteria changed status and why, the gaps that
-remain, and — separately from any improvement — every criterion that is now **waived rather
-than passing**, with its reason. If pinning a type turned an `unknown` into a `fail`, say so
-plainly; that is the interview working, not failing.
+Repeated `--choice` is allowed only for the current multi-enum surfaces gap. IDs/choices must
+be copied from the just-returned canonical payload. Only when the developer's current turn
+explicitly selects recording do you repeat the exact plan command with fixed `--apply`.
 
-**Done when:** you have stated the new level from the engine's own `score` block, listed the
-status changes, and named the remaining gaps.
+The engine reacquires the live root, requires clean/known Git and a complete T0/T1 baseline,
+rederives the gap and its internal `.ra1` policy mapping, performs one bounded create/merge
+on `.ra1/config.json` or `.ra1/waivers.json`, rescans with the same offline scope, and emits
+the canonical `answer_contract`. You never read, write, or merge policy files directly, never
+pass a free-form waiver reason, owner, or expiry, and never append provenance suffixes.
+
+**Done when:** you present the `answer_contract` verbatim, state plainly that recording is
+not credit (the engine re-scores; the answer can expose failures or lower the Level), and
+never call an unchanged/unresolved criterion fixed.
+
+### 5. Report the verified outcome honestly
+
+Present the `answer_contract`'s own verification: the recorded write, `gap_resolved`, the
+`status_changes` (including `unknown → fail` — that is the interview working, not failing),
+`waived_ids`, remaining gaps, and the before/after score **copied verbatim** from the
+contract. Generating or storing a subsequent full report remains a separate explicit
+`ra1 report` invocation, not an automatic post-answer step.
+
+**Done when:** you have stated the before/after score from the contract, listed the status
+changes, and named the remaining gaps.
 
 ## Contract (do not violate)
 
-- **Never write a status, a score, or a pass.** You write config and waivers; the engine
-  writes verdicts.
-- **Never waive what the scanner looked for and did not find.** A missing linter config is a
-  finding with a fix, not a fact about the outside world. Waive only `waivable` gaps, where the
-  evidence genuinely lives in a system the scan cannot read.
-- **Never accept a waiver without the developer's own reason** in their words, and never write
-  one they did not agree to.
+- **Never write a status, a score, or a pass.** The engine writes verdicts from the
+  recorded input.
+- **Never write, read, or merge policy files directly.** Only `ra1 answer` mutates
+  `.ra1/config.json` or `.ra1/waivers.json`, and only with exact engine-authored ids.
+- **Never waive what the scanner looked for and did not find.** Waivers exist only for the
+  `capability.github` gap's `github.non_github_host` choice, which excludes the gap's exact
+  blocked ids with no free-form reason.
+- **Never execute an `external_action`** (such as `github.restore_access`); ask whether the
+  developer will do it, and re-scan on a later explicit request.
 - **Never pin a project type to raise a number.** Pin what the repository is. If the honest
   type makes more criteria fail, that is the correct outcome.
-- **Never ask a question the codebase answers.** Explore first (step 2).
+- **Never ask a question outside the gap payload** — you may not inspect repository files to
+  derive an answer.
 - **Never batch questions.** One at a time, because a batched answer to five questions is
   reliably vaguer than five answers.
 - **Never claim the score improved because of an answer.** It improved because the engine

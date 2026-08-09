@@ -2,7 +2,7 @@
 
 Judgments (naming consistency, code modularization, doc quality, PII handling, …) are graded
 qualitatively by the agent layer and **never affect the deterministic score**. This module lets a
-repo silence a judgment the way you disable an ESLint rule, via ``.agents/readiness/config.json``::
+repo silence a judgment the way you disable an ESLint rule, via ``.ra1/config.json``::
 
     {
       "judgments": {

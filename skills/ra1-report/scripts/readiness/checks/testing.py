@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from ._helpers import adep, aglob, ev, failed, passed, skipped, tool_invoked
+from ._helpers import adep, aglob, ev, failed, passed, skipped, tool_invoked, unknown
 
 _UNIT_PATTERNS = [
     "**/*_test.go", "**/test_*.py", "**/*_test.py", "**/*.test.ts", "**/*.test.js",
@@ -57,6 +57,10 @@ def tests_pass(ctx):
         return skipped("T3 execution unavailable.")
     if not res["allowed"]:
         return skipped(f"'{cmd}' is not on the T3 allowlist; not executed.")
+    if res.get("unavailable"):
+        return unknown("T3 execution evidence unavailable (isolated copy or spawn refused).",
+                       limitations=["Opt-in T3 uses an isolated copy and scrubbed "
+                                    "environment, not a kernel-enforced sandbox."])
     if res["timed_out"]:
         return failed(f"'{cmd}' timed out after {ex.timeout}s on an isolated copy.")
     if res["returncode"] == 0:
@@ -90,6 +94,10 @@ def behavioral_smoke(ctx):
     if not cmd:
         return skipped("No declared smoke/healthcheck command (npm run smoke / make smoke).")
     res = ex.run_smoke_cmd(cmd, ctx.app.path)  # cmd is allowlisted by construction
+    if res.get("unavailable"):
+        return unknown("T3 smoke evidence unavailable (isolated copy or spawn refused).",
+                       limitations=["Opt-in T3 uses an isolated copy and scrubbed "
+                                    "environment, not a kernel-enforced sandbox."])
     if res["timed_out"]:
         return failed(f"'{cmd}' smoke check timed out after {ex.timeout}s on an isolated copy.")
     if res["returncode"] == 0:

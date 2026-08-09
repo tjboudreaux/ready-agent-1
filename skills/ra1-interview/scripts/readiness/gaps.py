@@ -28,8 +28,67 @@ from .detect import UNKNOWN_THRESHOLD, VALID_PIN_TYPES
 from .model import Gap, Status
 from .score import NOT_OPTED_IN_LOOP, load_registry
 
-_CONFIG_PATH = ".agents/readiness/config.json"
-_WAIVERS_PATH = ".agents/readiness/waivers.json"
+_CONFIG_PATH = ".ra1/config.json"
+_WAIVERS_PATH = ".ra1/waivers.json"
+
+_CHOICE_ID_RE = __import__("re").compile(r"[a-z][a-z0-9_.:-]{0,127}\Z")
+
+
+def _sha(text: str) -> str:
+    import hashlib
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _choice(cid: str, label: str, effect: str) -> dict:
+    assert _CHOICE_ID_RE.match(cid), cid
+    assert effect in ("record", "external_action", "leave_unanswered"), effect
+    return {"id": cid, "label": label, "effect": effect}
+
+
+def _boolean_choices() -> list:
+    return [_choice("boolean.yes", "Yes", "record"),
+            _choice("boolean.no", "No", "record")]
+
+
+def _type_choices(types) -> list:
+    return [_choice(t, t.capitalize(), "record") for t in types]
+
+
+def _verify_command_candidates(static) -> list:
+    """Strict §5.1.2 verification candidates visible in the current bounded scan.
+
+    Each entry is ``(command, choice_id)`` with the opaque command hash — repository text
+    never reaches the choice payload.
+    """
+    import re
+    candidates = []
+    for path in static.glob(["Makefile", "Justfile", "justfile", "Taskfile.yml",
+                             "Taskfile.yaml"]):
+        text = static.read(path) or ""
+        launcher = "make" if path == "Makefile" else ("just" if "ustfile" in path
+                                                      else "task")
+        for name in ("check", "verify", "validate"):
+            if re.search(r"(?m)^\s*" + name + r"\s*:", text):
+                command = f"{launcher} {name}"
+                candidates.append((command, "command." + _sha(command)))
+    pkg = static.manifests().get("package.json", (None, None))[1]
+    if isinstance(pkg, dict) and isinstance(pkg.get("scripts"), dict):
+        for name in ("check", "verify", "validate"):
+            if name in pkg["scripts"]:
+                command = f"npm run {name}"
+                candidates.append((command, "command." + _sha(command)))
+    if static.has_dep("pytest") or static.has_tool_config("pytest") or \
+            static.glob(["tests/**", "test/**"]):
+        command = "python -m pytest"
+        candidates.append((command, "command." + _sha(command)))
+    for path in static.glob(["scripts/check*", "scripts/verify*"]):
+        candidates.append((path, "command." + _sha(path)))
+    seen, out = set(), []
+    for command, cid in candidates:
+        if command not in seen and len(out) < 16:
+            seen.add(command)
+            out.append((command, cid))
+    return out
 
 # Criterion id -> the config value that would let it run. Authored, because the mapping is
 # between a check's intent and a config key, and neither the rationale text nor the registry
@@ -102,6 +161,9 @@ def _detection_gaps(report, config) -> list[Gap]:
             blocks=[r.id for r in stuck],
             blocked_gating=sum(1 for r in stuck if r.gating),
             levels=sorted({r.level for r in stuck if r.gating}),
+            recordable=True,
+            input_kind="single_choice",
+            choices=_type_choices(sorted(VALID_PIN_TYPES)),
         ))
 
     # Competing strong signals: the scanner picked the head of the ranked list and the tail
@@ -113,6 +175,9 @@ def _detection_gaps(report, config) -> list[Gap]:
         types = [c["type"] for c in contested]
         out.append(Gap(
             id="detect.project_type.contested",
+            recordable=True,
+            input_kind="multi_choice",
+            choices=_type_choices(types),
             kind="detection",
             question=f"This directory shows evidence of {_and_list(types)}. Which of those "
                      f"does it actually serve? Declare every surface that applies.",
@@ -132,7 +197,7 @@ def _detection_gaps(report, config) -> list[Gap]:
         app_stuck = [r for r in report.results
                      if r.app_path == app.path and r.status == Status.UNKNOWN]
         out.append(Gap(
-            id=f"detect.apps.{app.path}",
+            id=f"detect.app_type.{_sha(app.path)}",
             kind="detection",
             question=f"What kind of application is `{app.path}` — a library, service, "
                      f"frontend, CLI, data pipeline, or infrastructure?",
@@ -145,11 +210,14 @@ def _detection_gaps(report, config) -> list[Gap]:
             blocks=[r.id for r in app_stuck],
             blocked_gating=sum(1 for r in app_stuck if r.gating),
             levels=sorted({r.level for r in app_stuck if r.gating}),
+            recordable=True,
+            input_kind="single_choice",
+            choices=_type_choices(sorted(VALID_PIN_TYPES)),
         ))
     return out
 
 
-def _config_gaps(report, config) -> list[Gap]:
+def _config_gaps(report, config, static=None) -> list[Gap]:
     out = []
     for cid, spec in _CONFIG_GAPS.items():
         result = next((r for r in report.results if r.id == cid), None)
@@ -157,6 +225,18 @@ def _config_gaps(report, config) -> list[Gap]:
             continue
         if _configured(config, spec["path"]):
             continue
+        recordable, input_kind, choices, value = True, "single_choice", [], None
+        if spec["id"] == "config.acdc.verify_command":
+            candidates = _verify_command_candidates(static) if static is not None else []
+            if candidates:
+                choices = [_choice(cid_, cmd, "record") for cmd, cid_ in candidates]
+            else:
+                recordable, input_kind = False, "unrecordable"
+            choices.append(_choice("leave_unanswered", "Leave unanswered",
+                                   "leave_unanswered"))
+        elif spec["id"] == "config.ci_budget_minutes":
+            input_kind = "integer"
+            value = {"type": "integer", "minimum": 1, "maximum": 1440}
         out.append(Gap(
             id=spec["id"],
             kind="config",
@@ -168,6 +248,10 @@ def _config_gaps(report, config) -> list[Gap]:
             blocks=[cid],
             blocked_gating=1 if result.gating else 0,
             levels=[result.level] if result.gating else [],
+            recordable=recordable,
+            input_kind=input_kind,
+            choices=choices,
+            value=value,
         ))
     return out
 
@@ -204,6 +288,9 @@ def _opt_in_gaps(report, config) -> list[Gap]:
         blocks=[r.id for r in stuck],
         blocked_gating=sum(1 for r in stuck if r.gating),
         levels=sorted({r.level for r in stuck if r.gating}),
+        recordable=True,
+        input_kind="single_choice",
+        choices=_boolean_choices(),
     )]
 
 
@@ -237,10 +324,20 @@ def _capability_gaps(report) -> list[Gap]:
         # The only honest waiver case in the catalogue: the evidence is real but lives in a
         # host the scan cannot see, so a disclosed exclusion beats both a guess and a fail.
         waivable=True,
+        recordable=True,
+        input_kind="single_choice",
+        choices=[
+            _choice("github.restore_access",
+                    "I will restore GitHub API access, then re-scan", "external_action"),
+            _choice("github.non_github_host",
+                    "This project is not hosted on GitHub.com (record disclosed waivers)",
+                    "record"),
+            _choice("leave_unanswered", "Leave unanswered", "leave_unanswered"),
+        ],
     )]
 
 
-def derive_gaps(report, config=None) -> list[Gap]:
+def derive_gaps(report, config=None, static=None) -> list[Gap]:
     """Every unanswered question in this report, highest leverage first.
 
     Ordering is deterministic and mirrors `score._recommendations`: whatever blocks the gate
@@ -250,7 +347,7 @@ def derive_gaps(report, config=None) -> list[Gap]:
     if report is None:
         return []
     config = config if isinstance(config, dict) else {}
-    gaps = (_detection_gaps(report, config) + _config_gaps(report, config)
+    gaps = (_detection_gaps(report, config) + _config_gaps(report, config, static)
             + _opt_in_gaps(report, config) + _capability_gaps(report))
     next_level = _next_locked_level(report)
 

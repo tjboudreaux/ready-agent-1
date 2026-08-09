@@ -63,20 +63,80 @@ def rules_index(ctx):
     return passed(".omp/rules/README.md documents loop rules or denylist.",
                   [ev("loop rules index", source=path, tier="T0")])
 
+_DENYLIST_FAMILIES = (
+    ("secrets/credentials exfiltration", re.compile(
+        r"(?i)(secret|credential|environment (file|variable)|\.env|token|private key|"
+        r"password|api key)\b")),
+    ("destructive operations", re.compile(
+        r"(?i)(destructi|delet|destroy|drop|truncat|\brm\b|remov|wipe|format)")),
+    ("push/merge/deploy/release/publish", re.compile(
+        r"(?i)(push|merge|deploy|release|publish)\b")),
+    ("control bypass", re.compile(
+        r"(?i)(ci\b|tests?\b|security scanning|branch protection|audit logging|"
+        r"kill switch|disable|bypass|skip)\b")),
+)
+_NORMATIVE_RE = re.compile(
+    r"(?i)\b(deny|denied|block|blocked|never|do not|don't|must not|must never|"
+    r"require human (approval|confirmation)|requires? human (approval|confirmation)|"
+    r"only with (human )?(approval|confirmation))\b")
+_PERMISSIVE_RE = re.compile(
+    r"(?i)\b(allow|allowed|permit|permitted|may|can|free to|encouraged)\b")
+
+
+def _denylist_statements(text: str) -> list[str]:
+    """List items and standalone policy sentences, stripped of fences/comments/headings."""
+    from .taskdisc import _normative_statements
+    return _normative_statements(text)
+
+
+def _statement_governs(statement: str, family_needle) -> bool:
+    """A normative control phrase must govern the family action in the same statement,
+    with no permissive/reversed polarity."""
+    if not family_needle.search(statement):
+        return False
+    if _PERMISSIVE_RE.search(statement) and not _NORMATIVE_RE.search(statement):
+        return False
+    # Reversed polarity: "never block deploys" / "do not allow X" inverts the control.
+    if re.search(r"(?i)\bnever (block|deny|prevent)\b", statement):
+        return False
+    if re.search(r"(?i)\bdo not (allow|permit)\b", statement):
+        return False
+    return bool(_NORMATIVE_RE.search(statement))
+
+
 def denylist(ctx):
     path = _first(ctx, [".omp/rules/denylist.md"])
     if not path:
-        return failed("Missing .omp/rules/denylist.md denylist.")
+        return failed("Missing .omp/rules/denylist.md denylist.",
+                      reason_code="loop.denylist.missing")
     ok, rationale = _filled(ctx, path, ".omp/rules/denylist.md")
     if not ok:
-        return failed(rationale)
+        return failed(rationale, reason_code="loop.denylist.missing")
     text = ctx.static.read(path) or ""
-    has_bullet = any(line.lstrip().startswith(("- ", "* ", "+ ")) for line in text.splitlines())
-    if not (has_bullet or _contains_any(text, ["deny", "block", "never"])):
-        return failed(".omp/rules/denylist.md must include a deny/block/never "
-                       "policy term or bullet.")
-    return passed(".omp/rules/denylist.md contains a starter blocked-action policy.",
-                  [ev("loop denylist", source=path, tier="T0")])
+    statements = _denylist_statements(text)
+    matched = set()
+    for statement in statements:
+        for index, (_name, needle) in enumerate(_DENYLIST_FAMILIES):
+            if index in matched:
+                continue
+            if _statement_governs(statement, needle):
+                matched.add(index)
+    missing = [name for i, (name, _n) in enumerate(_DENYLIST_FAMILIES)
+               if i not in matched]
+    if missing:
+        return failed(
+            "Denylist is missing normative statement(s) for: " + ", ".join(missing) + ".",
+            [ev("loop denylist", source=path, tier="T0")],
+            reason_code="loop.denylist.families_incomplete",
+            limitations=["Documented deny statements are structural policy evidence, not "
+                         "runtime enforcement."])
+    return passed(
+        "Denylist covers secrets exfiltration, destructive operations, "
+        "push/merge/deploy/release/publish, and control bypass.",
+        [ev("loop denylist", source=path, tier="T0")],
+        reason_code="loop.denylist.complete",
+        limitations=["Documented deny statements are structural policy evidence, not "
+                     "runtime enforcement."])
 
 def signal_schema(ctx):
     path = _first(ctx, ["signals/README.md"])

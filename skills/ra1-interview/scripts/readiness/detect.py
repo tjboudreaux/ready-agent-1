@@ -7,7 +7,6 @@ silently skipped.
 """
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -31,40 +30,77 @@ CONF_MED = 0.6
 CONF_LOW = 0.3
 UNKNOWN_THRESHOLD = 0.5
 
-PIN_SOURCE = ".agents/readiness/config.json"
+PIN_SOURCE = ".ra1/config.json"
+WAIVERS_SOURCE = ".ra1/waivers.json"
+LEGACY_POLICY_FILES = (".agents/readiness/config.json", ".agents/readiness/waivers.json")
 VALID_PIN_TYPES = {"library", "service", "frontend", "cli", "data", "infra"}
 
 
-def load_readiness_config(root, options=None) -> dict:
-    """Read ``.agents/readiness/config.json`` as the readiness config root.
+def read_policy_json(static: StaticCollector, relpath: str):
+    """Read one ``.ra1`` policy file through the safe boundary.
 
-    An explicit ``options["readiness_config"]`` beats the on-disk file. Missing,
-    malformed, unreadable, or non-object config returns ``{}``.
+    Returns ``("ok", data)`` | ``("missing", None)`` | ``("invalid", None)``. Missing keeps
+    absence semantics; malformed/unsafe/unreadable/oversize is ``invalid`` and the caller
+    marks the global repository-indeterminate state (never a partial read).
+    """
+    from . import safe_io
+    obs = static.read_repo_file(relpath, max_bytes=safe_io.MAX_CONFIG_BYTES)
+    if obs.state is safe_io.RepoReadState.MISSING:
+        return ("missing", None)
+    if obs.state is not safe_io.RepoReadState.OK:
+        return ("invalid", None)
+    from . import parsers
+    try:
+        data = parsers.strict_load_json(obs.text, max_bytes=safe_io.MAX_CONFIG_BYTES)
+    except parsers.StrictJsonError:
+        return ("invalid", None)
+    return ("ok", data)
+
+
+def _static_for(root, static: StaticCollector | None) -> StaticCollector:
+    if static is not None:
+        return static
+    if hasattr(root, "read_repo_file"):
+        return root
+    return StaticCollector(root)
+
+
+def legacy_policy_present(static: StaticCollector) -> bool:
+    """True when a legacy ``.agents/readiness`` policy file exists (blocks scoring)."""
+    from . import safe_io
+    obs = static.exists_observation(list(LEGACY_POLICY_FILES))
+    return obs.state is safe_io.PresenceState.PRESENT
+
+
+def load_readiness_config(root, options=None) -> dict:
+    """Read ``.ra1/config.json`` as the readiness config root.
+
+    An explicit injected ``readiness_config`` dependency beats the on-disk file. Missing,
+    malformed, unreadable, or non-object config returns ``{}`` (the malformed case is
+    surfaced separately through the repository-indeterminate state).
     """
     options = options or {}
-    if options.get("readiness_config") is not None:
-        data = options["readiness_config"]
-    else:
-        cf = Path(root) / ".agents" / "readiness" / "config.json"
-        if not cf.exists():
-            return {}
-        try:
-            data = json.loads(cf.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return {}
-    return data if isinstance(data, dict) else {}
+    deps = options.get("_deps") or {}
+    if deps.get("readiness_config") is not None:
+        data = deps["readiness_config"]
+        return data if isinstance(data, dict) else {}
+    static = _static_for(root, None)
+    state, data = read_policy_json(static, PIN_SOURCE)
+    if state != "ok" or not isinstance(data, dict):
+        return {}
+    return data
 
 
 def load_detect_config(root, options=None) -> dict:
     """Read the nested ``detect`` block of readiness config (user pins).
 
-    ``options["detect_config"]`` preserves the legacy override path for detection
-    pins, while top-level readiness options continue to come from
-    ``load_readiness_config``.
+    ``detect_config`` is the injected dependency channel for detection pins, while
+    top-level readiness options continue to come from ``load_readiness_config``.
     """
     options = options or {}
-    if options.get("detect_config") is not None:
-        data = options["detect_config"]
+    deps = options.get("_deps") or {}
+    if deps.get("detect_config") is not None:
+        data = deps["detect_config"]
     else:
         data = load_readiness_config(root, options)
     if not isinstance(data, dict):
@@ -166,44 +202,61 @@ def _classify(static: StaticCollector) -> tuple[str, float, list[str]]:
     return top["type"], top["confidence"], [top["signal"]]
 
 
+_APP_MANIFEST_NAMES = ("package.json", "pyproject.toml", "go.mod", "Cargo.toml",
+                       "pom.xml", "build.gradle")
+
+
+def _validated_workspace_patterns(raw_globs) -> list[str]:
+    """Validate repository-derived workspace globs against the config-pattern grammar.
+
+    Workspace patterns are the one repository-supplied discovery input; invalid grammar or
+    overflow is repository-derived invalidity and raises (the caller surfaces the global
+    indeterminate state rather than silently narrowing discovery).
+    """
+    from . import safe_io
+    globs = []
+    for raw in raw_globs:
+        if not isinstance(raw, str):
+            raise safe_io.RepositoryInputError("workspace pattern must be a string")
+        g = raw.rstrip("/")
+        if not g:
+            continue
+        if safe_io.validate_discovery_pattern(g) is not None:
+            raise safe_io.RepositoryInputError(f"invalid workspace pattern: {g!r}")
+        if g not in globs:
+            globs.append(g)
+    if len(globs) > safe_io.MAX_CONFIG_PATTERNS:
+        raise safe_io.RepositoryInputError("workspace pattern cap exceeded")
+    return globs
+
+
 def _workspace_dirs(root: Path, static: StaticCollector) -> list[str]:
     """Discover application subdirectories in a monorepo (best-effort, no YAML parsing)."""
     dirs: set = set()
-    globs: list[str] = []
+    raw_globs: list[str] = []
     pkg = static.manifests().get("package.json", (None, None))[1]
     if isinstance(pkg, dict):
         ws = pkg.get("workspaces")
         if isinstance(ws, list):
-            globs.extend(ws)
+            raw_globs.extend(ws)
         elif isinstance(ws, dict) and isinstance(ws.get("packages"), list):
-            globs.extend(ws["packages"])
+            raw_globs.extend(ws["packages"])
     # Tooling that implies a monorepo but where we glob conventional dirs.
     if static.exists_any(["pnpm-workspace.yaml", "turbo.json", "nx.json", "lerna.json", "go.work"]):
-        globs.extend(["packages/*", "apps/*", "services/*"])
-    for g in globs:
-        g = g.rstrip("/")
-        for p in root.glob(g):
-            if p.is_dir() and _has_manifest(p):
-                dirs.add(p.relative_to(root).as_posix())
+        raw_globs.extend(["packages/*", "apps/*", "services/*"])
     # Cargo workspace members
     cargo = static.manifests().get("Cargo.toml", (None, None))[1]
     if isinstance(cargo, dict) and isinstance(cargo.get("workspace"), dict):
-        for member in cargo["workspace"].get("members", []) or []:
-            for p in root.glob(member):
-                if p.is_dir() and _has_manifest(p):
-                    dirs.add(p.relative_to(root).as_posix())
-    dirs |= set(_go_cmd_apps(root))
-    dirs |= set(_maven_modules(root))
+        raw_globs.extend(cargo["workspace"].get("members", []) or [])
+    globs = _validated_workspace_patterns(raw_globs)
+    if globs:
+        patterns = [f"{g}/{name}" for g in globs for name in _APP_MANIFEST_NAMES]
+        for path in static.glob(patterns):
+            dirs.add(path.rsplit("/", 1)[0])
+    dirs |= set(_go_cmd_apps(root, static))
+    dirs |= set(_maven_modules(root, static))
     dirs |= set(_gradle_modules(root, static))
     return sorted(d for d in dirs if not _ignored_app_dir(d))
-
-
-def _has_manifest(path: Path) -> bool:
-    for name in ("package.json", "pyproject.toml", "go.mod", "Cargo.toml",
-                 "pom.xml", "build.gradle"):
-        if (path / name).exists():
-            return True
-    return False
 
 
 # Directories that are never independently deployable apps even with a manifest.
@@ -216,15 +269,12 @@ def _ignored_app_dir(rel: str) -> bool:
     return (rel.strip("/").lower() + "/").startswith(_IGNORED_APP_PREFIXES)
 
 
-def _go_cmd_apps(root: Path) -> list[str]:
+def _go_cmd_apps(root: Path, static: StaticCollector) -> list[str]:
     """Go convention: each ``cmd/<name>`` with a ``.go`` file is an independent binary."""
-    if not (root / "go.mod").exists():
+    if not static.exists_any(["go.mod"]):
         return []
-    cmd = root / "cmd"
-    if not cmd.is_dir():
-        return []
-    return [p.relative_to(root).as_posix() for p in sorted(cmd.iterdir())
-            if p.is_dir() and any(p.glob("*.go"))]
+    hits = static.glob(["cmd/*/*.go"])
+    return sorted({"/".join(h.split("/")[:2]) for h in hits})
 
 
 # pom.xml is attacker-supplied (it comes from the scanned repository) and real module
@@ -259,53 +309,51 @@ def _pom_tree(raw: bytes):
         return None
 
 
-def _maven_modules(root: Path) -> list[str]:
-    pom = root / "pom.xml"
-    if not pom.exists():
+def _maven_modules(root: Path, static: StaticCollector) -> list[str]:
+    from . import safe_io
+    obs = static.read_repo_file("pom.xml", max_bytes=_POM_MAX_BYTES)
+    if obs.state is safe_io.RepoReadState.MISSING:
         return []
-    try:
-        with pom.open("rb") as fh:
-            # Bounded read: read_bytes() would allocate the entire attacker-sized file
-            # before any cap could reject it. Reading one byte past the cap is enough to
-            # detect oversize without ever holding it in memory.
-            raw = fh.read(_POM_MAX_BYTES + 1)
-    except OSError:
-        return []
-    if len(raw) > _POM_MAX_BYTES:
-        return []
-    tree = _pom_tree(raw)
+    if obs.state is not safe_io.RepoReadState.OK:
+        raise safe_io.RepositoryInputError("pom.xml unreadable")
+    tree = _pom_tree(obs.text.encode("utf-8"))
     if tree is None:
-        return []
+        raise safe_io.RepositoryInputError("pom.xml malformed")
     out = []
-    root_abs = root.resolve()
     for el in tree.iter():
         if el.tag.split("}")[-1] != "module" or not el.text:
             continue
         rel = el.text.strip()
-        if not rel:
+        if not rel or rel.startswith("/") or ".." in rel.split("/"):
             continue
-        target = (root / rel)
-        if not target.is_dir():
-            continue
-        # A module of "../../.." would otherwise make every downstream collector read
-        # outside the scanned project and quote it back in the report. is_dir() already
-        # succeeded above, so resolve() has an existing directory to work on.
-        resolved = target.resolve()
-        if resolved != root_abs and root_abs not in resolved.parents:
+        # A module of "../../.." can never make a collector read outside the scanned
+        # project: the directory is opened fd-relative beneath the admitted root, which
+        # rejects traversal, links, and escape attempts.
+        try:
+            sub = safe_io.open_subroot(static.authority, rel)
+            sub.close()
+        except (OSError, safe_io.RepositoryInputError):
             continue
         out.append(rel)
     return out
 
 
 def _gradle_modules(root: Path, static: StaticCollector) -> list[str]:
+    from . import safe_io
     text = ((static.read("settings.gradle") or "") + "\n"
             + (static.read("settings.gradle.kts") or ""))
     out = []
     for m in re.finditer(r"include[\s(]+([^)\n]+)", text):
         for tok in re.findall(r"""["']([^"']+)["']""", m.group(1)):
             rel = tok.lstrip(":").replace(":", "/")
-            if rel and (root / rel).is_dir():
-                out.append(rel)
+            if not rel or rel.startswith("/") or ".." in rel.split("/"):
+                continue
+            try:
+                sub = safe_io.open_subroot(static.authority, rel)
+                sub.close()
+            except (OSError, safe_io.RepositoryInputError):
+                continue
+            out.append(rel)
     return out
 
 
@@ -315,17 +363,21 @@ def _go_root_surface(static: StaticCollector) -> str:
 
 
 def _build_app(root: Path, rel: str, root_static: StaticCollector = None) -> App:
-    sub = StaticCollector(root / rel if rel != "." else root)
+    if root_static is not None:
+        sub = root_static if rel == "." else root_static.within(rel)
+    else:
+        sub = StaticCollector(root if rel == "." else root / rel)
     candidates = classify_candidates(sub)
     surface, conf = candidates[0]["type"], candidates[0]["confidence"]
+    has_go_mod = (root_static or sub).exists_any(["go.mod"])
+    has_go_files = bool(sub.glob(["*.go"]))
     # A Go cmd/* binary has no manifest of its own; classify it from the module's deps.
-    if (surface == "unknown" and rel != "." and (root / "go.mod").exists()
-            and list((root / rel).glob("*.go"))):
+    if surface == "unknown" and rel != "." and has_go_mod and has_go_files:
         surface = _go_root_surface(root_static or StaticCollector(root))
         conf = CONF_MED
         candidates = [_candidate(surface, CONF_MED,
                                  "go cmd/ binary classified from module dependencies")]
-    langs = sub.languages() or (["go"] if list((root / rel).glob("*.go")) else [])
+    langs = sub.languages() or (["go"] if has_go_files else [])
     test_cmd = _detect_test_cmd(sub)
     prod = "unknown"
     if surface in ("service", "frontend"):
@@ -359,12 +411,46 @@ def _detect_test_cmd(static: StaticCollector) -> str:
     return ""
 
 
+def _indeterminate_detection(reason: str) -> Detection:
+    """The global degraded-input detection: authored unknown values, blocking denominator."""
+    if reason == "input.legacy_policy_path":
+        signal = ("legacy .agents/readiness policy file present; move it to .ra1/ before "
+                  "scoring")
+    else:
+        signal = ("repository configuration or manifest input could not be read safely; "
+                  "classification unavailable")
+    return Detection(
+        project_type="unknown",
+        confidence=0.0,
+        signals=[signal],
+        languages=[],
+        apps=[App(path=".")],
+        is_monorepo=False,
+        opt_in={"loop_ready": False},
+        repository_indeterminate=True,
+        indeterminate_reason=reason,
+    )
+
+
 def detect(root, static: StaticCollector = None, options=None) -> Detection:
     root = Path(root)
     static = static or StaticCollector(root)
+    from . import safe_io
+    try:
+        return _detect_inner(root, static, options)
+    except safe_io.RepositoryInputError:
+        return _indeterminate_detection("input.repository_indeterminate")
 
-    readiness_cfg = load_readiness_config(root, options)
-    cfg = load_detect_config(root, options)
+
+def _detect_inner(root, static: StaticCollector, options=None) -> Detection:
+    if legacy_policy_present(static):
+        return _indeterminate_detection("input.legacy_policy_path")
+    config_state, _raw_config = read_policy_json(static, PIN_SOURCE)
+    if config_state == "invalid":
+        return _indeterminate_detection("input.repository_indeterminate")
+
+    readiness_cfg = load_readiness_config(static, options)
+    cfg = load_detect_config(static, options)
     opt_in = {"loop_ready": readiness_cfg.get("loop_ready") is True}
     root_pin = cfg.get("project_type")
     # A directory can serve several surfaces; `surfaces` is the richer input and wins.
