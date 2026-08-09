@@ -3,7 +3,7 @@
   "description": "T2 canned-runner fixture: recent GitHub Actions run timings stay within the configured ci_budget_minutes, so build.ci_duration_budget passes. Exercises the T2 pass shape end-to-end through the real engine with a no-network gh runner.",
   "files": {
     "pyproject.toml": "[project]\nname = \"ci-budget-pass\"\nversion = \"0.1.0\"\nrequires-python = \">=3.11\"\n",
-    ".agents/readiness/config.json": "{\n  \"schema_version\": \"2\",\n  \"ci_budget_minutes\": 15\n}\n"
+    ".ra1/config.json": "{\n  \"schema_version\": \"2\",\n  \"ci_budget_minutes\": 15\n}\n"
   },
   "github": {
     "repo view --json nameWithOwner": "{\"nameWithOwner\": \"o/r\"}",

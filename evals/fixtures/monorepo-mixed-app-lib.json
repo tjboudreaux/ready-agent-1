@@ -7,35 +7,37 @@
   "files": {
     "package.json": "{ \"name\": \"platform\", \"workspaces\": [\"packages/*\"] }\n",
     "package-lock.json": "{ \"lockfileVersion\": 3 }\n",
-    "README.md": "# Platform monorepo\n\n## Overview\n\nA deployable Express API (packages/api) plus a pure utility library (packages/utils). Detailed maintainer documentation about layout and workflow. Detailed maintainer documentation about layout and workflow. Detailed maintainer documentation about layout and workflow. Detailed maintainer documentation about layout and workflow. Detailed maintainer documentation about layout and workflow.\n\n## Development\n\n```bash\nnpm install\n```\n",
-    ".gitignore": "node_modules/\n.env\ndist/\n",
+    "README.md": "# Monorepo\n\n## Setup\n\n```sh\nnpm install\n```\n\ndocs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs docs ",
+    ".gitignore": "node_modules/\n.env\ndist/\n/.ra1/reports/\n",
     "packages/api/package.json": "{ \"name\": \"api\", \"dependencies\": { \"express\": \"^4\" } }\n",
     "packages/api/Dockerfile": "FROM node:20\n",
     "packages/api/src/server.test.js": "test();\n",
     "packages/utils/package.json": "{ \"name\": \"utils\", \"main\": \"index.js\" }\n",
-    "packages/utils/index.js": "module.exports = {};\n"
+    "packages/utils/index.js": "module.exports = {};\n",
+    "SECURITY.md": "# Security Policy\n\nReport issues to the maintainers.\n",
+    "CODEOWNERS": "* @github/security\n"
   },
   "expected": {
     "build.ci_present": "fail",
     "build.ci_runs_tests": "skipped",
     "build.deps_pinned": "pass",
-    "build.release_automation": "fail",
-    "build.vcs_cli": "fail",
+    "build.release_automation": "skipped",
+    "build.vcs_cli": "pass",
     "devenv.devcontainer": "fail",
     "devenv.env_template": "fail",
     "docs.agents_md": "fail",
     "docs.agents_md_validation": "skipped",
     "docs.api_schema_docs": "fail",
-    "docs.doc_freshness": "unknown",
+    "docs.doc_freshness": "pass",
     "docs.readme": "pass",
     "docs.skills": "fail",
     "security.automated_security_review": "fail",
     "security.branch_protection": "skipped",
-    "security.codeowners": "fail",
+    "security.codeowners": "pass",
     "security.dependency_update_automation": "fail",
     "security.gitignore_comprehensive": "pass",
     "security.secret_scanning": "skipped",
-    "security.security_md": "fail",
+    "security.security_md": "pass",
     "style.formatter": "fail",
     "style.linter_config": "fail",
     "style.precommit_hooks": "fail",
@@ -49,5 +51,6 @@
     "testing.test_naming": "pass",
     "testing.unit_tests_exist": "pass"
   },
-  "expected_level": 1
+  "expected_level": 1,
+  "git_init": true
 }

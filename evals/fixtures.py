@@ -102,18 +102,37 @@ def build_fixture(name, files, *, expected=None, detect=None, expected_level=Non
     return fx
 
 
+def _envelope(body: str, status: int = 200) -> str:
+    reason = {200: "OK", 404: "Not Found", 500: "Internal Server Error"}.get(status, "Status")
+    return f"HTTP/2 {status} {reason}\r\ncontent-type: application/json\r\n\r\n{body}"
+
+
 def canned_github_runner(responses):
     """Build a no-network ``gh`` runner from a map of canned responses.
 
-    Keys are the ``gh`` argument list (tuple/list) or the same args joined by spaces; values
-    are the canned stdout string (JSON-encoded where the collector parses JSON), or ``None``
-    to simulate a failed/absent call. Unknown calls return ``None``. This lets the fixture
-    corpus exercise T2 GitHub criteria deterministically in ``python3 -m evals.fixtures``.
+    Keys are endpoint strings (``repos/o/r/...``) or legacy argv forms (``api repos/...``);
+    values are the canned JSON body or ``None`` to simulate a failed call. Unknown calls
+    answer 404. The runner returns ``BoundedProcessResult`` envelopes matching the fixed
+    T2 argv shape — this lets the corpus exercise T2 criteria deterministically.
     """
-    table = {(k if isinstance(k, str) else " ".join(k)): v for k, v in responses.items()}
+    from readiness.process import BoundedProcessResult, ProcessState
+    table = {}
+    for key, value in responses.items():
+        key = key if isinstance(key, str) else " ".join(key)
+        if key.startswith("api "):
+            key = key[4:]
+        if key.startswith("repos/"):
+            table[key] = value
 
     def run(args):
-        return table.get(" ".join(args))
+        args = tuple(args)
+        if args[:4] == ("api", "--hostname", "github.com", "--include"):
+            endpoint = args[4]
+            if table.get(endpoint) is not None:
+                return BoundedProcessResult(ProcessState.OK, returncode=0,
+                                            stdout=_envelope(table[endpoint]))
+        return BoundedProcessResult(ProcessState.OK, returncode=0,
+                                    stdout=_envelope("{}", 404))
 
     return run
 
@@ -125,16 +144,15 @@ def run_fixture(fixture):
     runs with that canned runner (no network) so T2 GitHub criteria can be exercised. Without
     it GitHub is disabled and T2 criteria are skipped.
     """
-    from readiness.run import analyze
-
+    from readiness.run import AnalyzeDependencies, AnalyzeOptions, analyze
     github = fixture.get("github")
-    if github is not None:
-        options = {"no_github": False, "github_runner": canned_github_runner(github)}
-    else:
-        options = {"no_github": True}
+    options = AnalyzeOptions(github=github is not None)
+    deps = AnalyzeDependencies(
+        github_origin=("github.com", "o", "r"),
+        github_runner=canned_github_runner(github or {})) if github is not None else None
     with tempfile.TemporaryDirectory(prefix="ra1-eval-") as tmp:
         materialize(fixture, tmp)
-        report = analyze(tmp, options)
+        report = analyze(tmp, options, deps=deps)
     actual = {r.id: r.status.value for r in report.results}
     result = {
         "name": fixture["name"],

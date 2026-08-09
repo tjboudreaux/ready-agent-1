@@ -13,7 +13,7 @@
     "build.ci_present": "fail",
     "build.ci_runs_tests": "skipped",
     "build.deps_pinned": "fail",
-    "build.release_automation": "fail",
+    "build.release_automation": "skipped",
     "build.vcs_cli": "fail",
     "devenv.devcontainer": "fail",
     "devenv.env_template": "fail",

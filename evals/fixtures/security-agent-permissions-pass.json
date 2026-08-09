@@ -6,7 +6,7 @@
   },
   "files": {
     "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
-    ".claude/settings.json": "{\n  \"permissions\": {\n    \"deny\": [\"Bash(rm *)\", \"Read(.env)\"]\n  }\n}\n"
+    ".claude/settings.json": "{\n  \"permissions\": {\n    \"deny\": [\n      \"Read(.env*)\",\n      \"Read(**/*.pem)\",\n      \"Read(**/*.key)\",\n      \"Read(~/.ssh/**)\",\n      \"Read(~/.aws/**)\",\n      \"Read(~/.kube/**)\",\n      \"Bash(rm *)\"\n    ],\n    \"allow\": [\n      \"Bash(npm test)\"\n    ]\n  }\n}"
   },
   "expected": {
     "security.agent_permissions": "pass"
