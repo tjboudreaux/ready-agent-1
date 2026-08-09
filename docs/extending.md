@@ -9,16 +9,29 @@ Criteria are **data + typed Python** — there is no expression DSL and nothing 
 
    ```python
    # engine/readiness/checks/security.py
-   from ._helpers import passed, failed, ev
+   from ..safe_io import RepoReadState
+   from ._helpers import passed, failed, unknown, ev
 
    def security_txt(ctx):
-       if ctx.static.glob(["security.txt", ".well-known/security.txt"]):
-           return passed("security.txt present", [ev("security.txt")])
-       return failed("No security.txt")
+       obs = ctx.static.read_repo_file("security.txt")
+       if obs.state is RepoReadState.OK:
+           return passed("security.txt present", [ev("security.txt")],
+                         reason_code="security.security_txt.configured")
+       if obs.state is RepoReadState.MISSING:
+           return failed("No security.txt",
+                         reason_code="security.security_txt.missing")
+       return unknown("security.txt could not be read safely",
+                      reason_code="security.security_txt.observation_indeterminate")
    ```
 
-   Read evidence from `ctx.static` (T0), `ctx.git` (T1), `ctx.github` (T2). For application-scoped
-   checks use `aglob`/`adep` so shared monorepo config at the repo root still counts.
+   Read evidence through the bounded observation APIs only. `ctx.static` (T0) exposes
+   `read_repo_file` / `glob_repo_files` over `safe_io` — typed `RepoFileObservation` /
+   `RepoDiscoveryObservation` values with closed states (`ok`, `missing`, `unreadable`,
+   `unsafe_path`, `oversize`, `overflow`, `unsupported`) and never a partial payload; checks
+   never call `Path.read_text` / `Path.glob` directly. `ctx.git` (T1) and `ctx.github` (T2)
+   return the same lossless `CollectorObservation` shape (`present` / `absent` / `unreadable` /
+   `unavailable`). For application-scoped checks use `aglob`/`adep` so shared monorepo config at
+   the repo root still counts.
 
 2. **Register it** in `engine/readiness/criteria/registry.json` (metadata + routing only):
 
@@ -26,9 +39,14 @@ Criteria are **data + typed Python** — there is no expression DSL and nothing 
    {"id": "security.security_txt", "pillar": "Security & Governance", "title": "security.txt",
     "level": 4, "scope": "repository", "decide": "deterministic", "gating": false,
     "check": "security.security_txt",
-    "applies_when": {"project_types": ["service", "api"], "languages": ["*"], "requires": []},
-    "engine_min_version": "0.3.0"}
+    "applies_when": {"project_types": ["service", "frontend"], "languages": ["*"], "requires": []},
+    "engine_min_version": "0.11.0"}
    ```
+
+   Valid `project_types` are `"*"`, `"unknown"`, `"monorepo-root"`, and the detector's pinned
+   types (`library`, `service`, `frontend`, `cli`, `data`, `infra`). The dead `"api"` type was
+   removed from the registry in 0.11.0 — `service` is the canonical type for deployable
+   backends; do not reintroduce `api`.
 
 3. **Bump `REGISTRY_VERSION`** in `engine/readiness/version.py` (so stale cached state re-evaluates),
    then re-vendor: `python3 scripts/vendor.py`.
@@ -40,11 +58,45 @@ when the block is present (`"loop": "both"` is the explicit both-loops classific
 the reports render it as a label; it never affects the score. See `references/pillars.md` for the
 current mapping.
 
+## Decision traces, reason codes, and limitations
+
+Every runtime result carries a deterministic **decision trace** built by the scorer — rule →
+observation → evaluation → conclusion — that references evidence by index rather than copying it.
+Checks never build traces; the verdict helpers accept keyword-only `reason_code=` and
+`limitations=`.
+
+- A direct verdict's `reason_code` is a literal dotted code
+  (`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`, ≤128 bytes) prefixed with the criterion id —
+  `security.security_txt.missing`, not prose. Structural paths keep the scorer's own stable
+  codes (`waiver.active`, `prerequisite.unmet`, `applicability.*`, `aggregate.<status>`).
+- **Typed-code compatibility.** Consumers may depend on schema/trace versions, object keys, step
+  order, enum literals, criterion ids, `reason_code`, `rule_ref`, and evidence-reference
+  semantics. Human prose (`message`, `rationale`, `limitations`, evidence summaries) may improve
+  without a schema bump and must never be used as a policy key.
+- `limitations` are deterministic disclosure strings. Attach one whenever a pass proves less
+  than its title suggests — repository permission-policy shape does not prove runtime
+  enforcement; recognized CODEOWNERS syntax does not prove identity, access, or required review.
+- Never interpolate repository-derived text (policy lines, command values, owner handles) into
+  rationales or evidence; cite safe categories, counts, and repository-relative sources only.
+
+## Strict unknown vs fail
+
+A definite repository condition decides `pass`/`fail`. Evidence that is unsafe, unreadable,
+oversize, overflow, or unsupported — anything that could hide the deciding signal — is a
+blocking `unknown`, never a silent absence, and one safe file can never mask an unsafe or
+malformed sibling. Discovery has no "missing" state: an empty successful search is `ok` with no
+paths. Malformed or unreadable T2 observations likewise map to `unknown` rather than collapsing
+to fail or pass.
+
 ## advisory → gating
 
-New criteria start `"gating": false` (advisory — they appear in the report but don't move the Level).
-A criterion graduates to `"gating": true` only after the evals show it's reliable: low false-positive
-and false-negative rates on the labeled fixtures in `tests/`. This keeps the gating score trustworthy.
+New criteria start `"gating": false` (advisory — they appear in the report but don't move the
+Level). Graduation is **manual** and follows `docs/criterion-graduation.md`: the labeled corpus
+(`evals/criterion_labels.json`) is scored by `evals/criterion_benchmark.py` — at least 100
+human-reviewed cases with minimum pass/blocking/ecosystem representation, ≥0.99 pass precision,
+≥0.95 exact four-status accuracy, and zero adversarial or high-severity false passes — and then
+only a maintainer-authored ADR plus a reviewed release change flips `gating` to `true` with
+before/after score fixtures. Benchmark eligibility never edits the registry by itself.
 
 ## Evidence discipline (observability / product)
 
@@ -57,17 +109,21 @@ the telemetry, experiments, or flags.
 
 ## Applicability
 
-- `project_types` — `["*"]` for all; otherwise matched against the app's detected type. If the type is
-  `unknown`, a type-restricted criterion reports `unknown` (never silently skipped).
+- `project_types` — `["*"]` for all; otherwise matched against the app's detected type. If the type
+  is `unknown`, a type-restricted criterion reports `unknown` (never silently skipped).
 - `languages` — `["*"]` or an intersection with detected languages.
 - `requires` — criterion ids that must `pass` first (e.g. `agents_md_validation` requires `agents_md`).
 - `opt_in` — optional intent gate. The only supported value is `loop_ready`; when absent from
-  top-level `.agents/readiness/config.json` as the literal JSON boolean `true`, matching criteria
-  report `skipped` with rationale `not opted into loop readiness`.
+  top-level `.ra1/config.json` as the literal JSON boolean `true`, matching criteria report
+  `skipped` with rationale `not opted into loop readiness`.
+
+Config, waiver, or manifest input that is malformed, unsafe, or unreadable **and** could change
+detection or applicability marks the whole scan repository-indeterminate: every criterion reports
+`unknown` rather than a partial positive score.
 
 ## Project type pinning
 
-If detection is wrong or low-confidence, pin it in `.agents/readiness/config.json`:
+If detection is wrong or low-confidence, pin it in `.ra1/config.json`:
 
 ```json
 {
@@ -91,7 +147,7 @@ wrong skip inflates the score.
 
 ## AC/DC verification-loop configuration
 
-Vendor-neutral verification-loop declarations live in the same readiness config:
+Vendor-neutral verification-loop declarations live in the same readiness config (`.ra1/config.json`):
 
 ```json
 {
@@ -104,16 +160,20 @@ Vendor-neutral verification-loop declarations live in the same readiness config:
 }
 ```
 
-- `acdc.verify_command` names one verify entrypoint. RA1 resolves supported Make/Just/Task targets,
-  package scripts, repository scripts, or recognized direct check commands before granting credit.
+- `acdc.verify_command` names one verify entrypoint. RA1 resolves a bounded allowlist — Make/Just/
+  Task targets, npm/pnpm/yarn scripts, `python -m pytest|unittest|mypy|ruff`, or one root-confined
+  `scripts/` path — before granting credit; a non-empty command that does not resolve fails rather
+  than silently falling through, and unsafe/unreadable candidates report `unknown`.
 - `acdc.instruction_files` adds string globs to the agent-instruction files inspected for a local
   verification instruction plus runnable command.
 - `acdc.hook_files` adds string globs for maintainer-declared executed-hook files; a matching file
   must contain a recognized check command, `sonar`, or `ra1`.
 
-Every config-driven verdict cites `.agents/readiness/config.json`. Invalid shapes (a non-string
-command, non-list file fields, or non-string list entries) are ignored and built-in detection still
-runs; a non-empty `verify_command` that does not resolve fails rather than silently falling through.
+Config-supplied globs use a restricted pattern grammar (relative POSIX literals plus `*|?|**`, at
+most 128 patterns of at most 512 bytes each) and resolve through the bounded discovery API — they
+nominate in-root reads only. Every config-driven verdict cites `.ra1/config.json`. Invalid shapes
+(a non-string command, non-list file fields, or non-string list entries) are ignored and built-in
+detection still runs.
 
 ## Application discovery
 
@@ -137,5 +197,8 @@ they do. Honesty over score: when signals are weak the type stays `unknown` rath
 
 To make a criterion auto-remediable, add a `fix` block in the registry (`"kind": "scaffold"` +
 `"template"`, or `"propose"` for prose, or `"github_setting"`) and a template under `templates/`. Wire
-non-static targets in `engine/readiness/fix/recipes.py`. Scaffolds must be safe to write blindly into a
-repo that lacks them.
+non-static targets in `engine/readiness/fix/recipes.py`. Scaffolds must be safe to create blindly
+into a repo that lacks them: apply is always verified — clean/known Git, fresh baseline,
+create-only writes (existing targets are skipped; `.gitignore` is create-if-missing only), a
+same-option rescan, and a comparable delta decide exit 0. There are no verification or force
+escape hatches.

@@ -3,11 +3,13 @@ name: Release
 on:
   push:
     tags:
-      # Deliberately NOT "v*": that also matches the floating major-version tags the
-      # published action uses (ready-agent-1/ci@v1). Re-pointing v1 is routine action
-      # maintenance, and under "v*" it would start a release run that then hard-fails the
-      # semver check below -- a red X on every action-version bump.
+      # Ordered GitHub negative filters: match stable vMAJOR.MINOR.PATCH tags, then
+      # exclude prerelease (v1.2.3-rc.1) and build-metadata (v1.2.3+build.7) tags, and the
+      # floating major alias (v1) the published action uses for routine maintenance.
       - "v*.*.*"
+      - "!v*.*.*-*"
+      - "!v*.*.*+*"
+      - "!v1"
   workflow_dispatch:
     inputs:
       tag:
@@ -61,21 +63,23 @@ jobs:
               echo "refusing tag '$tag': characters outside [0-9A-Za-z.+-]" >&2
               exit 1 ;;
           esac
-          # SemVer 2.0.0 in POSIX ERE (grep -E has no non-capturing groups). Verified to
-          # agree with the official semver.org regex across a generated corpus -- see
-          # tests/test_release_tag_policy.py, which cross-checks this exact pattern rather
-          # than a hand-written list of examples.
-          #
-          # Note the prerelease identifier is NOT just [0-9A-Za-z-]+: SemVer forbids leading
-          # zeroes in *numeric* identifiers, so v1.2.3-01 and v1.2.3-alpha.01 are invalid
-          # while v1.2.3-0A and v1.2.3-0.3.7 are fine. Build metadata after '+' has no such
-          # rule, so v1.2.3+build.01 is valid.
-          if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'; then
-            echo "refusing tag '$tag': must be a SemVer release tag, e.g. v1.2.3, v1.2.3-rc.1, v1.2.3-rc.1+build.7" >&2
+          # Stable-only exact vMAJOR.MINOR.PATCH with no leading zeroes. Prerelease/build
+          # tags (v1.2.3-rc.1, v1.2.3+build.7) and floating aliases (v1) never release.
+          if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            echo "refusing tag '$tag': only exact stable vMAJOR.MINOR.PATCH tags release" >&2
             exit 1
           fi
           git rev-parse --verify "refs/tags/$tag" >/dev/null
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Validate tag against release matrix
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          # The tag must equal the selected package version recorded in release/versions.json
+          # (validates the current tree with --check-published: fetched origin/main,
+          # selection-base object, tags, eligibility, and current-tree parity).
+          git fetch --quiet --tags origin main
+          python3 scripts/check_release_versions.py --check-published --tag "$TAG"
       - name: Verify tag is reachable from main and check it out
         env:
           TAG: ${{ steps.tag.outputs.tag }}
@@ -96,7 +100,9 @@ jobs:
         run: |
           python3 -m unittest discover -s tests -t .
           python3 scripts/vendor.py --check
-          ./bin/ra1 report --project . --no-github --min-level 3 >/tmp/ra1-report.json
+          python3 -m evals.criterion_benchmark --validate evals/criterion_labels.json
+          python3 -m evals.fixtures
+          python3 -m evals.parity
       - name: Build source archive
         id: build
         env:

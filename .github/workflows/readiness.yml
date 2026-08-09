@@ -23,8 +23,19 @@ jobs:
       # stands on main, and a fork PR cannot alter the action that judges it. Same-repo
       # ref, so this is not third-party supply chain.
       - uses: tjboudreaux/ready-agent-1/ci@main # zizmor: ignore[unpinned-uses]
+        id: readiness
         with:
           min-level: "3"
           formats: "markdown,junit,sarif,github"
         env:
           GH_TOKEN: ${{ github.token }}
+      # The action writes only to a private RUNNER_TEMP directory; expose what callers
+      # need for uploads/notifications without creating consumer-repository report state.
+      - name: Upload readiness report artifacts
+        if: ${{ steps.readiness.outputs.has-markdown == 'true' }}
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.5
+        with:
+          name: readiness-report
+          path: ${{ steps.readiness.outputs.report-directory }}
+          if-no-files-found: error
+          retention-days: 7

@@ -17,15 +17,16 @@ There is no build step (pure stdlib). Run the test suite:
 python3 -m unittest discover -s tests -t .
 ```
 
-With coverage (the project gates on >90% total **and** 100% branch coverage for every file you
-change in a PR):
+With coverage (the project gates on >90% total **and** 100% line+branch coverage for every
+touched non-test Python file):
 
 ```bash
-python3 -m coverage run --branch --source=engine/readiness,evals,scripts -m unittest discover -s tests -t .
+python3 -m coverage run --branch --source=engine/readiness,evals,scripts,ci -m unittest discover -s tests -t .
 python3 -m coverage json -o .coverage.json
 python3 -m coverage report -m
-# Enforce 100% branch coverage on the files you touched (CI runs this against the PR diff):
-python3 scripts/coverage_gate.py --coverage .coverage.json --changed-files <your changed .py files>
+# Enforce 100% line+branch coverage on every touched canonical file (CI runs this against
+# the release selection base recorded in release/versions.json):
+python3 -m evals.coverage_gate --coverage .coverage.json --release-matrix release/versions.json --out .coverage-touched.json
 ```
 
 ## After changing the engine
@@ -41,7 +42,7 @@ python3 scripts/vendor.py --check    # CI runs this; must report "in sync"
 
 - `engine/readiness/` — the canonical pure-stdlib engine (detect, collectors, checks, score, report, fix).
 - `engine/readiness/criteria/registry.json` — criteria metadata (logic lives in `checks/`, never in JSON).
-- `skills/` — the two agentskills.io skills (self-contained; engine vendored in).
+- `skills/` — the three agentskills.io skills (self-contained; engine vendored in).
 - `evals/` — agent-contract evals (deterministic contracts + LLM-as-judge).
 - `templates/` — scaffolds written by `ra1-fix`.
 - `ci/action.yml` — the composite GitHub Action.

@@ -215,6 +215,35 @@ Repo-level proxies stay honest (`partial` in the crosswalk); they do not claim f
 
 `build.agentic_development` remains adoption evidence only and is not a readiness claim.
 
+### Agentic-workflow advisory cluster (0.11.0)
+
+Six advisory criteria completing the per-repository trust loop — all `gating: false`
+until labeled-corpus graduation (see `docs/criterion-graduation.md`):
+
+- `docs.agent_context_map` (L3 Documentation; requires `docs.agents_md_validation`) —
+  root AGENTS.md must map to present, filled, local Markdown targets (progressive
+  disclosure; AC/DC guide/both).
+- `taskdisc.pr_evidence_contract` (L3 Task Discovery; requires `taskdisc.pr_templates`) —
+  a PR template must carry intent, verification, risk, and recovery sections
+  (AC/DC verify/outer).
+- `taskdisc.concurrent_agent_protocol` (L4 Task Discovery) — shared instructions must
+  document isolation/ownership, overlap coordination, change preservation, and
+  post-integration verification as four distinct statements (AC/DC guide/both).
+- `security.branch_protection_depth` (L4 Security & Governance) — lossless T2 confirmation
+  of reviews, code-owner review, required status checks, and disabled force
+  pushes/deletions (AC/DC verify/outer).
+- `security.agent_config_ownership` (L4 Security & Governance; requires
+  `security.codeowners`) — every recognized agent-control file must resolve to a
+  definitive CODEOWNERS owner under the documented subset.
+- `security.supply_chain_provenance` (L4 Security & Governance) — when the shared
+  artifact-publication signal is present, an enabled workflow must wire a recognized
+  attestation step or approved SLSA reusable workflow (AC/DC verify/outer).
+
+`build.release_automation` and `security.supply_chain_provenance` share the conservative
+three-state artifact-publication applicability signal: absent intent skips both,
+indeterminate blocks as unknown. The dead `api` detector value was removed from every
+registry `project_types` row (`service` is canonical).
+
 ## Graduation rules (advisory → gating)
 
 A criterion graduates only when **all** of the following hold, enforced by
