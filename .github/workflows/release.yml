@@ -113,6 +113,21 @@ jobs:
           git archive --format=tar.gz --prefix="ready-agent-1-${TAG#v}/" "refs/tags/$TAG" -o "$archive"
           shasum -a 256 "$archive" > "$archive.sha256"
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
+      - name: Extract release notes from CHANGELOG
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          # The release body is the tag's own CHANGELOG section, verbatim. A tag with no
+          # section is refused: an unexplained release is a release nobody can review.
+          python3 - "$TAG" "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          import re, sys
+          version, out = sys.argv[1][1:], sys.argv[2]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(r"(?ms)^## " + re.escape(version) + r"\b.*?(?=^## |\Z)", text)
+          if not m:
+              sys.exit(f"CHANGELOG.md has no '## {version}' section; refusing to release")
+          open(out, "w", encoding="utf-8").write(m.group(0).rstrip() + "\n")
+          EOF
       - name: Attest build provenance
         # The .sha256 sidecar only detects corruption; it proves nothing about origin
         # because anyone who can replace the archive can replace the hash. This does.
@@ -124,7 +139,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
+          # Notes live in RUNNER_TEMP, not dist/, so they are never uploaded as an asset.
           gh release create "$TAG" dist/* \
             --verify-tag \
             --title "Ready Agent 1 $TAG" \
-            --notes "Automated release for $TAG."
+            --notes-file "$RUNNER_TEMP/release-notes.md"
