@@ -89,11 +89,17 @@ jobs:
       #
       # The other trade-off, stated plainly: unverified detections are NOT gated, so a
       # leaked-then-revoked or non-network-verifiable credential will not fail this job.
-      # The repo has six unverified hits, all synthetic fixtures in tests/ (for example
-      # https://user:secrettoken@github.com exercising URL redaction). Gating on those
-      # would mean maintaining a suppression list, which is how secret scanning becomes
-      # noise everyone ignores. GitHub secret scanning with push protection is enabled on
-      # this repo and covers the known-pattern push path.
+      # Gating on unverified hits would mean maintaining a suppression list, which is how
+      # secret scanning becomes noise everyone ignores. GitHub secret scanning with push
+      # protection is enabled on this repo and covers the known-pattern push path.
+      #
+      # --exclude-detectors lob: the Lob detector's regex (`test_`/`live_` followed by 35
+      # word characters) "verifies" ordinary Python test names such as
+      # test_a_configured_value_silences_its_gap -- 55 such hits across this repo's
+      # history, 0 real secrets (checked with trufflehog 3.96.0 locally). The exclusion is
+      # by detector, not by path, so every other detector still scans the whole tree with
+      # verification intact; the cost is that a real Lob key would rely on GitHub secret
+      # scanning (which has a Lob pattern) rather than this job.
       - name: TruffleHog
         # The action supplies --fail and --no-update itself; repeating --fail is a hard
         # error ("flag 'fail' cannot be repeated"), so extra_args carries only the gate.
@@ -105,4 +111,4 @@ jobs:
         with:
           path: ./
           version: "3.96.0"
-          extra_args: --only-verified
+          extra_args: --only-verified --exclude-detectors lob
