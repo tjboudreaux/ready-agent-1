@@ -10,7 +10,7 @@
     "package-lock.json": "{ \"name\": \"billing-api\", \"lockfileVersion\": 3, \"packages\": {} }\n",
     "README.md": "# Billing API\n\nAn Express service that issues and reconciles invoices.\n\n## Getting started\n\n```bash\nnpm install\nnpm test\n```\n\n## Architecture\n\nRoutes live in `src/routes`, business logic in `src/services`, and persistence in `src/db`.\nAll handlers are thin; validation happens at the route boundary.\n\n## Configuration\n\nCopy `.env.example` to `.env` and fill in the database URL and API keys.\n",
     "AGENTS.md": "# Agent briefing\n\n## Build & test\n\n- `npm test` runs the unit suite; `npm run lint` runs eslint.\n\n## Conventions\n\n- Routes thin, services own logic. TypeScript strict mode is on.\n",
-    ".gitignore": "node_modules/\ndist/\n.env\n*.pem\ncoverage/\n",
+    ".gitignore": "node_modules/\ndist/\n.env\n*.pem\ncoverage/\n/.ra1/reports/\n",
     ".env.example": "DATABASE_URL=\nSTRIPE_KEY=\n",
     "tsconfig.json": "{ \"compilerOptions\": { \"strict\": true, \"module\": \"node16\" } }\n",
     ".eslintrc.json": "{ \"extends\": \"eslint:recommended\" }\n",

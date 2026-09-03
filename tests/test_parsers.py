@@ -81,5 +81,80 @@ class TestParsers(unittest.TestCase):
         self.assertIsNone(parsers.load_ini(self.root / "missing.cfg"))
 
 
+class TestReadEngineText(unittest.TestCase):
+    def setUp(self):
+        self.root = make_repo({})
+        self.addCleanup(rmtree, self.root)
+
+    def test_oversize_returns_none(self):
+        (self.root / "big.txt").write_text("x" * 64)
+        self.assertIsNone(parsers.read_engine_text(self.root / "big.txt", max_bytes=8))
+
+    def test_non_utf8_returns_none(self):
+        (self.root / "bad.bin").write_bytes(b"\xff\xfe\x00")
+        self.assertIsNone(parsers.read_engine_text(self.root / "bad.bin"))
+
+    def test_load_jsonc_malformed_returns_none(self):
+        (self.root / "bad.json").write_text("{not json")
+        self.assertIsNone(parsers.load_jsonc(self.root / "bad.json"))
+
+    def test_loads_jsonc_non_string_and_malformed(self):
+        self.assertIsNone(parsers.loads_jsonc(None))
+        self.assertIsNone(parsers.loads_jsonc("{not json"))
+
+
+class TestStrictLoadJson(unittest.TestCase):
+    def test_rejects_non_string_input(self):
+        with self.assertRaises(parsers.StrictJsonError):
+            parsers.strict_load_json(123)
+
+    def test_rejects_over_byte_cap(self):
+        with self.assertRaises(parsers.StrictJsonError):
+            parsers.strict_load_json(" " * 32, max_bytes=8)
+
+    def test_rejects_non_utf8_bytes(self):
+        with self.assertRaises(parsers.StrictJsonError):
+            parsers.strict_load_json(b"\xff\xfe")
+
+    def test_rejects_non_finite_numbers(self):
+        for text in ('{"a": NaN}', '{"a": Infinity}', '{"a": -Infinity}'):
+            with self.assertRaises(parsers.StrictJsonError):
+                parsers.strict_load_json(text)
+
+    def test_rejects_duplicate_keys(self):
+        with self.assertRaises(parsers.StrictJsonError):
+            parsers.strict_load_json('{"a": 1, "a": 2}')
+
+    def test_rejects_malformed_json(self):
+        with self.assertRaises(parsers.StrictJsonError):
+            parsers.strict_load_json("{not json")
+
+    def test_rejects_node_cap_after_count(self):
+        with self.assertRaises(parsers.StrictJsonError):
+            parsers.strict_load_json("5", max_nodes=0)
+
+    def test_rejects_node_cap_inside_dict(self):
+        with self.assertRaises(parsers.StrictJsonError):
+            parsers.strict_load_json('{"a": 1, "b": 2}', max_nodes=2)
+
+    def test_rejects_node_cap_inside_list(self):
+        with self.assertRaises(parsers.StrictJsonError):
+            parsers.strict_load_json("[1, 2]", max_nodes=2)
+
+    def test_rejects_depth_cap(self):
+        with self.assertRaises(parsers.StrictJsonError):
+            parsers.strict_load_json("[[[1]]]", max_depth=2)
+
+    def test_rejects_string_byte_cap(self):
+        with self.assertRaises(parsers.StrictJsonError):
+            parsers.strict_load_json('{"key": "value"}', max_string_bytes=2)
+
+    def test_require_object_root(self):
+        with self.assertRaises(parsers.StrictJsonError):
+            parsers.strict_load_json("[1]", require_object=True)
+        self.assertEqual(parsers.strict_load_json('{"a": 1}', require_object=True),
+                         {"a": 1})
+
+
 if __name__ == "__main__":
     unittest.main()

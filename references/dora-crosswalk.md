@@ -36,7 +36,7 @@ rollup. Years include later revalidation where the rollup confirms continuity.
 | Monitoring → observability used for detection, learning, and decisions | 2014, 2015, 2018–2019, 2021–2024 | [2014](https://dora.dev/research/2014/2014-state-of-devops-report.pdf); [2018](https://dora.dev/research/2018/dora-report/2018-dora-accelerate-state-of-devops-report.pdf); [2021](https://dora.dev/research/2021/dora-report/2021-dora-accelerate-state-of-devops-report.pdf)–[2024](https://dora.dev/research/2024/dora-report/2024-dora-accelerate-state-of-devops-report.pdf) | `observability.structured_logging`, `observability.tracing`, `observability.metrics`, `observability.alerting_rules`, `observability.slo_definitions`, `observability.incident_learning` | `partial`[^obs] |
 | Testable, deployable, loosely coupled architecture and teams | 2015, 2017–2019, 2021–2023 | [2015](https://dora.dev/research/2015/2015-state-of-devops-report.pdf); [2017](https://dora.dev/research/2017/2017-state-of-devops-report.pdf)–[2019](https://dora.dev/research/2019/dora-report/2019-dora-accelerate-state-of-devops-report.pdf); [2021](https://dora.dev/research/2021/dora-report/2021-dora-accelerate-state-of-devops-report.pdf)–[2023](https://dora.dev/research/2023/dora-report/2023-dora-accelerate-state-of-devops-report.pdf) | `docs.architecture_doc`, `judgment.code_modularization`, `judgment.service_flow_doc_quality` | `partial` |
 | Integrating security early into daily delivery | 2016–2018, 2021–2022 | [2016](https://dora.dev/research/2016/2016-state-of-devops-report.pdf)–[2018](https://dora.dev/research/2018/dora-report/2018-dora-accelerate-state-of-devops-report.pdf); [2021](https://dora.dev/research/2021/dora-report/2021-dora-accelerate-state-of-devops-report.pdf); [2022](https://dora.dev/research/2022/dora-report/2022-dora-accelerate-state-of-devops-report.pdf) | `security.automated_security_review`, `security.secret_scanning`, `security.dependency_update_automation`, `security.codeowners` | `covered` |
-| Lightweight, automated, peer-based change approval | 2017–2019, 2023 | [2017](https://dora.dev/research/2017/2017-state-of-devops-report.pdf)–[2019](https://dora.dev/research/2019/dora-report/2019-dora-accelerate-state-of-devops-report.pdf); [2023](https://dora.dev/research/2023/dora-report/2023-dora-accelerate-state-of-devops-report.pdf) (review latency) | `security.branch_protection`, `taskdisc.pr_templates`, `taskdisc.review_latency` | `partial`[^review] |
+| Lightweight, automated, peer-based change approval | 2017–2019, 2023 | [2017](https://dora.dev/research/2017/2017-state-of-devops-report.pdf)–[2019](https://dora.dev/research/2019/dora-report/2019-dora-accelerate-state-of-devops-report.pdf); [2023](https://dora.dev/research/2023/dora-report/2023-dora-accelerate-state-of-devops-report.pdf) (review latency) | `security.branch_protection`, `security.branch_protection_depth`, `taskdisc.pr_templates`, `taskdisc.pr_evidence_contract`, `taskdisc.review_latency` | `partial`[^review] |
 | Generative, learning-oriented, high-trust culture | 2014–2019, 2021–2024 | same six 2014–2019 PDFs; [2021](https://dora.dev/research/2021/dora-report/2021-dora-accelerate-state-of-devops-report.pdf)–[2024](https://dora.dev/research/2024/dora-report/2024-dora-accelerate-state-of-devops-report.pdf) | `observability.incident_learning` (docs proxy only) | `partial` / out of scope for culture itself[^culture] |
 | Leadership that enables autonomy, investment, and learning | 2015, 2017–2018, 2024 | [2015](https://dora.dev/research/2015/2015-state-of-devops-report.pdf); [2017](https://dora.dev/research/2017/2017-state-of-devops-report.pdf); [2018](https://dora.dev/research/2018/dora-report/2018-dora-accelerate-state-of-devops-report.pdf); [2024](https://dora.dev/research/2024/dora-report/2024-dora-accelerate-state-of-devops-report.pdf) | — | `gap` (out of scope) |
 
@@ -66,7 +66,7 @@ follow the Taxonomy Mapping section of the AI/agentic findings note.
 |---|---|---|---|
 | 1. Clear and communicated AI stance | [stance](https://dora.dev/capabilities/clear-and-communicated-ai-stance/); [gen-AI report](https://dora.dev/ai/gen-ai-report/) | `docs.ai_stance` | `partial` `[INFERENCE]` — file/heading presence + tool/permission signal; not org socialization |
 | 2. Healthy data ecosystems | [data ecosystems](https://dora.dev/capabilities/healthy-data-ecosystems/) | — | `gap` (out of scope — org-level data product) |
-| 3. AI-accessible internal data | [AI-accessible data](https://dora.dev/capabilities/ai-accessible-internal-data/) | `docs.machine_context`, `docs.agents_md` | `partial` `[INFERENCE]` — MCP/`llms.txt` wiring beyond AGENTS.md |
+| 3. AI-accessible internal data | [AI-accessible data](https://dora.dev/capabilities/ai-accessible-internal-data/) | `docs.machine_context`, `docs.agents_md`, `docs.agent_context_map` | `partial` `[INFERENCE]` — MCP/`llms.txt` wiring plus progressive-disclosure context maps beyond AGENTS.md |
 | 4. Strong version control practices | [version control](https://dora.dev/capabilities/version-control/) | `build.vcs_cli`, `build.agent_config_versioned` | `partial` `[INFERENCE]` — agent config/prompt history ≥2 commits |
 | 5. Working in small batches | [small batches](https://dora.dev/capabilities/working-in-small-batches/); [2024](https://dora.dev/research/2024/dora-report/2024-dora-accelerate-state-of-devops-report.pdf) | `build.small_batches`, `build.integration_frequency` | `partial` `[INFERENCE]` — LOC/cadence proxies |
 | 6. User-centric focus | [user-centric](https://dora.dev/capabilities/user-centric-focus/); [2023](https://dora.dev/research/2023/dora-report/2023-dora-accelerate-state-of-devops-report.pdf); [2024](https://dora.dev/research/2024/dora-report/2024-dora-accelerate-state-of-devops-report.pdf) | `product.analytics_instrumentation`, `product.feature_flags`, `product.experiment_config`, `judgment.user_feedback_loop` | `partial` — T4 judgment for feedback→prioritization |
@@ -77,9 +77,11 @@ follow the Taxonomy Mapping section of the AI/agentic findings note.
 
 | Guidance | RA1 criteria ids | State |
 |---|---|---|
-| Least-privilege agent access (RAG/MCP credentials) | `security.agent_permissions` | `partial` `[INFERENCE]` — shared deny/restrictive-allow config; not runtime enforcement |
+| Least-privilege agent access (RAG/MCP credentials) | `security.agent_permissions`, `security.agent_config_ownership` | `partial` `[INFERENCE]` — shared deny/restrictive-allow config plus CODEOWNERS ownership of the control plane; not runtime enforcement |
 | Versioned prompts / agent configs | `build.agent_config_versioned` | `partial` |
 | Small generated changes + mandatory tests | `build.small_batches`, `testing.*`, `build.ci_runs_tests` | `partial` |
+| Concurrent agents: isolation, coordination, integration verification | `taskdisc.concurrent_agent_protocol` | `partial` `[INFERENCE]` — documented protocol statements; not proof of isolation, collision avoidance, or merge correctness |
+| Signed/verifiable build provenance | `security.supply_chain_provenance` | `partial` `[INFERENCE]` — static attestation/SLSA wiring when publication intent is present; not successful runs or released-artifact coverage |
 | Context-aware review agents | — | `gap` (not repo-deterministic in this change) |
 | Human ownership of AI output | — | `gap` / judgment territory; not a new criterion here |
 | Agent runaway budget / circuit breakers | — | `gap` (out of scope — not reliably repo-observable as shared policy yet) |
@@ -104,12 +106,13 @@ follow the Taxonomy Mapping section of the AI/agentic findings note.
 
 ## Note on `build.agentic_development`
 
-`build.agentic_development` (L5, advisory) detects agent co-authorship trailers in recent git
-history. It is **adoption evidence only** and is deliberately excluded from readiness claims in
-this crosswalk. Do not conflate it with AI stance, permissions, context wiring, or small-batch
-safeguards.
+`build.agentic_development` (reserved Level 5, advisory) detects agent co-authorship trailers in
+recent git history. Level 5 Autonomous remains reserved and is never awarded, so advisory
+placement there grants no Level. The criterion is **adoption evidence only** and is deliberately
+excluded from readiness claims in this crosswalk. Do not conflate it with AI stance, permissions,
+context wiring, or small-batch safeguards.
 
-## New advisory criteria in 0.6.0 (this change)
+## Advisory criteria added in 0.6.0
 
 | id | Closes |
 |---|---|
@@ -126,3 +129,28 @@ safeguards.
 
 Every former `gap` row above either names one of these ids or an out-of-scope reason. Every
 proxy criterion is `partial`, not `covered`.
+
+## Advisory criteria added in 0.11.0
+
+Six advisory rows deepen the repository-evidence side of the crosswalk. All are `gating: false`
+pending the labeled-corpus graduation benchmark, and all stay `partial` leading indicators.
+
+| id | Closes |
+|---|---|
+| `docs.agent_context_map` | AI #3 / context & durable knowledge — progressive-disclosure context map from AGENTS.md (`partial`) |
+| `taskdisc.pr_evidence_contract` | Change approval / behavioral validation — PR template requiring intent, verification, risk, and rollback sections (`partial`) |
+| `taskdisc.concurrent_agent_protocol` | Parallel work & recovery — documented isolation, coordination, change-preservation, and integration-verification protocol (`partial`) |
+| `security.branch_protection_depth` | Change approval / shift-left security — T2-confirmed review count, code-owner review, required checks, no force-push/deletion (`partial`) |
+| `security.agent_config_ownership` | 2026 least-privilege / ownership — CODEOWNERS last-match ownership of the agent control plane (`partial`) |
+| `security.supply_chain_provenance` | Supply chain & tools — attestation/SLSA workflow wiring when artifact-publication intent is present (`partial`) |
+
+**Evidence tiers and the boundary.** The repository context, PR/concurrency, branch,
+permission/ownership, machine-context, and provenance checks are **partial leading
+indicators**, consistent with the AI Capabilities Model's amplification thesis: T0/T1 prove
+recognized repository file/config/git-history shape, T2 proves selected readable GitHub.com
+settings, opt-in T3 proves bounded command outputs, and T4 is advisory judgment. The report's
+`assessment_boundary` discloses what none of them prove — runtime isolation and egress,
+credential scope and identity, human approval and recovery, prompt-injection resistance,
+runtime observability, cost/capacity and concurrent-execution enforcement, and organizational
+outcomes. **Throughput, stability, DevEx, and business outcomes remain customer-owned**: RA1
+measures repository evidence only and never claims DORA metric movement or causal improvement.

@@ -3,7 +3,7 @@
 
 All logic lives in ``engine/readiness/coverage_gate.py`` so it stays unit-tested; this
 script only puts the engine on the path and delegates to :func:`main`. See
-``docs/PLAN-roadmap-factory-parity.md`` Phase 0.
+``docs/archive/PLAN-roadmap-factory-parity.md`` Phase 0.
 """
 import sys
 from pathlib import Path

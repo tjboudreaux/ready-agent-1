@@ -1,8 +1,10 @@
+> **Archived 2026-09 — historical plan. Everything below shipped between 0.3.0 and 0.11.0; the registry, CHANGELOG, and docs/cli.md are authoritative. Paths/flags named here (`.agents/readiness/`, `--history-dir`) no longer exist.**
+
 # PLAN — Factory gap closure (T0–T3 criteria) + T4 ignore mechanism
 
 Status: **proposed** (design only; no engine rows mutated yet).
 Source of truth for tiers/graduation: `references/pillars.md`. Registry: `engine/readiness/criteria/registry.json`.
-Companion to the completed `docs/PLAN-roadmap-factory-parity.md`.
+Companion to the completed `docs/archive/PLAN-roadmap-factory-parity.md`.
 
 ## 0. Scope and ground rules
 

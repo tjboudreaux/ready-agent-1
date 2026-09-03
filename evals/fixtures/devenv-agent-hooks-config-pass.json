@@ -1,12 +1,16 @@
 {
   "name": "devenv-agent-hooks-config-pass",
   "description": "devenv.agent_hooks pass: a vendor-neutral maintainer-declared hook file executes a recognized check command.",
-  "detect": {"project_type": "service"},
+  "detect": {
+    "project_type": "service"
+  },
   "files": {
     "pyproject.toml": "[project]\nname=\"svc\"\ndependencies=[\"fastapi\",\"uvicorn\"]\n",
     "app/main.py": "x = 1\n",
-    ".agents/readiness/config.json": "{\"schema_version\":\"1\",\"acdc\":{\"hook_files\":[\".agents/hooks/post-edit.sh\"]}}",
-    ".agents/hooks/post-edit.sh": "#!/bin/sh\nruff check .\n"
+    ".agents/hooks/post-edit.sh": "#!/bin/sh\nruff check .\n",
+    ".ra1/config.json": "{\"schema_version\":\"1\",\"acdc\":{\"hook_files\":[\".agents/hooks/post-edit.sh\"]}}"
   },
-  "expected": {"devenv.agent_hooks": "pass"}
+  "expected": {
+    "devenv.agent_hooks": "pass"
+  }
 }

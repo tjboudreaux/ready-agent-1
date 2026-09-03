@@ -5,15 +5,15 @@
     "project_type": "service"
   },
   "files": {
-    ".agents/readiness/config.json": "{ \"schema_version\": \"1\", \"detect\": { \"project_type\": \"service\" } }\n",
     "README.md": "# Telemetry relay\n\nA service that fans telemetry events out to downstream consumers.\n\n## Running\n\n```bash\n./run.sh\n```\n\n## Protocol\n\nEvents arrive as newline-delimited JSON on stdin and are re-published to each configured\nsink with at-least-once semantics. Sinks are declared in `sinks.conf`; failures are retried\nwith exponential backoff and surfaced on stderr.\n\n## Operations\n\nThe relay is stateless; restart at will. Backpressure is applied upstream when any sink\nfalls behind by more than the configured window.\n",
-    "run.sh": "#!/bin/sh\nexec ./relay\n"
+    "run.sh": "#!/bin/sh\nexec ./relay\n",
+    ".ra1/config.json": "{ \"schema_version\": \"1\", \"detect\": { \"project_type\": \"service\" } }\n"
   },
   "expected": {
     "build.ci_present": "fail",
     "build.ci_runs_tests": "skipped",
     "build.deps_pinned": "pass",
-    "build.release_automation": "fail",
+    "build.release_automation": "skipped",
     "build.vcs_cli": "fail",
     "devenv.devcontainer": "fail",
     "devenv.env_template": "fail",

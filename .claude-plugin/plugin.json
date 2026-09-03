@@ -1,10 +1,18 @@
 {
   "name": "ready-agent-1",
-  "version": "0.2.0",
-  "description": "Ready Agent 1 — is your codebase ready for the agents? Score a repository's agent-readiness (deterministic, cited, Level 1–5) and clear the gates to raise it.",
-  "author": { "name": "Travis Boudreaux" },
+  "version": "0.3.0",
+  "description": "Ready Agent 1 \u2014 is your codebase ready for the agents? Score a repository's agent-readiness (deterministic, cited, Level 1\u20134 with Level 5 Autonomous reserved) and clear the defined gates to raise it.",
+  "author": {
+    "name": "Travis Boudreaux"
+  },
   "homepage": "https://github.com/tjboudreaux/ready-agent-1",
   "repository": "https://github.com/tjboudreaux/ready-agent-1",
   "license": "MIT",
-  "keywords": ["agent-skills", "claude-code", "readiness", "code-quality", "ci"]
+  "keywords": [
+    "agent-skills",
+    "claude-code",
+    "readiness",
+    "code-quality",
+    "ci"
+  ]
 }

@@ -1,6 +1,8 @@
 """Labeled-fixture eval pipeline: classification, thresholds, graduation gate, parity."""
 import unittest
 
+from readiness.process import BoundedProcessResult, ProcessState
+from readiness.run import AnalyzeDependencies, AnalyzeOptions
 from readiness.score import load_registry
 
 from evals.contracts import gating_total_matches
@@ -16,6 +18,7 @@ from evals.fixtures import (
     score_fixtures,
 )
 from evals.parity import compare_parity, score_parity
+from tests._util import gh_runner
 
 
 class TestCompare(unittest.TestCase):
@@ -84,24 +87,72 @@ class TestFixtureBuilders(unittest.TestCase):
 
 
 class TestCannedGithub(unittest.TestCase):
-    def test_runner_returns_canned_and_none(self):
-        runner = canned_github_runner({
-            ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner": "o/r"}',
-            "api repos/o/r": '{"default_branch": "main"}',
-        })
-        self.assertEqual(runner(["repo", "view", "--json", "nameWithOwner"]),
-                         '{"nameWithOwner": "o/r"}')
-        self.assertEqual(runner(["api", "repos/o/r"]), '{"default_branch": "main"}')
-        self.assertIsNone(runner(["api", "unknown"]))
+    """The 0.11.0 canned-runner contract: fixed ``gh api --include`` argv, strict HTTP
+    envelopes in ``BoundedProcessResult`` — no legacy string/None returns."""
+
+    ARGV = ("api", "--hostname", "github.com", "--include", "repos/o/r")
+
+    def test_runner_returns_canned_envelope(self):
+        runner = canned_github_runner({"repos/o/r": '{"default_branch": "main"}'})
+        result = runner(self.ARGV)
+        self.assertIsInstance(result, BoundedProcessResult)
+        self.assertEqual(result.state, ProcessState.OK)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("HTTP/2 200", result.stdout)
+        self.assertIn('{"default_branch": "main"}', result.stdout)
+
+    def test_unknown_endpoint_answers_404_envelope(self):
+        runner = canned_github_runner({"repos/o/r": '{"default_branch": "main"}'})
+        result = runner(("api", "--hostname", "github.com", "--include", "repos/o/unknown"))
+        self.assertIsInstance(result, BoundedProcessResult)
+        self.assertIn("HTTP/2 404", result.stdout)
+
+    def test_none_value_answers_404_envelope(self):
+        runner = canned_github_runner({"repos/o/r": None})
+        self.assertIn("HTTP/2 404", runner(self.ARGV).stdout)
+
+    def test_legacy_argv_shapes_are_not_recognized(self):
+        runner = canned_github_runner({"repos/o/r": '{"default_branch": "main"}'})
+        for argv in (("api", "repos/o/r"), ("repo", "view", "--json", "nameWithOwner")):
+            with self.subTest(argv=argv):
+                self.assertIn("HTTP/2 404", runner(argv).stdout)
+
+    def test_gh_runner_helper_envelopes(self):
+        runner = gh_runner({"repos/o/r": '{"default_branch": "main"}',
+                            "repos/o/r/branches/main/protection": ("{}", 404)})
+        self.assertIn("HTTP/2 200", runner(self.ARGV).stdout)
+        protection = runner(("api", "--hostname", "github.com", "--include",
+                             "repos/o/r/branches/main/protection"))
+        self.assertIn("HTTP/2 404", protection.stdout)
+        unknown = runner(("api", "--hostname", "github.com", "--include", "repos/o/x"))
+        self.assertIn("HTTP/2 404", unknown.stdout)
 
     def test_runner_makes_collector_available(self):
         from readiness.collectors.github import GithubCollector
-        runner = canned_github_runner({
-            ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner": "o/r"}',
-        })
-        gc = GithubCollector("/tmp", runner=runner)
+        runner = canned_github_runner({"repos/o/r": '{"default_branch": "main"}'})
+        gc = GithubCollector("/tmp", origin=("github.com", "o", "r"), runner=runner)
         self.assertTrue(gc.available)
         self.assertEqual(gc.slug, "o/r")
+
+    def test_collector_unavailable_without_safe_origin(self):
+        from readiness.collectors.github import GithubCollector
+        gc = GithubCollector("/tmp", origin=(), runner=canned_github_runner({}))
+        self.assertFalse(gc.available)
+
+    def test_collector_reads_canned_branch_protection(self):
+        from readiness.collectors.github import GithubCollector
+        protection = (
+            '{"required_pull_request_reviews": {"required_approving_review_count": 1, '
+            '"require_code_owner_reviews": true}, "required_status_checks": '
+            '{"contexts": ["ci"], "checks": []}, "allow_force_pushes": {"enabled": false}, '
+            '"allow_deletions": {"enabled": false}}')
+        gc = GithubCollector("/tmp", origin=("github.com", "o", "r"), runner=gh_runner(
+            {"repos/o/r/branches/main/protection": protection}))
+        obs = gc.branch_protection_details("main")
+        self.assertEqual(obs.state, "present")
+        self.assertEqual(obs.value.required_approving_review_count, 1)
+        self.assertTrue(obs.value.require_code_owner_reviews)
+        self.assertEqual(obs.value.status_contexts, ("ci",))
 
 
 class TestRunFixtureBranches(unittest.TestCase):
@@ -120,10 +171,14 @@ class TestRunFixtureBranches(unittest.TestCase):
         self.assertTrue(matched["level_ok"])
 
     def test_canned_github_path_runs_offline(self):
-        fx = build_fixture("gh", {"README.md": "# hi"}, github={
-            ("repo", "view", "--json", "nameWithOwner"): '{"nameWithOwner": "o/r"}'})
+        fx = build_fixture("gh", {"README.md": "# hi"},
+                           github={"repos/o/r": '{"default_branch": "main"}'})
         r = run_fixture(fx)
         self.assertIn("actual", r)
+        # The canned runner enables T2 collection; offline the same criteria skip.
+        offline = run_fixture(build_fixture("no-gh", {"README.md": "# hi"}))
+        self.assertEqual(offline["actual"]["security.branch_protection"], "skipped")
+        self.assertNotEqual(r["actual"]["security.branch_protection"], "skipped")
 
 
 class TestScoreFixturesAggregation(unittest.TestCase):
@@ -154,13 +209,19 @@ class TestThresholdRates(unittest.TestCase):
 
 
 class TestEngineInvariants(unittest.TestCase):
-    def _analyze(self, files):
+    def _analyze(self, files, *, git_init=False, github=None):
         import tempfile
 
         from readiness.run import analyze
+        fx = build_fixture("inv", files, git_init=git_init, github=github)
+        deps = None
+        if github is not None:
+            deps = AnalyzeDependencies(github_origin=("github.com", "o", "r"),
+                                       github_runner=canned_github_runner(github))
         with tempfile.TemporaryDirectory(prefix="ra1-inv-") as tmp:
-            materialize(build_fixture("inv", files), tmp)
-            return analyze(tmp, {"no_github": True}).to_dict()
+            materialize(fx, tmp)
+            return analyze(tmp, AnalyzeOptions(github=github is not None),
+                           deps=deps).to_dict()
 
     def test_advisory_failures_do_not_change_gate(self):
         engine = self._analyze({"README.md": "# hi"})
@@ -176,6 +237,16 @@ class TestEngineInvariants(unittest.TestCase):
         self.assertEqual(by_id["docs.readme"]["status"], "pass")
         self.assertTrue(by_id["docs.readme"]["evidence"])
         self.assertNotEqual(by_id["security.codeowners"]["status"], "pass")
+
+    def test_t1_facts_require_git_init(self):
+        # T1 evidence comes from real git history: the same tree passes build.vcs_cli
+        # only when the fixture materializes a repository.
+        with_git = self._analyze({"README.md": "# hi"}, git_init=True)
+        by_id = {r["id"]: r for r in with_git["results"]}
+        self.assertEqual(by_id["build.vcs_cli"]["status"], "pass")
+        without_git = self._analyze({"README.md": "# hi"})
+        by_id = {r["id"]: r for r in without_git["results"]}
+        self.assertEqual(by_id["build.vcs_cli"]["status"], "fail")
 
 
 class TestRealCorpus(unittest.TestCase):

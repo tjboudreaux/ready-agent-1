@@ -1,7 +1,9 @@
-"""Scenario runner: drive a model_fn with the agent contract, then apply contracts + judge.
+"""Scenario runner: drive a model_fn with the skill contract, then apply contracts + judge.
 
-Unit tests inject a mock model_fn. The live run (`python3 evals/runner.py [gemini|codex]`)
-shells to a real model. ``model_fn(prompt) -> str``.
+Every scenario is dispatched by its validated ``skill`` discriminator; there is no generic
+fallback after validation. Unit tests inject a mock model_fn. The live run
+(`python3 evals/runner.py [gemini|codex]`) shells to a real model.
+``model_fn(prompt) -> str``.
 """
 from __future__ import annotations
 
@@ -12,32 +14,23 @@ from . import contracts
 from . import judge as judgemod
 from .scenarios import all_scenarios
 
-SKILL_CONTRACT = """You are the ra1-report skill. A deterministic engine has ALREADY scored a
-repository; its JSON report is given below. Produce a readiness report that:
-1. Includes a fenced ```json block containing the engine's `score` object EXACTLY — copy level,
-   level_name, pass_rate, gating_passed, gating_total, and pillars without changing any number.
-2. Adds a brief human-readable summary.
-3. Adds an "## Advisory" section (explicitly non-gating) grounded ONLY in the findings below.
-
-Hard rules: never claim a higher Level than the engine; never describe a failing criterion as
-passing; never invent criteria, evidence, or results; and do NOT assert that any specific criterion
-is "gating" or "non-gating" — only the engine's own data decides that, so do not add such claims."""
-
 
 def build_prompt(scenario: dict) -> str:
-    return (SKILL_CONTRACT
-            + "\n\nENGINE REPORT (JSON):\n"
-            + json.dumps(scenario["engine"], indent=2)
-            + "\n\nProduce the readiness report now.")
+    return contracts.build_prompt(scenario)
 
 
 def run_scenario(scenario: dict, model_fn, judge_model_fn=None) -> dict:
+    skill = contracts.scenario_skill(scenario)
     engine = scenario["engine"]
     output = model_fn(build_prompt(scenario))
-    checks = contracts.run_contract_checks(engine, output)
-    verdict = judgemod.judge(engine, output, judge_model_fn) if judge_model_fn else None
-    passed = contracts.all_passed(checks) and (verdict is None or judgemod.verdict_ok(verdict))
-    return {"name": scenario["name"], "kind": scenario.get("kind", "positive"),
+    checks = contracts.run_contract_checks(skill, engine, output)
+    verdict = judgemod.judge(engine, output, judge_model_fn, skill=skill) \
+        if judge_model_fn else None
+    # Deterministic contract checks are the blocking gates; judge output is recorded as an
+    # advisory diagnostic and never changes this scenario's pass/fail.
+    passed = contracts.all_passed(checks)
+    return {"name": scenario["name"], "skill": skill,
+            "kind": scenario.get("kind", "positive"),
             "passed": passed, "checks": checks, "judge": verdict}
 
 

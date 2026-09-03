@@ -8,7 +8,7 @@
     "package.json": "{ \"name\": \"shop\", \"workspaces\": [\"packages/*\"] }\n",
     "package-lock.json": "{ \"name\": \"shop\", \"lockfileVersion\": 3, \"packages\": {} }\n",
     "README.md": "# Shop monorepo\n\nTwo workspaces: `packages/api` (Express) and `packages/web` (React).\n\n## Development\n\n```bash\nnpm install\nnpm test --workspaces\n```\n\n## Layout\n\nShared tooling lives at the root; each workspace owns its own runtime dependencies and\ntests. CI fans out per workspace.\n",
-    ".gitignore": "node_modules/\n.env\ndist/\n",
+    ".gitignore": "node_modules/\n.env\ndist/\n/.ra1/reports/\n",
     "packages/api/package.json": "{ \"name\": \"api\", \"dependencies\": { \"express\": \"^4\" } }\n",
     "packages/api/src/server.test.js": "// unit tests\n",
     "packages/web/package.json": "{ \"name\": \"web\", \"dependencies\": { \"react\": \"^18\", \"react-dom\": \"^18\" } }\n"
@@ -17,14 +17,14 @@
     "build.ci_present": "fail",
     "build.ci_runs_tests": "skipped",
     "build.deps_pinned": "pass",
-    "build.release_automation": "fail",
-    "build.vcs_cli": "fail",
+    "build.release_automation": "skipped",
+    "build.vcs_cli": "pass",
     "devenv.devcontainer": "fail",
     "devenv.env_template": "fail",
     "docs.agents_md": "fail",
     "docs.agents_md_validation": "skipped",
     "docs.api_schema_docs": "fail",
-    "docs.doc_freshness": "unknown",
+    "docs.doc_freshness": "pass",
     "docs.readme": "fail",
     "docs.skills": "fail",
     "security.automated_security_review": "fail",
@@ -47,5 +47,6 @@
     "testing.test_naming": "pass",
     "testing.unit_tests_exist": "pass"
   },
-  "expected_level": 0
+  "expected_level": 1,
+  "git_init": true
 }

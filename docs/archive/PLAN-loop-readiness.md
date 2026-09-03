@@ -1,3 +1,5 @@
+> **Archived 2026-09 — historical plan. Everything below shipped between 0.3.0 and 0.11.0; the registry, CHANGELOG, and docs/cli.md are authoritative. Paths/flags named here (`.agents/readiness/`, `--history-dir`) no longer exist.**
+
 # Plan — Loop-readiness criteria (advisory, opt-in)
 
 Status: superseded by engine `0.3.0` implementation

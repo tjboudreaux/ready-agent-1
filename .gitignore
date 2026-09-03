@@ -1,5 +1,8 @@
-# Readiness reports + grounding state are local-only (may contain code excerpts)
+# Legacy local report output from engines < 0.11.0 (never committed)
 .agents/
+
+# Ready Agent 1 generated reports (policy files .ra1/config.json and .ra1/waivers.json stay tracked)
+/.ra1/reports/
 
 # Python
 __pycache__/
@@ -10,7 +13,7 @@ __pycache__/
 
 # Coverage / test artifacts
 .coverage
-.coverage.*
+.coverage*
 htmlcov/
 coverage.xml
 

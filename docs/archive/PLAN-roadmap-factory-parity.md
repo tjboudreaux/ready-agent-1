@@ -1,3 +1,5 @@
+> **Archived 2026-09 — historical plan. Everything below shipped between 0.3.0 and 0.11.0; the registry, CHANGELOG, and docs/cli.md are authoritative. Paths/flags named here (`.agents/readiness/`, `--history-dir`) no longer exist.**
+
 # Plan — RA1 Factory/Droid parity roadmap
 
 Status: goal-ready plan, adversarially reviewed and tightened
@@ -602,5 +604,5 @@ Expected:
 Use this when executing the roadmap:
 
 ```text
-Implement docs/PLAN-roadmap-factory-parity.md phase by phase. Do not start a later phase until the current phase's acceptance commands pass. Preserve deterministic scoring boundaries, keep new criteria advisory unless fixture graduation rules are satisfied, enforce 100% branch coverage for every new or changed Python module, run vendor sync after engine/templates/skill changes, and stop only when the final verification matrix passes.
+Implement docs/archive/PLAN-roadmap-factory-parity.md phase by phase. Do not start a later phase until the current phase's acceptance commands pass. Preserve deterministic scoring boundaries, keep new criteria advisory unless fixture graduation rules are satisfied, enforce 100% branch coverage for every new or changed Python module, run vendor sync after engine/templates/skill changes, and stop only when the final verification matrix passes.
 ```

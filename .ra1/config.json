@@ -1,0 +1,6 @@
+{
+  "detect": {"surfaces": ["cli", "library"]},
+  "acdc": {"verify_command": "make check"},
+  "ci_budget_minutes": 15,
+  "loop_ready": false
+}

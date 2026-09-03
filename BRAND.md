@@ -6,17 +6,17 @@
 
 **Ready Agent 1.** A nod to the arcade-quest spirit of *being ready before you enter the world* — except
 the world is your codebase and the players are AI agents. The first agent to log in either thrives or
-rage-quits. Ready Agent 1 tells you which, and helps you **clear all five gates** to get there.
+rage-quits. Ready Agent 1 tells you which, and helps you **clear the defined gates through Level 4** to get there.
 
 - **Command:** `ra1`
-- **Skills:** `ra1-report`, `ra1-fix`
+- **Skills:** `ra1-report`, `ra1-fix`, `ra1-interview`
 - **Package (PyPI/npm):** `ra1` · **GitHub:** `ready-agent-1` · **Domain:** `ra1.sh`
 
 ## The one-liner
 
 **Is your codebase ready for the agents? Score it, clear the gates, level up.**
 
-Ready Agent 1 scans your repo, assigns a readiness **Level (1–5)** — five gates to clear — cites the
+Ready Agent 1 scans your repo, assigns a readiness **Level (1–4)** — defined gates to clear, with **Level 5 Autonomous reserved** — cites the
 evidence for every check, and hands you the **loadout** to reach the next level. Deterministic. Reproducible.
 No continues required.
 
@@ -60,7 +60,7 @@ instructions stay plain and useful.**
 | **The Loadout** | safe remediation scaffolds + drafts | `ra1 fix` |
 | **Gates / Levels** | maturity Levels 1–5 (clear them to advance) | shown in the scan |
 | **Checks** | individual criteria | the per-pillar lines |
-| **Overrides** | waivers (skip a gate on purpose) | `.agents/readiness/waivers.json` |
+| **Overrides** | disclosed waivers for externally hosted facts | `.ra1/waivers.json` (engine-authored ids only) |
 | **Clear-to-merge** | the CI gate (`--min-level`) | `ra1` / CI Action |
 
 ## Visual identity

@@ -37,15 +37,25 @@ def vcs_cli(ctx):
     if ctx.github.available:
         return passed("gh CLI authenticated for this repo.",
                        [ev("gh repo view succeeds", tier="T2")])
-    if ctx.git.available():
+    obs = ctx.git.availability()
+    if obs.state == "present":
         return passed("git available (repository initialized).", [ev("git work tree", tier="T1")])
+    if obs.state == "unreadable":
+        # An unsafe repository is never called "not version controlled".
+        return unknown("Git metadata could not be read safely; version control unverified.")
     return failed("Neither git nor authenticated gh available.")
 
 
 def agentic_development(ctx):
-    if not ctx.git.available():
+    obs = ctx.git.availability()
+    if obs.state != "present":
+        if obs.state == "unreadable":
+            return unknown("Git history could not be read safely.")
         return unknown("No git history available.")
-    if ctx.git.has_agent_coauthorship():
+    co = ctx.git.has_agent_coauthorship()
+    if co.state != "present":
+        return unknown("Git history could not be read safely.")
+    if co.value:
         return passed("Agent co-authorship present in git history.",
                        [ev("co-author trailer", tier="T1")])
     return failed("No agent co-authorship in recent commits.")
@@ -57,41 +67,64 @@ def ci_present(ctx):
                              ".travis.yml", "azure-pipelines.yml", ".drone.yml"])
     if files:
         return passed(f"CI configuration: {files[0]}", [ev("CI config", source=files[0])])
-    if ctx.github.available and ctx.github.workflows():
-        return passed("GitHub Actions workflows present.", [ev("workflows via API", tier="T2")])
+    if ctx.github.available:
+        workflows = ctx.github.workflows()
+        if workflows.state == "present" and workflows.value:
+            return passed("GitHub Actions workflows present.",
+                          [ev("workflows via API", tier="T2")])
     return failed("No CI configuration found.")
 
 
 def release_automation(ctx):
-    files = ctx.static.glob([".releaserc*", "release.config.*", ".goreleaser.yml",
-                             ".goreleaser.yaml",
-                             ".github/workflows/release*.yml",
-                             ".github/workflows/release*.yaml",
-                             ".changeset/config.json"])
-    if files:
-        return passed(f"Release automation: {files[0]}", [ev("release config", source=files[0])])
-    dep = adep(ctx, ["semantic-release", "release-please", "@changesets/cli", "standard-version"])
-    if dep:
-        return passed(f"Release automation dependency: {dep}")
-    return failed("No release automation (semantic-release/changesets/goreleaser).")
+    from ._workflow_policy import artifact_publication_intent
+    intent = artifact_publication_intent(ctx)
+    if intent == "present":
+        return passed("Explicit artifact-publication path detected.",
+                      [ev("release/publication wiring", tier="T0")],
+                      reason_code="build.release_automation.configured")
+    if intent == "indeterminate":
+        return unknown(
+            "Artifact-publication applicability could not be determined safely.",
+            reason_code="build.release_automation.applicability_indeterminate",
+            limitations=["The static parser could not establish effective workflow "
+                         "semantics."])
+    return skipped(
+        "No explicit artifact-publication path detected.",
+        reason_code="build.release_automation.not_applicable",
+        limitations=["Static absence of a publication path is not proof that nothing is "
+                     "published."])
 
 
 def ci_runs_tests(ctx):
     if not ctx.github.available:
-        return skipped("No GitHub API; cannot confirm CI runs tests.")
-    if not ctx.github.workflows():
-        return failed("No CI workflows.")
+        return skipped("No GitHub API; cannot confirm CI runs tests.",
+                       reason_code="build.ci_runs_tests.github_unavailable")
+    workflows = ctx.github.workflows()
+    if workflows.state == "unreadable":
+        return unknown("CI workflow state could not be read; not verified.",
+                       reason_code="build.ci_runs_tests.observation_unreadable",
+                       limitations=["The selected GitHub control was not verified."])
+    if workflows.state != "present" or not workflows.value:
+        return failed("No CI workflows.", reason_code="build.ci_runs_tests.workflows_missing")
     has_tests = bool(ctx.static.glob(["**/*test*.*", "**/*_test.*", "**/*.spec.*",
                                       "test/**", "tests/**", "spec/**"]))
     runs = ctx.github.recent_runs()
-    if has_tests and runs:
+    if runs.state == "unreadable":
+        return unknown("CI run state could not be read; not verified.",
+                       reason_code="build.ci_runs_tests.observation_unreadable",
+                       limitations=["The selected GitHub control was not verified."])
+    run_list = runs.value if runs.state == "present" else ()
+    if has_tests and run_list:
         return passed(
-            f"CI active ({len(runs)} recent runs) with a test suite present.",
+            f"CI active ({len(run_list)} recent runs) with a test suite present.",
             [ev("CI runs + tests (inferred from CI activity, not step parsing)", tier="T2")],
+            reason_code="build.ci_runs_tests.verified",
         )
     if not has_tests:
-        return failed("CI present but no test suite detected.")
-    return failed("CI workflows present but no recent runs.")
+        return failed("CI present but no test suite detected.",
+                      reason_code="build.ci_runs_tests.tests_missing")
+    return failed("CI workflows present but no recent runs.",
+                  reason_code="build.ci_runs_tests.tests_missing")
 
 
 def _has_build_command_section(text):
@@ -133,38 +166,67 @@ def _target_recipe(text, name):
     return match, "\n".join(recipe)
 
 
+_TARGET_RE = re.compile(r"[A-Za-z0-9_.:-]{1,128}\Z")
+_CONTROL_BIDI_RE = re.compile(
+    r"[\x00-\x1f\x7f\x80-\x9f\u202a-\u202e\u2066-\u2069\u200e\u200f]")
+
+
+def _parse_verify_command(command: str) -> tuple:
+    """Bounded parse of acdc.verify_command (§5.1.2). Returns ``(kind, payload)`` where kind
+    is ``make|just|task|npm_script|yarn_script|python_module|script_path|malformed``."""
+    if not isinstance(command, str) or _CONTROL_BIDI_RE.search(command):
+        return ("malformed", "")
+    import shlex
+    try:
+        tokens = shlex.split(command.strip())
+    except ValueError:
+        return ("malformed", "")
+    if not tokens or len(tokens) > 3:
+        return ("malformed", "")
+    if any(any(op in t for op in ("=", ">", "<", "|", "&", ";", "`", "$", "\n"))
+           for t in tokens):
+        return ("malformed", "")
+    first = tokens[0]
+    if first in ("make", "just", "task") and len(tokens) == 2 and _TARGET_RE.match(tokens[1]):
+        return (first, tokens[1])
+    if len(tokens) == 3 and tokens[:2] in (["npm", "run"], ["pnpm", "run"]) \
+            and _TARGET_RE.match(tokens[2]):
+        return ("npm_script", tokens[2])
+    if len(tokens) == 2 and first in ("yarn", "pnpm") and _TARGET_RE.match(tokens[1]):
+        return ("yarn_script", tokens[1])
+    if len(tokens) == 3 and first in ("python", "python3") and tokens[1] == "-m" \
+            and tokens[2] in ("pytest", "unittest", "mypy", "ruff"):
+        return ("python_module", tokens[2])
+    if len(tokens) == 1 and first.startswith("scripts/") \
+            and "\\" not in first and ".." not in first.split("/") \
+            and not first.endswith("/"):
+        return ("script_path", first)
+    return ("malformed", "")
+
+
 def _configured_verify_command(ctx, command):
-    tokens = command.split()
-    if len(tokens) >= 2 and tokens[0] in {"make", "just"}:
-        patterns = ["Makefile"] if tokens[0] == "make" else ["Justfile", "justfile"]
+    """Resolve a parsed verify command to its evidence source, or ``""`` when unresolved."""
+    kind, payload = _parse_verify_command(command)
+    if kind == "malformed":
+        return ("malformed", "")
+    if kind in ("make", "just", "task"):
+        patterns = {"make": ["Makefile"], "just": ["Justfile", "justfile"],
+                    "task": ["Taskfile.yml", "Taskfile.yaml"]}[kind]
         for path in aglob(ctx, patterns):
-            target = ctx.app_static().read(path) or ctx.static.read(path) or ""
-            if re.search(r"(?m)^" + re.escape(tokens[1]) + r"\s*:", target):
-                return path
-        return ""
-    if len(tokens) >= 2 and tokens[0] == "task":
-        for path in aglob(ctx, ["Taskfile.yml", "Taskfile.yaml"]):
-            target = ctx.app_static().read(path) or ctx.static.read(path) or ""
-            if re.search(r"(?m)^\s*" + re.escape(tokens[1]) + r"\s*:", target):
-                return path
-        return ""
-    script = ""
-    if len(tokens) >= 3 and tokens[:2] in (["npm", "run"], ["pnpm", "run"]):
-        script = tokens[2]
-    elif len(tokens) >= 2 and tokens[0] in {"yarn", "pnpm"}:
-        script = tokens[1]
-    if script:
+            text = ctx.app_static().read(path) or ctx.static.read(path) or ""
+            if re.search(r"(?m)^\s*" + re.escape(payload) + r"\s*:", text):
+                return ("ok", path)
+        return ("unresolved", "")
+    if kind in ("npm_script", "yarn_script"):
         pkg = ctx.app_static().manifests().get("package.json", (None, None))[1]
         scripts = pkg.get("scripts") if isinstance(pkg, dict) else None
-        return "package.json" if isinstance(scripts, dict) and script in scripts else ""
-    first = tokens[0]
-    if first.startswith("scripts/") or first.startswith("./scripts/"):
-        rel = first[2:] if first.startswith("./") else first
-        return rel if aglob(ctx, [rel]) else ""
-    if (check_needles(command) or command.startswith("python -m")
-            or command.startswith("python3 -m")):
-        return "."
-    return ""
+        if isinstance(scripts, dict) and payload in scripts:
+            return ("ok", "package.json")
+        return ("unresolved", "")
+    if kind == "python_module":
+        return ("ok", ".")
+    # script_path: must exist as a root-confined regular file
+    return ("ok", payload) if aglob(ctx, [payload]) else ("unresolved", "")
 
 
 def _script_check_text(value, scripts):
@@ -182,19 +244,29 @@ def check_command(ctx):
     configured = acdc_config(ctx).get("verify_command")
     if isinstance(configured, str) and configured.strip():
         command = configured.strip()
-        source = _configured_verify_command(ctx, command)
-        if source:
-            evidence = [ev("acdc.verify_command", source=".agents/readiness/config.json")]
+        state, source = _configured_verify_command(ctx, command)
+        if state == "malformed":
+            return failed(
+                "Config declares a verify_command outside the accepted grammar "
+                "(make/just/task, npm|pnpm run, yarn|pnpm script, python -m "
+                "pytest|unittest|mypy|ruff, or a scripts/ path).",
+                [ev("acdc.verify_command", source=".ra1/config.json")],
+                reason_code="build.check_command.malformed",
+            )
+        if state == "ok":
+            evidence = [ev("acdc.verify_command", source=".ra1/config.json")]
             if source != ".":
                 evidence.append(ev("verify command", source=source))
             return passed(
-                f"Verify entrypoint designated in readiness config: '{command}'.",
+                "Verify entrypoint designated in readiness config.",
                 evidence,
+                reason_code="build.check_command.configured",
             )
         return failed(
-            f"Config declares verify_command '{command}' but it does not resolve "
-            f"to an existing target/script.",
-            [ev("acdc.verify_command", source=".agents/readiness/config.json")],
+            "Config declares verify_command but it does not resolve "
+            "to an existing target/script.",
+            [ev("acdc.verify_command", source=".ra1/config.json")],
+            reason_code="build.check_command.unresolved",
         )
 
     pkg = ctx.app_static().manifests().get("package.json", (None, None))[1]
@@ -207,10 +279,12 @@ def check_command(ctx):
                     return passed(
                         f"Single verify entrypoint '{name}' chains {count} check tools.",
                         [ev("verify command", source="package.json")],
+                        reason_code="build.check_command.configured",
                     )
                 return failed(
                     f"'{name}' exists but chains only {count} recognized check "
-                    f"tool(s); a verify entrypoint should run lint/type/test together."
+                    f"tool(s); a verify entrypoint should run lint/type/test together.",
+                    reason_code="build.check_command.missing",
                 )
 
     for path in aglob(ctx, ["Makefile", "Justfile", "justfile"]):
@@ -233,10 +307,12 @@ def check_command(ctx):
                 return passed(
                     f"Single verify entrypoint '{name}' chains {count} check tools.",
                     [ev("verify command", source=path)],
+                    reason_code="build.check_command.configured",
                 )
             return failed(
                 f"'{name}' exists but chains only {count} recognized check "
-                f"tool(s); a verify entrypoint should run lint/type/test together."
+                f"tool(s); a verify entrypoint should run lint/type/test together.",
+                reason_code="build.check_command.missing",
             )
 
     for path in aglob(ctx, ["Taskfile.yml", "Taskfile.yaml"]):
@@ -255,10 +331,12 @@ def check_command(ctx):
                 return passed(
                     f"Single verify entrypoint '{name}' chains {count} check tools.",
                     [ev("verify command", source=path)],
+                    reason_code="build.check_command.configured",
                 )
             return failed(
                 f"'{name}' exists but chains only {count} recognized check "
-                f"tool(s); a verify entrypoint should run lint/type/test together."
+                f"tool(s); a verify entrypoint should run lint/type/test together.",
+                reason_code="build.check_command.missing",
             )
 
     for path in aglob(ctx, ["scripts/check*", "scripts/verify*"]):
@@ -269,29 +347,35 @@ def check_command(ctx):
             return passed(
                 f"Single verify entrypoint '{name}' chains {count} check tools.",
                 [ev("verify command", source=path)],
+                reason_code="build.check_command.configured",
             )
         return failed(
             f"'{name}' exists but chains only {count} recognized check "
-            f"tool(s); a verify entrypoint should run lint/type/test together."
+            f"tool(s); a verify entrypoint should run lint/type/test together.",
+            reason_code="build.check_command.missing",
         )
 
     return failed(
         "No single check/verify command; agents need one fast inner-loop "
         "verification entrypoint (e.g. 'make check' running lint + typecheck + tests). "
-        "Designate one via acdc.verify_command in .agents/readiness/config.json if "
-        "yours is unconventional."
+        "Designate one via acdc.verify_command in .ra1/config.json if "
+        "yours is unconventional.",
+        reason_code="build.check_command.missing",
     )
 
 
 def _ci_budget_minutes(ctx):
     from ..detect import load_readiness_config
-    v = load_readiness_config(ctx.root, ctx.options).get("ci_budget_minutes")
+    v = load_readiness_config(ctx.static, ctx.options).get("ci_budget_minutes")
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else None
 
 
 def _run_minutes(run):
-    start = run.get("run_started_at") or run.get("created_at")
-    end = run.get("updated_at")
+    if hasattr(run, "started_at"):
+        start, end = run.started_at, run.updated_at
+    else:  # legacy dict shape (injected fixtures predating RunRecord)
+        start = run.get("run_started_at") or run.get("created_at")
+        end = run.get("updated_at")
     if not (start and end):
         return None
     try:
@@ -311,9 +395,13 @@ def ci_duration_budget(ctx):
         return skipped("No GitHub API; cannot read CI run durations.")
     budget = _ci_budget_minutes(ctx)
     if budget is None:
-        return unknown("No ci_budget_minutes in .agents/readiness/config.json; "
+        return unknown("No ci_budget_minutes in .ra1/config.json; "
                        "cannot judge duration.")
-    durations = [d for d in (_run_minutes(r) for r in ctx.github.recent_runs()) if d is not None]
+    runs = ctx.github.recent_runs()
+    if runs.state == "unreadable":
+        return unknown("CI run durations could not be read.")
+    run_list = runs.value if runs.state == "present" else ()
+    durations = [d for d in (_run_minutes(r) for r in run_list) if d is not None]
     if not durations:
         return unknown("No timed CI runs available to assess duration.")
     worst = max(durations)
@@ -449,9 +537,12 @@ def small_batches(ctx):
     """
     if not ctx.git.available():
         return unknown("No git history available.")
-    churn = ctx.git.recent_churn(50)
-    if not churn:
+    obs = ctx.git.recent_churn(50)
+    if obs.state != "present" or not obs.value:
+        if obs.state == "unreadable":
+            return unknown("Git history could not be read safely.")
         return unknown("No git history available.")
+    churn = list(obs.value)
     if len(churn) < 10:
         return skipped("insufficient history (<10 non-merge commits)")
     med = median(churn)
@@ -470,9 +561,12 @@ def integration_frequency(ctx):
     anchored at the most recent commit (activity-anchored)."""
     if not ctx.git.available():
         return unknown("No git history available.")
-    dates = ctx.git.commit_dates(200)
-    if not dates:
+    obs = ctx.git.commit_dates(200)
+    if obs.state != "present" or not obs.value:
+        if obs.state == "unreadable":
+            return unknown("Git history could not be read safely.")
         return unknown("No git history available.")
+    dates = list(obs.value)
     anchor = parse_iso(dates[0])
     if not anchor:
         return unknown("Could not parse recent commit dates.")
@@ -506,14 +600,16 @@ def agent_config_versioned(ctx):
     if not ctx.git.available():
         return unknown("No git history available.")
     candidates = ["AGENTS.md", "CLAUDE.md", ".claude", ".cursor", "skills", ".agents"]
-    existing = [p for p in candidates if (ctx.root / p).exists()]
+    existing = [p for p in candidates if ctx.static.exists_any([p, p + "/**"])]
     if not existing:
         return skipped("no agent configuration present")
     for path in existing:
-        count = ctx.git.commit_count_for(path)
-        if count >= 2:
+        obs = ctx.git.commit_count_for(path)
+        if obs.state != "present":
+            return unknown("Git history could not be read safely.")
+        if obs.value >= 2:
             return passed(
-                f"Agent configuration versioned: {path} has {count} commits.",
+                f"Agent configuration versioned: {path} has {obs.value} commits.",
                 [ev("agent config history", source=path, tier="T1")],
             )
     return failed(

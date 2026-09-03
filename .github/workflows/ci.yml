@@ -10,8 +10,12 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -22,26 +26,61 @@ jobs:
           python-version: "3.11"
       - name: Install dev tools (coverage is dev-only; runtime is pure stdlib)
         run: python3 -m pip install coverage
-      - name: Tests with coverage (gate >90% total + 100% on touched files)
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      - name: Tests with coverage (gate >90% total; per-touched-file gate via coverage_gate)
         run: |
-          python3 -m coverage run --branch --source=engine/readiness,evals,scripts -m unittest discover -s tests -t .
+          python3 -m coverage run --branch --source=engine/readiness,evals,scripts,ci -m unittest discover -s tests -t .
           python3 -m coverage json -o .coverage.json
           python3 -m coverage report --fail-under=90
-          if [ -n "$BASE_SHA" ]; then
-            changed=$(git diff --name-only "$BASE_SHA" HEAD -- '*.py' ':!tests/**' ':!skills/**' | tr '\n' ' ')
-          else
-            changed=$(git diff --name-only HEAD~1 HEAD -- '*.py' ':!tests/**' ':!skills/**' 2>/dev/null | tr '\n' ' ')
-          fi
-          echo "Changed Python files (excluding tests + vendored skills): $changed"
-          python3 scripts/coverage_gate.py --coverage .coverage.json --changed-files $changed --thin-wrapper scripts/coverage_gate.py
+          python3 -m evals.coverage_gate --coverage .coverage.json \
+            --release-matrix release/versions.json --out .coverage-touched.json
       - name: Vendored skills byte-parity
         run: python3 scripts/vendor.py --check
       - name: Labeled-fixture evals (per-criterion FP/FN gate)
         run: python3 -m evals.fixtures
       - name: Parity vs Factory reference shapes (offline)
         run: python3 -m evals.parity
+      - name: Criterion-label corpus validation
+        run: python3 -m evals.criterion_benchmark --validate evals/criterion_labels.json
+      - name: Release-version matrix parity
+        run: python3 scripts/check_release_versions.py
+
+  windows-compat:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      # Windows is NOT a supported operational platform: parser help/version/formats/banner
+      # must still work, and one operational command must fail closed with the exact
+      # supported-platform diagnostic before any repository access or subprocess.
+      #
+      # Both steps run under bash (GitHub invokes it with -e -o pipefail), so every command
+      # is gated individually. The pwsh default only reports the LAST command's exit code,
+      # which let a crashing `banner` pass unnoticed, and pwsh's `2>&1` on a native command
+      # under $ErrorActionPreference=stop aborts the step without printing anything.
+      - name: Parser surfaces work on Windows
+        shell: bash
+        run: |
+          python3 engine/readiness/cli.py version
+          python3 engine/readiness/cli.py formats
+          python3 engine/readiness/cli.py banner
+          python3 engine/readiness/cli.py --help
+      - name: Operational commands fail closed on Windows
+        shell: bash
+        run: |
+          if output="$(python3 engine/readiness/cli.py detect 2>&1)"; then
+            echo "detect must fail closed on Windows" >&2
+            exit 1
+          fi
+          echo "$output"
+          case "$output" in
+            *safe_io_unsupported*) ;;
+            *) echo "expected exact safe_io_unsupported diagnostic" >&2; exit 1 ;;
+          esac
 
   lint:
     runs-on: ubuntu-latest
@@ -53,26 +92,14 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
-      # Enforces the ruleset pyproject actually declares -- select = ["E","F","I","UP","B"]
-      # with line-length 100 -- rather than a subset. No --select override here on purpose:
-      # the config is the single source of truth, so widening or narrowing it is a reviewable
-      # edit to pyproject.toml instead of a hidden flag in CI.
       - name: Ruff (full configured ruleset)
         run: |
-          # Pinned to the same version as .pre-commit-config.yaml so hooks and CI agree.
           python3 -m pip install 'ruff==0.16.1'
           python3 -m ruff check --no-cache engine scripts evals tests
-      # Workflow/action SAST. This is the gate that would have caught the shell injection
-      # in the release workflow and in ci/action.yml (the action we publish to other
-      # repositories) -- both reached main and survived human review.
       - name: Zizmor (workflow + action SAST)
         run: |
           python3 -m pip install 'zizmor==1.29.0'
           zizmor --no-progress --persona=regular .github/workflows/ ci/action.yml
-      # The templates we ship into other repositories get scanned too -- one already had a
-      # real credential-persistence finding. zizmor only accepts workflows under a
-      # .github/workflows path, so stage a copy. The config relaxes pinning (templates ship
-      # readable tag refs on purpose) and nothing else.
       - name: Zizmor (shipped workflow templates)
         run: |
           staged="$(mktemp -d)/.github/workflows"

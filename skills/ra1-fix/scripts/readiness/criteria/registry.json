@@ -149,7 +149,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "frontend",
         "data",
         "unknown",
@@ -500,7 +499,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "frontend",
         "monorepo-root",
         "unknown"
@@ -674,8 +672,7 @@
     "check": "docs.api_schema_docs",
     "applies_when": {
       "project_types": [
-        "service",
-        "api"
+        "service"
       ],
       "languages": [
         "*"
@@ -902,7 +899,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "frontend",
         "monorepo-root"
       ],
@@ -925,7 +921,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "frontend",
         "monorepo-root"
       ],
@@ -948,7 +943,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "frontend",
         "monorepo-root"
       ],
@@ -971,7 +965,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "frontend",
         "monorepo-root"
       ],
@@ -994,7 +987,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "frontend",
         "monorepo-root"
       ],
@@ -1017,7 +1009,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "frontend",
         "monorepo-root"
       ],
@@ -1041,7 +1032,6 @@
       "project_types": [
         "frontend",
         "service",
-        "api",
         "monorepo-root"
       ],
       "languages": [
@@ -1064,7 +1054,6 @@
       "project_types": [
         "frontend",
         "service",
-        "api",
         "monorepo-root"
       ],
       "languages": [
@@ -1087,7 +1076,6 @@
       "project_types": [
         "frontend",
         "service",
-        "api",
         "monorepo-root"
       ],
       "languages": [
@@ -1229,7 +1217,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "frontend",
         "monorepo-root"
       ],
@@ -1252,7 +1239,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "monorepo-root"
       ],
       "languages": [
@@ -1273,8 +1259,7 @@
     "check": "observability.profiling",
     "applies_when": {
       "project_types": [
-        "service",
-        "api"
+        "service"
       ],
       "languages": [
         "*"
@@ -1294,8 +1279,7 @@
     "check": "observability.circuit_breakers",
     "applies_when": {
       "project_types": [
-        "service",
-        "api"
+        "service"
       ],
       "languages": [
         "*"
@@ -1316,7 +1300,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "monorepo-root"
       ],
       "languages": [
@@ -1357,8 +1340,7 @@
     "check": "security.log_scrubbing",
     "applies_when": {
       "project_types": [
-        "service",
-        "api"
+        "service"
       ],
       "languages": [
         "*"
@@ -1398,8 +1380,7 @@
     "check": "security.dast",
     "applies_when": {
       "project_types": [
-        "service",
-        "api"
+        "service"
       ],
       "languages": [
         "*"
@@ -1540,7 +1521,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "monorepo-root"
       ],
       "languages": [
@@ -1562,7 +1542,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "data"
       ],
       "languages": [
@@ -1628,7 +1607,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "monorepo-root"
       ],
       "languages": [
@@ -1654,7 +1632,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "frontend",
         "monorepo-root"
       ],
@@ -1878,7 +1855,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "monorepo-root"
       ],
       "languages": [
@@ -1900,7 +1876,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "monorepo-root"
       ],
       "languages": [
@@ -2291,7 +2266,6 @@
     "applies_when": {
       "project_types": [
         "service",
-        "api",
         "frontend",
         "monorepo-root"
       ],
@@ -2401,5 +2375,179 @@
       "requires": []
     },
     "engine_min_version": "0.6.0"
+  },
+  {
+    "id": "docs.agent_context_map",
+    "pillar": "Documentation",
+    "title": "Agent Context Map",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "docs.agent_context_map",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [
+        "docs.agents_md_validation"
+      ]
+    },
+    "fix": {
+      "kind": "propose",
+      "template": "AGENTS.md",
+      "autofixable": false
+    },
+    "acdc": {
+      "stage": "guide",
+      "loop": "both"
+    },
+    "engine_min_version": "0.11.0"
+  },
+  {
+    "id": "taskdisc.pr_evidence_contract",
+    "pillar": "Task Discovery",
+    "title": "PR Evidence Contract",
+    "level": 3,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "taskdisc.pr_evidence_contract",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [
+        "taskdisc.pr_templates"
+      ]
+    },
+    "fix": {
+      "kind": "propose",
+      "template": "pull_request_template.md",
+      "autofixable": false
+    },
+    "acdc": {
+      "stage": "verify",
+      "loop": "outer"
+    },
+    "engine_min_version": "0.11.0"
+  },
+  {
+    "id": "taskdisc.concurrent_agent_protocol",
+    "pillar": "Task Discovery",
+    "title": "Concurrent Agent Protocol",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "taskdisc.concurrent_agent_protocol",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "propose",
+      "template": "AGENTS.md",
+      "autofixable": false
+    },
+    "acdc": {
+      "stage": "guide",
+      "loop": "both"
+    },
+    "engine_min_version": "0.11.0"
+  },
+  {
+    "id": "security.branch_protection_depth",
+    "pillar": "Security & Governance",
+    "title": "Branch Protection Depth",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "security.branch_protection_depth",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "github_setting",
+      "autofixable": false
+    },
+    "acdc": {
+      "stage": "verify",
+      "loop": "outer"
+    },
+    "engine_min_version": "0.11.0"
+  },
+  {
+    "id": "security.agent_config_ownership",
+    "pillar": "Security & Governance",
+    "title": "Agent Config Ownership",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "security.agent_config_ownership",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": [
+        "security.codeowners"
+      ]
+    },
+    "fix": {
+      "kind": "propose",
+      "template": "CODEOWNERS",
+      "autofixable": false
+    },
+    "engine_min_version": "0.11.0"
+  },
+  {
+    "id": "security.supply_chain_provenance",
+    "pillar": "Security & Governance",
+    "title": "Supply Chain Provenance",
+    "level": 4,
+    "scope": "repository",
+    "decide": "deterministic",
+    "gating": false,
+    "check": "security.supply_chain_provenance",
+    "applies_when": {
+      "project_types": [
+        "*"
+      ],
+      "languages": [
+        "*"
+      ],
+      "requires": []
+    },
+    "fix": {
+      "kind": "propose",
+      "autofixable": false
+    },
+    "acdc": {
+      "stage": "verify",
+      "loop": "outer"
+    },
+    "engine_min_version": "0.11.0"
   }
 ]
