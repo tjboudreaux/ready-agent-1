@@ -194,6 +194,20 @@ class TestBannerAndMain(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("insert coin", out)
 
+    def test_banner_degrades_on_non_unicode_console(self):
+        # Windows consoles default to cp1252, which cannot encode the block glyphs; the
+        # banner is documented as always available, so it must degrade rather than crash.
+        raw = io.BytesIO()
+        stream = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+        with redirect_stdout(stream):
+            code = cli.main(["banner"])
+        stream.flush()
+        self.assertEqual(code, 0)
+        out = raw.getvalue().decode("cp1252")
+        self.assertIn("R E A D Y   A G E N T   1", out)
+        self.assertIn("insert coin", out)
+        self.assertIn("?", out)  # replaced glyphs, not a UnicodeEncodeError
+
 
 class TestReportIdentityAndHistory(unittest.TestCase):
     def setUp(self):

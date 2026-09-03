@@ -57,20 +57,30 @@ jobs:
       # Windows is NOT a supported operational platform: parser help/version/formats/banner
       # must still work, and one operational command must fail closed with the exact
       # supported-platform diagnostic before any repository access or subprocess.
+      #
+      # Both steps run under bash (GitHub invokes it with -e -o pipefail), so every command
+      # is gated individually. The pwsh default only reports the LAST command's exit code,
+      # which let a crashing `banner` pass unnoticed, and pwsh's `2>&1` on a native command
+      # under $ErrorActionPreference=stop aborts the step without printing anything.
       - name: Parser surfaces work on Windows
+        shell: bash
         run: |
           python3 engine/readiness/cli.py version
           python3 engine/readiness/cli.py formats
           python3 engine/readiness/cli.py banner
           python3 engine/readiness/cli.py --help
       - name: Operational commands fail closed on Windows
-        shell: pwsh
+        shell: bash
         run: |
-          $output = python3 engine/readiness/cli.py detect 2>&1
-          if ($LASTEXITCODE -eq 0) { throw "detect must fail closed on Windows" }
-          if ($output -notmatch "safe_io_unsupported") {
-            throw "expected exact safe_io_unsupported diagnostic, got: $output"
-          }
+          if output="$(python3 engine/readiness/cli.py detect 2>&1)"; then
+            echo "detect must fail closed on Windows" >&2
+            exit 1
+          fi
+          echo "$output"
+          case "$output" in
+            *safe_io_unsupported*) ;;
+            *) echo "expected exact safe_io_unsupported diagnostic" >&2; exit 1 ;;
+          esac
 
   lint:
     runs-on: ubuntu-latest

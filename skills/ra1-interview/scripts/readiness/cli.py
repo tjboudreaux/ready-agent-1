@@ -45,7 +45,15 @@ def render_banner(color: bool = True) -> str:
 
 
 def cmd_banner(args) -> int:
-    print(render_banner(sys.stdout.isatty()))
+    text = render_banner(sys.stdout.isatty())
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # Consoles without a Unicode encoding (Windows cp1252) cannot draw the block art;
+        # degrade the glyphs rather than crash a surface documented as always available.
+        sys.stdout.flush()
+        sys.stdout.buffer.write((text + "\n").encode(sys.stdout.encoding, "replace"))
+        sys.stdout.buffer.flush()
     return 0
 
 
