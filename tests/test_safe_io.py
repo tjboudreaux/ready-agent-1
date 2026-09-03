@@ -1124,11 +1124,17 @@ class TestLinkedWorktreeRefusals(unittest.TestCase):
         (meta / "gitdir").unlink()
         self.assertEqual(self._reason(linked), "unsupported_topology")
 
-    def test_backref_mismatch(self):
+    def test_backref_unwalkable(self):
+        # A back-reference the descriptor walk refuses is unsupported_topology on every
+        # host. Plant the refusal explicitly (missing path; symlinked component) instead of
+        # relying on Darwin's /var -> /private/var symlink under every tempdir, which made
+        # this branch Darwin-only and left Linux coverage two lines short.
         main, linked, meta = self._linked()
-        (meta / "gitdir").write_text(str(main / "README.md") + "\n",
-                                     encoding="utf-8")
-        self.assertEqual(self._reason(linked), "unsupported_topology")
+        os.symlink(main / ".git", main / "lnk")
+        for back in (Path("/nonexistent-ra1") / "gitdir", main / "lnk" / "HEAD"):
+            with self.subTest(back=str(back)):
+                (meta / "gitdir").write_text(str(back) + "\n", encoding="utf-8")
+                self.assertEqual(self._reason(linked), "unsupported_topology")
 
     def test_common_dir_group_writable(self):
         main, linked, meta = self._linked()
