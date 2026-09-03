@@ -59,9 +59,9 @@ jobs:
       # supported-platform diagnostic before any repository access or subprocess.
       #
       # Both steps run under bash (GitHub invokes it with -e -o pipefail), so every command
-      # is gated individually. The pwsh default only reports the LAST command's exit code,
-      # which let a crashing `banner` pass unnoticed, and pwsh's `2>&1` on a native command
-      # under $ErrorActionPreference=stop aborts the step without printing anything.
+      # is gated individually. Observed on the pwsh default: the step reported success while
+      # `banner` tracebacked (only the last command's exit code counted), and the `$output =
+      # ... 2>&1` step exited 1 with no diagnostic at all, so its failure was undiagnosable.
       - name: Parser surfaces work on Windows
         shell: bash
         run: |
