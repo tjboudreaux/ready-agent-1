@@ -57,12 +57,54 @@ def _trigger_globs() -> list[str]:
     block = re.search(r"^\s*tags:\s*$(.*?)^\s*workflow_dispatch:", text,
                       re.MULTILINE | re.DOTALL)
     assert block, "could not locate on.push.tags in release.yml"
-    return re.findall(r'^\s*-\s*"([^"]+)"', block.group(1), re.MULTILINE)
+    # Single-quoted YAML scalars carry backslashes verbatim, which is how the workflow
+    # writes the escaped `\+`; double-quoted ones are kept for the plain patterns.
+    pairs = re.findall(r'''^\s*-\s*(?:"([^"]+)"|'([^']+)')''', block.group(1), re.MULTILINE)
+    return [dq or sq for dq, sq in pairs]
+
+
+_SPECIAL = set("*?+[]!\\")
+
+
+def _glob_regex(glob: str) -> str:
+    """GitHub filter-pattern cheat sheet, the subset a tag filter can use.
+
+    ``*`` any run except ``/``; ``**`` any run; ``?`` one char except ``/``; ``+`` one or
+    more of the preceding *literal* character; ``\\`` escapes the next character. A ``+``
+    after a special character is rejected exactly as GitHub rejects it -- that mistake
+    (``!v*.*.*+*``) once invalidated the whole release workflow server-side.
+    """
+    atoms: list[tuple[str, bool]] = []  # (regex, is_literal)
+    i = 0
+    while i < len(glob):
+        c = glob[i]
+        if c == "\\" and i + 1 < len(glob):
+            atoms.append((re.escape(glob[i + 1]), True))
+            i += 2
+        elif glob.startswith("**", i):
+            atoms.append((".*", False))
+            i += 2
+        elif c == "*":
+            atoms.append(("[^/]*", False))
+            i += 1
+        elif c == "?":
+            atoms.append(("[^/]", False))
+            i += 1
+        elif c == "+":
+            if not atoms or not atoms[-1][1]:
+                raise ValueError(f"invalid filter pattern {glob!r}: '+' must follow a "
+                                 "literal character")
+            rx, _ = atoms[-1]
+            atoms[-1] = (rx + "+", False)
+            i += 1
+        else:
+            atoms.append((re.escape(c), c not in _SPECIAL))
+            i += 1
+    return "^" + "".join(rx for rx, _ in atoms) + "$"
 
 
 def _glob_matches(glob: str, ref: str) -> bool:
-    rx = "^" + "".join("[^/]*" if c == "*" else re.escape(c) for c in glob) + "$"
-    return re.match(rx, ref) is not None
+    return re.match(_glob_regex(glob), ref) is not None
 
 
 def _triggers(ref: str) -> bool:
@@ -71,7 +113,7 @@ def _triggers(ref: str) -> bool:
     GitHub applies tag filters in declaration order; a matching ``!`` negative after a
     positive excludes, and a positive after a negative re-includes. Only the last match
     matters, so the workflow's ordered list ``v*.*.*`` → ``!v*.*.*-*`` →
-    ``!v*.*.*+*`` → ``!v1`` means stable tags trigger and prerelease/build/floating do not.
+    ``!v*.*.*\+*`` → ``!v1`` means stable tags trigger and prerelease/build/floating do not.
     """
     # A ref containing a newline cannot be a git refname; the trigger surface cannot see it.
     if "\n" in ref or "\r" in ref:
@@ -136,7 +178,7 @@ class TestReleaseTagPolicy(unittest.TestCase):
                 with self.subTest(tag=tag):
                     self.assertFalse(_triggers(tag),
                                      f"non-glob tag triggered a run: {tag!r}")
-            elif _glob_matches("v*.*.*-*", tag) or _glob_matches("v*.*.*+*", tag) \
+            elif _glob_matches("v*.*.*-*", tag) or _glob_matches(r"v*.*.*\+*", tag) \
                     or _glob_matches("v1", tag):
                 # prerelease/build are excluded by the negatives after the positives
                 with self.subTest(tag=tag):
@@ -150,6 +192,27 @@ class TestReleaseTagPolicy(unittest.TestCase):
         self.assertFalse(_accepts("v1.2"))
         self.assertTrue(_accepts("v1.2.3"))
         self.assertTrue(_accepts("v0.0.4"))
+
+    def test_trigger_filters_are_valid_github_filter_patterns(self):
+        # GitHub rejects the whole workflow file when a filter is malformed (a `+` after a
+        # special character), and a rejected release.yml means a tag push publishes nothing.
+        globs = _trigger_globs()
+        self.assertEqual(globs, ["v*.*.*", "!v*.*.*-*", r"!v*.*.*\+*", "!v1"])
+        for glob in globs:
+            with self.subTest(glob=glob):
+                _glob_regex(glob.lstrip("!"))  # must not raise
+
+    def test_filter_pattern_model_matches_github_semantics(self):
+        with self.assertRaises(ValueError):
+            _glob_regex("v*.*.*+*")  # the mistake that invalidated the workflow
+        self.assertTrue(_glob_matches(r"v*.*.*\+*", "v1.2.3+build.7"))
+        self.assertFalse(_glob_matches(r"v*.*.*\+*", "v1.2.3"))
+        self.assertTrue(_glob_matches("v1+", "v111"))  # unescaped: quantifier
+        self.assertFalse(_glob_matches("v1+", "v1+"))
+        self.assertTrue(_glob_matches("v?.0.0", "v1.0.0"))
+        self.assertFalse(_glob_matches("v?.0.0", "v10.0.0"))
+        self.assertTrue(_glob_matches("**", "refs/tags/anything"))
+        self.assertFalse(_glob_matches("*", "a/b"))
 
     def test_multiline_refs_never_trigger(self):
         for ref in MULTILINE_REFS:
