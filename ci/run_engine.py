@@ -42,6 +42,10 @@ def main() -> int:
                 "--format", os.environ["FORMATS"], "--out", os.environ["out_dir"]]
     if _env_bool("GITHUB_ENABLED"):
         argv.append("--github")
+    # argv-list form with a fixed executable and no shell: env values become discrete
+    # arguments to the vendored CLI, which validates them itself (--format tokens,
+    # --min-level range, --project admission). Nothing here is interpreted by a shell.
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args  # noqa: E501
     proc = subprocess.run(["python3", *argv], capture_output=True, text=True)
     if proc.returncode != 0:
         sys.stderr.write(proc.stderr or "")
