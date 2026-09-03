@@ -1,6 +1,6 @@
 """Coverage gate: total fail-under PLUS 100% branch coverage for changed files.
 
-The roadmap (``docs/PLAN-roadmap-factory-parity.md``, invariant 6) requires every new or
+The roadmap (``docs/archive/PLAN-roadmap-factory-parity.md``, invariant 6) requires every new or
 changed Python module to reach 100% branch coverage or carry reviewed ``# pragma: no cover``
 exclusions. This gate enforces that contract against a ``coverage json`` report:
 

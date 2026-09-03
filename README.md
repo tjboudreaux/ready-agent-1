@@ -66,10 +66,16 @@ repository access — help, `version`, `formats`, and `banner` remain available.
 The skills follow the [agentskills.io](https://agentskills.io) standard and carry the `agent-skills` topic:
 
 ```bash
-gh skill install tjboudreaux/ready-agent-1          # GitHub CLI
-npx skills add tjboudreaux/ready-agent-1            # skills.sh
-gemini skills install tjboudreaux/ready-agent-1     # Gemini CLI
-# or add the plugin in Claude Code
+gh skill install tjboudreaux/ready-agent-1 ra1-report          # GitHub CLI ≥ 2.90; also ra1-fix, ra1-interview
+npx skills add tjboudreaux/ready-agent-1                        # skills.sh — select the ra1-* skills
+gemini skills install https://github.com/tjboudreaux/ready-agent-1.git --path skills/ra1-report   # Gemini CLI, one per skill
+```
+
+In Claude Code, the repository is its own plugin marketplace:
+
+```text
+/plugin marketplace add tjboudreaux/ready-agent-1
+/plugin install ready-agent-1@ready-agent-1
 ```
 
 No runtime dependencies — **Python 3.11+** (an authenticated `gh` unlocks the GitHub-side checks).
