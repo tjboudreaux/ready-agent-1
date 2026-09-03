@@ -470,10 +470,11 @@ class TestReadClassification(unittest.TestCase):
         auth = safe_io.acquire_root(tmp)
         try:
             obs = safe_io.read_rooted_regular(auth, "link/x.txt")
-            # Linux: ELOOP -> unsafe_path/symlink; Darwin: ENOTDIR -> missing.
-            # Either way the link is never followed and no payload is returned.
-            self.assertIn(obs.state, (safe_io.RepoReadState.UNSAFE_PATH,
-                                      safe_io.RepoReadState.MISSING))
+            # Linux reports ELOOP for the O_NOFOLLOW open; Darwin reports ENOTDIR and
+            # _walk lstats the component to reach the same verdict. The link is never
+            # followed and no payload is returned.
+            self.assertEqual(obs.state, safe_io.RepoReadState.UNSAFE_PATH)
+            self.assertEqual(obs.reason_code, "symlink")
             self.assertEqual(obs.data, b"")
         finally:
             auth.close()
@@ -1461,6 +1462,27 @@ class TestWalkEdges(unittest.TestCase):
             obs = safe_io.read_rooted_regular(auth, "blk/x.txt")
             self.assertEqual(obs.state, safe_io.RepoReadState.MISSING)
             self.assertEqual(obs.reason_code, "not_found")
+        finally:
+            auth.close()
+
+    def test_enotdir_symlink_component_refused_as_symlink(self):
+        # Darwin reports ENOTDIR for O_DIRECTORY|O_NOFOLLOW on a symlinked component where
+        # Linux reports ELOOP. Simulate the Darwin errno so the lstat fallback runs on every
+        # host and proves the symlink is refused rather than classified as MISSING.
+        tmp, auth = self._root({"real/x.txt": "data"})
+        os.symlink(os.path.join(tmp, "real"), os.path.join(tmp, "link"))
+        real_open = os.open
+
+        def fake_open(name, flags, *a, **k):
+            if name == "link" and flags & os.O_DIRECTORY:
+                raise NotADirectoryError(errno.ENOTDIR, "not a directory")
+            return real_open(name, flags, *a, **k)
+
+        try:
+            with mock.patch.object(os, "open", fake_open):
+                obs = safe_io.read_rooted_regular(auth, "link/x.txt")
+            self.assertEqual(obs.state, safe_io.RepoReadState.UNSAFE_PATH)
+            self.assertEqual(obs.reason_code, "symlink")
         finally:
             auth.close()
 
