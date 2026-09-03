@@ -86,6 +86,10 @@ def _write_mirror(root: Path, matrix: dict, *, vendored=True, skill_version_line
     (root / "pyproject.toml").write_text(
         f'[project]\nname = "ready-agent-1"\nversion = "{sel["package"]}"\n',
         encoding="utf-8")
+    (root / "uv.lock").write_text(
+        'version = 1\nrequires-python = ">=3.11"\n\n[[package]]\nname = "agent-readiness"\n'
+        f'version = "{sel["package"]}"\nsource = {{ virtual = "." }}\n',
+        encoding="utf-8")
     (root / ".claude-plugin").mkdir(parents=True, exist_ok=True)
     (root / ".claude-plugin" / "plugin.json").write_text(
         json.dumps({"name": "ready-agent-1", "version": sel["claude_plugin"]}),
@@ -315,6 +319,23 @@ class TestValidateMatrix(_RepoPatchTest):
         errors = crv.validate_matrix()
         self.assertEqual(len(errors), 1)
         self.assertTrue(errors[0].startswith("pyproject.toml unreadable: "))
+
+    def test_uv_lock_version_mismatch(self):
+        (self.root / "uv.lock").write_text(
+            '[[package]]\nname = "agent-readiness"\nversion = "0.6.0"\n', encoding="utf-8")
+        self.assertIn("uv.lock package version != selected package", crv.validate_matrix())
+
+    def test_uv_lock_unreadable(self):
+        (self.root / "uv.lock").unlink()
+        errors = crv.validate_matrix()
+        self.assertEqual(len(errors), 1)
+        self.assertTrue(errors[0].startswith("uv.lock unreadable: "))
+
+    def test_uv_lock_without_package_entry(self):
+        (self.root / "uv.lock").write_text(
+            '[[package]]\nname = "ruff"\nversion = "0.16.1"\n', encoding="utf-8")
+        self.assertEqual(crv.validate_matrix(),
+                         ["uv.lock unreadable: no [[package]] entry for agent-readiness"])
 
     def test_skill_md_unreadable(self):
         (self.root / "skills" / "ra1-fix" / "SKILL.md").unlink()

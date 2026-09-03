@@ -6,8 +6,8 @@ current tree: every selected advancing group is exactly the next minor/patch-0 a
 recorded baseline, the detector is unchanged, schema transitions only ``2 -> 3`` or stays
 ``3``, ``release_tag == "v" + selected.package``, package equals engine and all three skill
 ``metadata.version`` values, registry/detector/schema equal ``engine/readiness/version.py``,
-every vendored manifest echoes that selected engine/registry/detector tuple, and plugin
-metadata equals the selected plugin value.
+every vendored manifest echoes that selected engine/registry/detector tuple, ``uv.lock``
+records the selected package version, and plugin metadata equals the selected plugin value.
 
 ``--check-published`` additionally requires fetched ``origin/main``, the recorded
 selection-base object, and eligible tags; proves the base object exists, every eligible
@@ -113,6 +113,17 @@ def validate_matrix() -> list[str]:
         return errors + [f"pyproject.toml unreadable: {exc}"]
     if package["project"]["version"] != selected["package"]:
         errors.append("pyproject version != selected package")
+
+    try:
+        lock_text = (REPO / "uv.lock").read_text(encoding="utf-8")
+    except OSError as exc:
+        return errors + [f"uv.lock unreadable: {exc}"]
+    lock_match = re.search(
+        r'(?ms)^\[\[package\]\]\nname = "agent-readiness"\nversion = "([^"]+)"', lock_text)
+    if not lock_match:
+        return errors + ["uv.lock unreadable: no [[package]] entry for agent-readiness"]
+    if lock_match.group(1) != selected["package"]:
+        errors.append("uv.lock package version != selected package")
 
     for skill in _SKILLS:
         try:
