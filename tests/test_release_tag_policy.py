@@ -113,7 +113,7 @@ def _triggers(ref: str) -> bool:
     GitHub applies tag filters in declaration order; a matching ``!`` negative after a
     positive excludes, and a positive after a negative re-includes. Only the last match
     matters, so the workflow's ordered list ``v*.*.*`` → ``!v*.*.*-*`` →
-    ``!v*.*.*\+*`` → ``!v1`` means stable tags trigger and prerelease/build/floating do not.
+    ``!v*.*.*\\+*`` → ``!v1`` means stable tags trigger and prerelease/build/floating do not.
     """
     # A ref containing a newline cannot be a git refname; the trigger surface cannot see it.
     if "\n" in ref or "\r" in ref:

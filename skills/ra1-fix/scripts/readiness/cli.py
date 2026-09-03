@@ -563,8 +563,7 @@ def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not hasattr(args, "func"):
-        print(render_banner(sys.stdout.isatty()))
-        return 0
+        return cmd_banner(args)
     if getattr(args, "command", None) in _OPERATIONAL and not safe_io.safe_io_supported():
         sys.stderr.write(safe_io.SAFE_IO_UNSUPPORTED_MESSAGE + "\n")
         return 1
