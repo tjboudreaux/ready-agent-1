@@ -6,6 +6,7 @@ Briefing for agents working in **agent-readiness**.
 - No build step; pure Python standard library (3.11+).
 - Tests: `python3 -m unittest discover -s tests -t .`
 - Coverage (gate is >90%): `python3 -m coverage run --branch --source=engine/readiness,evals,scripts,ci -m unittest discover -s tests -t . && python3 -m coverage report --fail-under=90`
+- One-shot verification: `make check` (ruff + tests + vendor parity + release matrix); requires the dev group: `uv sync --group dev` or `pip install ruff==0.16.1`.
 
 ## Architecture
 - `engine/readiness/` — canonical pure-stdlib engine. Flow: `detect` → `collectors` (T0 static / T1 git /
