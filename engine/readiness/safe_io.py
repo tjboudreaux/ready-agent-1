@@ -18,13 +18,20 @@ CLI flags: every cap is an engine constant.
 from __future__ import annotations
 
 import errno
-import fcntl
 import os
 import re
 import stat
 import tempfile
 from dataclasses import dataclass, field
 from enum import StrEnum
+
+# ``fcntl`` does not exist on Windows. The module must still import there so ``--help``,
+# ``version``, ``formats``, and ``banner`` work; every operational path goes through
+# :func:`_probe`, which returns False before touching ``fcntl`` when ``os.name != "posix"``.
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - only reachable on non-POSIX hosts
+    fcntl = None  # type: ignore[assignment]
 
 # --------------------------------------------------------------------------- messages
 SAFE_IO_UNSUPPORTED_MESSAGE = (
