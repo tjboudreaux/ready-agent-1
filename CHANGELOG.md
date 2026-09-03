@@ -75,6 +75,9 @@ pillars.
 - `ra1 history diff` treats schema 2↔3 as explicitly incomparable
   (`version mismatch: schema_version`); schema-3 deltas additionally require matching repository
   identity, inputs, evidence scope, and proven commit ancestry.
+- **Claude Code install path**: the repository root is now a plugin marketplace
+  (`.claude-plugin/marketplace.json`). Install with `/plugin marketplace add tjboudreaux/ready-agent-1`
+  then `/plugin install ready-agent-1@ready-agent-1`.
 
 ### Verified remediation and typed interview
 - `ra1 fix --apply` is one always-verified contract: clean/known Git (no bypass) → fresh

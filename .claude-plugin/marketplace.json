@@ -1,0 +1,14 @@
+{
+  "name": "ready-agent-1",
+  "description": "Ready Agent 1 \u2014 deterministic agent-readiness scoring, verified fixes, and typed interviews.",
+  "owner": {"name": "Travis Boudreaux", "url": "https://github.com/tjboudreaux"},
+  "plugins": [
+    {
+      "name": "ready-agent-1",
+      "source": "./",
+      "description": "Ready Agent 1 \u2014 is your codebase ready for the agents? Score a repository's agent-readiness (deterministic, cited, Level 1\u20134 with Level 5 Autonomous reserved) and clear the defined gates to raise it.",
+      "category": "code-quality",
+      "tags": ["agent-skills", "readiness", "ci"]
+    }
+  ]
+}
