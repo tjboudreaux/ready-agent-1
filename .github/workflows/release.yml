@@ -6,9 +6,12 @@ on:
       # Ordered GitHub negative filters: match stable vMAJOR.MINOR.PATCH tags, then
       # exclude prerelease (v1.2.3-rc.1) and build-metadata (v1.2.3+build.7) tags, and the
       # floating major alias (v1) the published action uses for routine maintenance.
+      # In GitHub's filter syntax `+` is a quantifier ("one or more of the preceding
+      # character") and `*+` is a hard parse error that invalidates the whole workflow, so
+      # the literal plus is escaped. tests/test_release_tag_policy.py models this syntax.
       - "v*.*.*"
       - "!v*.*.*-*"
-      - "!v*.*.*+*"
+      - '!v*.*.*\+*'
       - "!v1"
   workflow_dispatch:
     inputs:
