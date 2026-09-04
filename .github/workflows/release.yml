@@ -112,10 +112,13 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           mkdir -p dist
-          archive="dist/ready-agent-1-${TAG#v}.tar.gz"
-          git archive --format=tar.gz --prefix="ready-agent-1-${TAG#v}/" "refs/tags/$TAG" -o "$archive"
-          shasum -a 256 "$archive" > "$archive.sha256"
-          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          name="ready-agent-1-${TAG#v}.tar.gz"
+          git archive --format=tar.gz --prefix="ready-agent-1-${TAG#v}/" "refs/tags/$TAG" -o "dist/$name"
+          # Run shasum from inside dist/ so the sidecar names the bare file: a consumer who
+          # downloads both assets into one directory can `shasum -a 256 -c` as-is. (The
+          # v0.11.0 sidecar embeds `dist/`, so it only verifies from the parent of a dist/.)
+          (cd dist && shasum -a 256 "$name" > "$name.sha256")
+          echo "archive=dist/$name" >> "$GITHUB_OUTPUT"
       - name: Extract release notes from CHANGELOG
         env:
           TAG: ${{ steps.tag.outputs.tag }}
